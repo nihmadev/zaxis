@@ -9,6 +9,8 @@ pub struct Text {
     color: Option<Color>,
     wrap: bool,
     muted: bool,
+    style: crate::TextStyle,
+    role: crate::TypographyRole,
 }
 
 impl Text {
@@ -19,7 +21,17 @@ impl Text {
             color: None,
             wrap: true,
             muted: false,
+            style: Default::default(),
+            role: Default::default(),
         }
+    }
+    pub fn style(mut self, style: crate::TextStyle) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn typography(mut self, role: crate::TypographyRole) -> Self {
+        self.role = role;
+        self
     }
     pub fn size(mut self, size: f32) -> Self {
         self.size = Some(size);
@@ -42,9 +54,19 @@ impl Text {
 impl Widget for Text {
     fn ui(self, ui: &mut Ui<'_>) -> Response {
         let id = ui.next_id("text");
-        let size = font_size(self.size.unwrap_or(ui.style().font_size));
-        let color = self.color.unwrap_or(if self.muted || !ui.is_enabled() {
-            ui.style().muted_text
+        let mut style = ui.style().text;
+        style.merge(self.style);
+        let inherited = match self.role {
+            crate::TypographyRole::Body => ui.style().font_size,
+            crate::TypographyRole::Small => ui.style().typography.small,
+            crate::TypographyRole::Heading => ui.style().typography.heading,
+            crate::TypographyRole::Title => ui.style().typography.title,
+        };
+        let size = font_size(self.size.or(style.size).unwrap_or(inherited));
+        let color = self.color.or(style.color).unwrap_or(if !ui.is_enabled() {
+            ui.style().disabled_text
+        } else if self.muted {
+            style.muted.unwrap_or(ui.style().muted_text)
         } else {
             ui.style().text_color
         });
@@ -53,7 +75,7 @@ impl Widget for Text {
         } else {
             f32::INFINITY
         };
-        let text_size = ui.context.measure_text(&self.text, size, wrap_width);
+        let (text_size, wrap_width) = ui.context.measure_text_layout(&self.text, size, wrap_width);
         let rect = ui.allocate_space(text_size);
         ui.context.paint(
             id,
@@ -64,7 +86,7 @@ impl Widget for Text {
                 position: rect.min,
                 size,
                 wrap_width,
-                color,
+                color: super::appearance::alpha(color, ui.style().opacity),
             }],
         );
         ui.response(id, rect, false)

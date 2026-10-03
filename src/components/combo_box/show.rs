@@ -235,7 +235,8 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                 padding: Padding::default(),
                 spacing: 0.0,
                 bar_margin: 0.0,
-                ..ScrollStyle::compact()
+                bar_width: 4.0,
+                ..ui.style().scroll
             };
             let mut scroll = ScrollArea::vertical()
                 .id_source("options")

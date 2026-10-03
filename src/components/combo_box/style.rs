@@ -4,6 +4,9 @@ use std::time::Duration;
 /// Compact dropdown proportions and palette, in logical pixels.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComboBoxStyle {
+    pub trigger: crate::ControlStyle,
+    pub option: crate::ControlStyle,
+
     pub width: f32,
     pub trigger_height: f32,
     pub label_height: f32,
@@ -32,6 +35,9 @@ pub struct ComboBoxStyle {
 impl Default for ComboBoxStyle {
     fn default() -> Self {
         Self {
+            trigger: Default::default(),
+            option: Default::default(),
+
             width: 240.0,
             trigger_height: 22.0,
             label_height: 20.0,

@@ -8,6 +8,8 @@ mod render;
 /// Compact appearance and gesture defaults for both numeric controls.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NumberStyle {
+    pub surface: crate::ControlStyle,
+
     pub width: f32,
     pub height: f32,
     pub padding: Padding,
@@ -24,6 +26,8 @@ pub struct NumberStyle {
 impl Default for NumberStyle {
     fn default() -> Self {
         Self {
+            surface: Default::default(),
+
             width: 120.0,
             height: 28.0,
             padding: Padding::symmetric(8.0, 3.0),

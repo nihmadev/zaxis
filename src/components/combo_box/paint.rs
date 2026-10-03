@@ -37,38 +37,51 @@ pub(super) fn trigger(
     caption: &str,
     progress: f32,
     style: &ComboBoxStyle,
-    motion: TweenOptions,
+    _motion: TweenOptions,
 ) {
     let rect = response.rect;
-    let border = ui
-        .context
-        .transition_visible(
-            response.id.with("hover-border"),
-            None,
-            if response.hovered && response.enabled {
-                style.hover_border.color
-            } else {
-                style.border.color
-            },
-            motion,
-            !rect.intersect(ui.clip_rect()).is_empty(),
-        )
-        .value;
-    ui.context.paint(
-        response.id.with("body"),
+    let effective = ui.style().clone();
+    let mut base = crate::components::appearance::Appearance::new(
+        style.trigger_fill,
+        if response.hovered && response.enabled {
+            style.hover_border
+        } else {
+            style.border
+        },
+        style.text,
+    );
+    base.rounding = style.rounding;
+    base.blur = 0.0;
+    base.opacity = effective.opacity;
+    let appearance = ui.animate_control(
+        response,
+        crate::HoverStyle::NONE,
+        false,
+        style.trigger,
+        crate::ControlState::from_response(response, progress > 0.0),
+        base,
+        style.trigger_fill,
+    );
+    let mut paint = Vec::new();
+    appearance.paint_shadow(rect, appearance.rounding, &mut paint);
+    appearance.paint_body(
+        rect,
+        appearance.rounding,
+        &effective,
+        appearance.blur,
+        &mut paint,
+    );
+    let (_, filter) = ui.resolved_blur(appearance.blur, style.trigger.has_blur_override());
+    ui.context.paint_blur(
+        response.id.with("blur"),
         ui.window,
         ui.clip,
-        vec![Paint::Shape(Shape::Rect {
-            rect,
-            fill: style.trigger_fill,
-            rounding: style.rounding,
-            border: if response.focus_visible {
-                ui.style().focus_border
-            } else {
-                Border::new(style.border.width, border)
-            },
-        })],
+        crate::Blur::new(rect)
+            .radius(filter)
+            .corner_radius(appearance.rounding),
     );
+    ui.context
+        .paint(response.id.with("body"), ui.window, ui.clip, paint);
     if !label.is_empty() {
         text(
             ui,
@@ -93,7 +106,7 @@ pub(super) fn trigger(
         caption,
         style.font_size,
         if response.enabled {
-            style.text
+            appearance.text_color
         } else {
             style.disabled_text
         },
@@ -153,28 +166,46 @@ pub(super) fn option(
             HitAction::Block
         },
     });
-    ui.context.paint(
-        id.with("body"),
-        ui.window,
-        ui.clip,
-        vec![Paint::Shape(Shape::Rect {
-            rect,
-            fill: if response.enabled && (response.hovered || active) {
-                style.active_fill
-            } else {
-                Color::TRANSPARENT
-            },
-            rounding: style.rounding,
-            border: Border::NONE,
-        })],
+    let effective = ui.style().clone();
+    let mut base = crate::components::appearance::Appearance::new(
+        if selected || (response.enabled && (response.hovered || active)) {
+            style.active_fill
+        } else {
+            Color::TRANSPARENT
+        },
+        Border::NONE,
+        if !enabled {
+            style.disabled_text
+        } else if selected {
+            style.text
+        } else {
+            style.muted_text
+        },
     );
-    let color = if !enabled {
-        style.disabled_text
-    } else if selected {
-        style.text
-    } else {
-        style.muted_text
-    };
+    base.rounding = style.rounding;
+    base.opacity = effective.opacity;
+    let mut state = crate::ControlState::from_response(response, selected);
+    state.focus = active && response.enabled;
+    let appearance = ui.animate_control(
+        response,
+        crate::HoverStyle::NONE,
+        false,
+        style.option,
+        state,
+        base,
+        style.active_fill,
+    );
+    let mut paint = Vec::new();
+    appearance.paint_shadow(rect, appearance.rounding, &mut paint);
+    appearance.paint_body(
+        rect,
+        appearance.rounding,
+        &effective,
+        appearance.blur,
+        &mut paint,
+    );
+    ui.context.paint(id.with("body"), ui.window, ui.clip, paint);
+    let color = appearance.text_color;
     text(
         ui,
         id.with("caption"),

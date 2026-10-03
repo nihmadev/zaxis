@@ -208,3 +208,82 @@ fn stationary_editor_reuses_geometry_at_multiple_scales_and_cleans_up_state() {
         assert!(context.color_pickers.is_empty());
     }
 }
+
+#[test]
+fn themed_picker_in_demo_columns_routes_palette_hue_and_fields() {
+    for theme in [
+        crate::Theme::dark(),
+        crate::Theme::light(),
+        crate::Theme::high_contrast(),
+    ] {
+        for density in [crate::Density::Compact, crate::Density::Comfortable] {
+            let mut context = context();
+            let mut theme = theme.clone().density(density);
+            theme.overrides.motion = Some(crate::MotionStyle {
+                reduced_motion: true,
+                ..Default::default()
+            });
+            context.set_theme(theme);
+            let mut color = Color::rgba(255, 0, 0, 73);
+            let draw = |context: &mut Context, color: &mut Color| {
+                let mut id = Id::new(0);
+                context.run(|context| {
+                    crate::Root::new().show(context, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.button("Dark");
+                            ui.button("Light");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.with_width(280.0, |ui| {
+                                ui.label("Controls");
+                                ui.button("Button");
+                            });
+                            ui.vertical(|ui| {
+                                ui.with_width(330.0, |ui| {
+                                    ui.label("Colors");
+                                    id = ui
+                                        .add(
+                                            ColorPicker::new(color, "Color")
+                                                .id_source("picker")
+                                                .width(310.0)
+                                                .default_open(true),
+                                        )
+                                        .id;
+                                })
+                            });
+                        });
+                    })
+                });
+                id
+            };
+            let id = draw(&mut context, &mut color);
+            draw(&mut context, &mut color);
+            let palette = region(&context, id.with("palette"));
+            click(&mut context, palette.center());
+            assert_eq!(context.focused_widget, Some(id.with("palette")));
+            draw(&mut context, &mut color);
+            assert!(color.0[..3]
+                .iter()
+                .zip([128i16, 64, 64])
+                .all(|(&actual, expected)| (i16::from(actual) - expected).abs() <= 1));
+            assert_eq!(color.0[3], 73);
+            let hue = region(&context, id.with("hue"));
+            click(
+                &mut context,
+                hue.min + hue.size() * crate::vec2(1.0 / 3.0, 0.5),
+            );
+            draw(&mut context, &mut color);
+            assert!(color.0[..3]
+                .iter()
+                .zip([64i16, 128, 64])
+                .all(|(&actual, expected)| (i16::from(actual) - expected).abs() <= 1));
+            assert_eq!(color.0[3], 73);
+            let field = region(&context, id.with(("field", 3usize))).center();
+            click(&mut context, field);
+            context.on_text_event("#123456");
+            context.key(KeyCode::Enter, ElementState::Pressed, false);
+            draw(&mut context, &mut color);
+            assert_eq!(color, Color::rgba(0x12, 0x34, 0x56, 73));
+        }
+    }
+}

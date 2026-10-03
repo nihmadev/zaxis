@@ -13,6 +13,7 @@ pub struct Loader {
     color: Option<Color>,
     stroke: Option<f32>,
     period: Option<Duration>,
+    style: crate::LoaderStyle,
 }
 impl Default for Loader {
     #[track_caller]
@@ -31,7 +32,12 @@ impl Loader {
             color: None,
             stroke: None,
             period: None,
+            style: Default::default(),
         }
+    }
+    pub fn style(mut self, style: crate::LoaderStyle) -> Self {
+        self.style = style;
+        self
     }
     pub fn id_source(mut self, source: impl Hash) -> Self {
         self.id = Some(Id::new(source));
@@ -66,9 +72,21 @@ impl Widget for Loader {
             Some(id) => ui.scope.with(("loader", id)),
             None => ui.auto_id(("loader", self.source)),
         };
-        let size = self.size.unwrap_or(ui.style().motion.loader_size);
-        let width = self.stroke.unwrap_or(ui.style().motion.loader_stroke);
-        let color = self.color.unwrap_or(ui.style().muted_text);
+        let mut style = ui.style().loader;
+        style.merge(self.style);
+        let size = self
+            .size
+            .or(style.size)
+            .unwrap_or(ui.style().motion.loader_size);
+        let width = self
+            .stroke
+            .or(style.stroke)
+            .unwrap_or(ui.style().motion.loader_stroke);
+        let color = self.color.or(style.color).unwrap_or(if ui.is_enabled() {
+            ui.style().muted_text
+        } else {
+            ui.style().disabled_text
+        });
         let period = self.period.unwrap_or(ui.style().motion.cycle_period);
         let rect = ui.allocate_space(Vec2::splat(size));
         let channel = id.with("rotation");

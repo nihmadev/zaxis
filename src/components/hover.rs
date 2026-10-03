@@ -105,8 +105,12 @@ impl<W: Widget, F: FnOnce(&mut Ui<'_>, Response)> Widget for Hover<W, F> {
         if let Some(style) = self.style {
             ui.hover_style = Some(style);
         }
-        let response = ui.add(self.widget);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ui.add(self.widget)));
         ui.hover_style = previous;
+        let response = match result {
+            Ok(v) => v,
+            Err(e) => std::panic::resume_unwind(e),
+        };
         if response.state() == WidgetState::Hovered {
             ui.push_id(("hover-overlay", response.id), |ui| {
                 (self.paint)(ui, response)

@@ -1,5 +1,5 @@
 use super::{Response, Ui, Widget};
-use crate::{context::Paint, Color, Id, Rect, Shape, Vec2};
+use crate::{Color, Id, Rect, Vec2};
 use std::{hash::Hash, panic::Location};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -14,8 +14,9 @@ pub struct Progress {
     state: ProgressState,
     id: Option<Id>,
     source: &'static Location<'static>,
-    size: Vec2,
+    size: Option<Vec2>,
     color: Option<Color>,
+    style: crate::ProgressStyle,
 }
 impl Progress {
     #[track_caller]
@@ -24,9 +25,14 @@ impl Progress {
             state,
             id: None,
             source: Location::caller(),
-            size: Vec2::new(160.0, 4.0),
+            size: None,
             color: None,
+            style: Default::default(),
         }
+    }
+    pub fn style(mut self, style: crate::ProgressStyle) -> Self {
+        self.style = style;
+        self
     }
     pub fn id_source(mut self, source: impl Hash) -> Self {
         self.id = Some(Id::new(source));
@@ -34,7 +40,7 @@ impl Progress {
     }
     pub fn size(mut self, size: Vec2) -> Self {
         assert!(size.is_finite() && size.min_element() >= 0.0);
-        self.size = size;
+        self.size = Some(size);
         self
     }
     pub fn color(mut self, color: Color) -> Self {
@@ -48,9 +54,19 @@ impl Widget for Progress {
             Some(id) => ui.scope.with(("progress", id)),
             None => ui.auto_id(("progress", self.source)),
         };
-        let rect = ui.allocate_space(self.size);
+        let mut component = ui.style().progress;
+        component.merge(self.style);
+        let size = self
+            .size
+            .or(component.size)
+            .unwrap_or(Vec2::new(160.0, 4.0));
+        let rect = ui.allocate_space(size);
         let channel = id.with("phase");
-        let color = self.color.unwrap_or(ui.style().text_color);
+        let color = self.color.unwrap_or(if ui.is_enabled() {
+            ui.style().accent
+        } else {
+            ui.style().disabled_text
+        });
         let busy = matches!(self.state, ProgressState::Indeterminate { active: true });
         let visible = !rect.intersect(ui.clip_rect()).is_empty();
         let phase = if busy && visible && !ui.style().motion.reduced_motion {
@@ -89,23 +105,34 @@ impl Widget for Progress {
             rect.min + Vec2::new(rect.size().x * offset, 0.0),
             Vec2::new(rect.size().x * width, rect.size().y),
         );
-        ui.context.paint(
-            id,
+        let style = ui.style().clone();
+        let mut track = super::appearance::Appearance::new(
+            style.button_fill,
+            crate::Border::NONE,
+            style.text_color,
+        );
+        track.rounding = crate::CornerRadius::all(size.y * 0.5);
+        track.opacity = style.opacity;
+        track.blur = 0.0;
+        track.apply(component.track);
+        let mut fill = track;
+        fill.fill = crate::Gradient::new(color, color);
+        fill.apply(component.fill);
+        let (_, filter) = ui.control_blur(Some(track.blur));
+        ui.context.paint_blur(
+            id.with("blur"),
             ui.window,
             ui.clip,
-            vec![
-                Paint::Shape(
-                    Shape::rect(rect, ui.style().button_fill)
-                        .corner_radius(self.size.y * 0.5)
-                        .into(),
-                ),
-                Paint::Shape(
-                    Shape::rect(segment, color)
-                        .corner_radius(self.size.y * 0.5)
-                        .into(),
-                ),
-            ],
+            crate::Blur::new(rect)
+                .radius(filter)
+                .corner_radius(track.rounding),
         );
+        let mut paint = Vec::new();
+        track.paint_shadow(rect, track.rounding, &mut paint);
+        track.paint_body(rect, track.rounding, &style, track.blur, &mut paint);
+        fill.paint_shadow(segment, fill.rounding, &mut paint);
+        fill.paint_body(segment, fill.rounding, &style, fill.blur, &mut paint);
+        ui.context.paint(id, ui.window, ui.clip, paint);
         ui.response(id, rect, false)
     }
 }

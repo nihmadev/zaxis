@@ -8,6 +8,7 @@ use crate::{
 };
 
 use super::{font_size, visible_label, HoverStyle, Response, Ui, Widget};
+mod paint;
 
 /// Semantic accent for a slider. An explicit [`Slider::color`] takes precedence.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -29,7 +30,7 @@ pub struct Slider<'a> {
     step: Option<f32>,
     id: Option<Id>,
     enabled: bool,
-    width: f32,
+    width: Option<f32>,
     color: Option<Color>,
     status: SliderStatus,
     source: &'static Location<'static>,
@@ -38,6 +39,8 @@ pub struct Slider<'a> {
     precision: usize,
     blur: Option<f32>,
     hover_style: Option<HoverStyle>,
+    style: super::theme::SliderStyle,
+    painter: Option<super::theme::painter::PaintHook<'a>>,
 }
 
 impl<'a> Slider<'a> {
@@ -54,7 +57,7 @@ impl<'a> Slider<'a> {
             step: None,
             id: None,
             enabled: true,
-            width: 200.0,
+            width: None,
             color: None,
             status: SliderStatus::Normal,
             source: Location::caller(),
@@ -63,9 +66,32 @@ impl<'a> Slider<'a> {
             precision: 2,
             blur: None,
             hover_style: None,
+            style: Default::default(),
+            painter: None,
         }
     }
 
+    pub fn style(mut self, style: super::theme::SliderStyle) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn height(mut self, height: f32) -> Self {
+        assert!(height.is_finite() && height > 0.0);
+        self.style.height = Some(height);
+        self
+    }
+    /// Called for SliderTrack (including its fill) and SliderThumb.
+    pub fn painter(
+        mut self,
+        mode: super::theme::PaintMode,
+        paint: impl Fn(&mut super::theme::Painter<'_>, super::theme::ControlPaint) + 'a,
+    ) -> Self {
+        self.painter = Some(super::theme::painter::PaintHook {
+            mode,
+            callback: Box::new(paint),
+        });
+        self
+    }
     pub fn id_source(mut self, source: impl Hash) -> Self {
         self.id = Some(Id::new(source));
         self
@@ -112,7 +138,7 @@ impl<'a> Slider<'a> {
             width.is_finite() && width > 0.0,
             "slider width must be finite and positive"
         );
-        self.width = width;
+        self.width = Some(width);
         self
     }
 
@@ -160,16 +186,30 @@ impl Widget for Slider<'_> {
     fn ui(mut self, ui: &mut Ui<'_>) -> Response {
         self.enabled &= ui.is_enabled();
         let style = ui.style().clone();
+        let mut component = style.slider;
+        component.merge(self.style);
+        let height = component.height.unwrap_or(28.0).max(0.0);
         let id = match self.id {
             Some(id) => ui.scope.with(("slider", id)),
             None => ui.auto_id(("slider", self.source)),
         };
         let rect = Rect::from_min_size(
             ui.layout.cursor,
-            Vec2::new(self.width.min(ui.available_width()), 28.0),
+            Vec2::new(
+                self.width
+                    .or(component.width)
+                    .unwrap_or(200.0)
+                    .min(ui.available_width()),
+                height,
+            ),
         );
         let mut response = ui.response(id, rect, self.enabled);
-        let radius = 8.0_f32.min(rect.size().x * 0.5);
+        let radius = component
+            .thumb_radius
+            .unwrap_or(8.0)
+            .max(0.0)
+            .min(rect.size().x * 0.5)
+            .min(height * 0.5);
         let left = rect.min.x + radius;
         let right = rect.max.x - radius;
         let min = f64::from(*self.range.start());
@@ -236,7 +276,7 @@ impl Widget for Slider<'_> {
         let label_height = label
             .as_ref()
             .map_or(0.0, |(_, text_size)| ui.layout.spacing + text_size.y);
-        ui.allocate_space(Vec2::new(width, 28.0 + label_height));
+        ui.allocate_space(Vec2::new(width, height + label_height));
         ui.context.register_hit(HitRegion {
             id,
             window: ui.window,
@@ -248,93 +288,13 @@ impl Widget for Slider<'_> {
                 HitAction::Block
             },
         });
-        let accent = if !self.enabled {
-            style.muted_text
-        } else {
-            self.color.unwrap_or(match self.status {
-                SliderStatus::Normal => style.text_color,
-                SliderStatus::Success => Color::rgb(91, 184, 121),
-                SliderStatus::Warning => Color::rgb(230, 177, 70),
-                SliderStatus::Error => Color::rgb(220, 94, 94),
-            })
-        };
         let t = if span > 0.0 {
             (f64::from(value) - min) / span
         } else {
             0.0
         };
         let x = left + (right - left) * t as f32;
-        let track = Rect::from_min_max(
-            Vec2::new(left, rect.center().y - 3.0),
-            Vec2::new(right, rect.center().y + 3.0),
-        );
-        let thumb = Rect::from_min_size(
-            Vec2::new(x - radius, rect.center().y - radius),
-            Vec2::splat(radius * 2.0),
-        );
-        let (blur, filter) = ui.control_blur(self.blur);
-        ui.context.paint_blur(
-            id.with("track-blur"),
-            ui.window,
-            ui.clip,
-            crate::Blur::new(track).radius(filter).corner_radius(3.0),
-        );
-        ui.context.paint_blur(
-            id.with("thumb-blur"),
-            ui.window,
-            ui.clip,
-            crate::Blur::new(thumb).radius(filter).corner_radius(radius),
-        );
-        let preset = self
-            .hover_style
-            .or(ui.hover_style)
-            .unwrap_or(style.hover_style);
-        let hover = ui.animate_hover(
-            response,
-            preset,
-            super::appearance::Appearance::new(
-                if response.pressed {
-                    style.button_pressed
-                } else {
-                    accent
-                },
-                style.border,
-                if self.enabled {
-                    style.text_color
-                } else {
-                    style.muted_text
-                },
-            ),
-            accent,
-        );
-        let rounding = CornerRadius::all(radius);
-        let mut body = vec![
-            Paint::Shape(Shape::Rect {
-                rect: track,
-                fill: style.backdrop_fill(style.button_fill, blur),
-                rounding: CornerRadius::all(3.0),
-                border: Border::NONE,
-            }),
-            Paint::Shape(Shape::Rect {
-                rect: Rect::from_min_max(track.min, Vec2::new(x, track.max.y)),
-                fill: style.backdrop_fill(accent, blur),
-                rounding: CornerRadius::all(3.0),
-                border: Border::NONE,
-            }),
-        ];
-        hover.paint_shadow(thumb, rounding, &mut body);
-        hover.paint_body(thumb, rounding, &style, blur, &mut body);
-        body.push(Paint::Shape(Shape::Rect {
-            rect,
-            fill: Color::TRANSPARENT,
-            rounding: CornerRadius::all(5.0),
-            border: if response.focus_visible {
-                style.focus_border
-            } else {
-                Border::NONE
-            },
-        }));
-        ui.context.paint(id.with("body"), ui.window, ui.clip, body);
+        let foreground = self.paint_parts(ui, response, &style, component, left, right, x, radius);
         if let Some((text, _)) = label {
             ui.context.paint(
                 id.with("label"),
@@ -342,10 +302,10 @@ impl Widget for Slider<'_> {
                 ui.clip,
                 vec![Paint::Text {
                     text,
-                    position: rect.min + Vec2::new(0.0, 28.0 + ui.layout.spacing),
+                    position: rect.min + Vec2::new(0.0, height + ui.layout.spacing),
                     size,
                     wrap_width: width,
-                    color: hover.text_color,
+                    color: foreground,
                 }],
             );
         }

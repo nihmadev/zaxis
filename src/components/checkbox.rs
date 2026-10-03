@@ -20,6 +20,8 @@ pub struct Checkbox<'a> {
     border: Option<Border>,
     blur: Option<f32>,
     hover_style: Option<HoverStyle>,
+    style: super::theme::CheckboxStyle,
+    painter: Option<super::theme::painter::PaintHook<'a>>,
 }
 
 impl<'a> Checkbox<'a> {
@@ -34,9 +36,27 @@ impl<'a> Checkbox<'a> {
             border: None,
             blur: None,
             hover_style: None,
+            style: Default::default(),
+            painter: None,
         }
     }
 
+    pub fn style(mut self, style: super::theme::CheckboxStyle) -> Self {
+        self.style = style;
+        self
+    }
+    /// Called once per part: CheckboxBody and CheckboxIndicator.
+    pub fn painter(
+        mut self,
+        mode: super::theme::PaintMode,
+        paint: impl Fn(&mut super::theme::Painter<'_>, super::theme::ControlPaint) + 'a,
+    ) -> Self {
+        self.painter = Some(super::theme::painter::PaintHook {
+            mode,
+            callback: Box::new(paint),
+        });
+        self
+    }
     pub fn id_source(mut self, source: impl Hash) -> Self {
         self.id = Some(Id::new(source));
         self
@@ -79,6 +99,8 @@ impl Widget for Checkbox<'_> {
     fn ui(mut self, ui: &mut Ui<'_>) -> Response {
         self.enabled &= ui.is_enabled();
         let style = ui.style().clone();
+        let mut component = style.checkbox;
+        component.merge(self.style);
         let font_size = font_size(style.font_size);
         let id = ui
             .scope
@@ -87,6 +109,7 @@ impl Widget for Checkbox<'_> {
         let available = ui.available_width();
         let side = self
             .size
+            .or(component.size)
             .unwrap_or(font_size * 1.25)
             .max(10.0)
             .clamp(10.0, 128.0)
@@ -94,7 +117,9 @@ impl Widget for Checkbox<'_> {
         let gap = if label.is_empty() {
             0.0
         } else {
-            style.spacing.max(0.0).clamp(0.0, 8.0)
+            component
+                .gap
+                .unwrap_or(style.spacing.max(0.0).clamp(0.0, 8.0))
         };
         let label_width = (available - side - gap).max(0.0);
         let text_size = if label.is_empty() {
@@ -130,44 +155,146 @@ impl Widget for Checkbox<'_> {
             .hover_style
             .or(ui.hover_style)
             .unwrap_or(style.hover_style);
+        let state = super::theme::ControlState::from_response(response, *self.checked);
         let fill = if response.pressed {
             style.button_pressed
+        } else if *self.checked {
+            style.accent
         } else {
             style.button_fill
         };
-        let border = if response.focus_visible {
-            style.focus_border
-        } else {
-            self.border.unwrap_or(style.border)
-        };
-        let color = if self.enabled {
-            style.text_color
-        } else {
-            style.muted_text
-        };
-        let hover = ui.animate_hover(
+        let mut base = Appearance::new(fill, self.border.unwrap_or(style.border), style.text_color);
+        base.rounding = self.rounding.unwrap_or(CornerRadius::all(4.0));
+        base.blur = self.blur.unwrap_or(0.0);
+        base.opacity = style.opacity;
+        base.shadow = style.elevation;
+        let mut hover = ui.animate_control(
             response,
             preset,
-            Appearance::new(fill, border, color),
-            style.button_hovered,
+            self.hover_style.or(ui.hover_style).is_some(),
+            component.body,
+            state,
+            base,
+            if *self.checked {
+                style.accent
+            } else {
+                style.button_hovered
+            },
         );
-        let color = hover.text_color;
-        let (blur, filter) = ui.control_blur(self.blur);
-        let rounding = self.rounding.unwrap_or(CornerRadius::all(4.0));
-        ui.context.paint_blur(
-            id.with("blur"),
-            ui.window,
-            ui.clip,
-            crate::Blur::new(square)
-                .radius(filter)
-                .corner_radius(rounding),
+        if let Some(v) = self.rounding {
+            hover.rounding = v;
+        }
+        if let Some(v) = self.border.filter(|_| !state.focus) {
+            hover.border = v;
+        }
+        if let Some(v) = self.blur {
+            hover.blur = v;
+        }
+        let color = super::appearance::alpha(hover.text_color, hover.opacity);
+        let (blur, filter) = ui.resolved_blur(
+            hover.blur,
+            self.blur.is_some() || component.body.has_blur_override(),
         );
+        let rounding = hover.rounding;
+        if self
+            .painter
+            .as_ref()
+            .is_none_or(|h| h.mode != crate::PaintMode::Replace)
+        {
+            ui.context.paint_blur(
+                id.with("blur"),
+                ui.window,
+                ui.clip,
+                crate::Blur::new(square)
+                    .radius(filter)
+                    .corner_radius(rounding),
+            );
+        }
         let mut indicator = Vec::new();
-        hover.paint_shadow(square, rounding, &mut indicator);
-        hover.paint_body(square, rounding, &style, blur, &mut indicator);
-        if *self.checked {
+        let info = super::theme::ControlPaint {
+            bounds: square,
+            part: super::theme::PaintPart::CheckboxBody,
+            style: hover.surface(),
+            state,
+            value: if *self.checked { 1.0 } else { 0.0 },
+        };
+        if let Some(h) = &self.painter {
+            if h.mode != super::theme::PaintMode::After {
+                h.run(&mut indicator, ui.clip_rect(), info);
+            }
+        }
+        if self
+            .painter
+            .as_ref()
+            .is_none_or(|h| h.mode != super::theme::PaintMode::Replace)
+        {
+            hover.paint_shadow(square, rounding, &mut indicator);
+            hover.paint_body(square, rounding, &style, blur, &mut indicator);
+        }
+        if let Some(h) = &self.painter {
+            if h.mode == super::theme::PaintMode::After {
+                h.run(&mut indicator, ui.clip_rect(), info);
+            }
+        }
+        let mut mark = Appearance::new(
+            crate::Color::TRANSPARENT,
+            Border::NONE,
+            if self.enabled {
+                style.on_accent
+            } else {
+                style.disabled_text
+            },
+        );
+        mark.rounding = rounding;
+        let mut mark_state = state;
+        mark_state.focus = false;
+        let mut mark = ui.animate_control(
+            super::Response {
+                id: id.with("mark"),
+                ..response
+            },
+            HoverStyle::NONE,
+            false,
+            component.indicator,
+            mark_state,
+            mark,
+            style.on_accent,
+        );
+        if state.focus {
+            mark.apply(component.indicator.focus);
+        }
+        let info = super::theme::ControlPaint {
+            part: super::theme::PaintPart::CheckboxIndicator,
+            style: mark.surface(),
+            ..info
+        };
+        if let Some(h) = &self.painter {
+            if h.mode != super::theme::PaintMode::After {
+                h.run(&mut indicator, ui.clip_rect(), info);
+            }
+        }
+
+        if *self.checked
+            && self
+                .painter
+                .as_ref()
+                .is_none_or(|h| h.mode != super::theme::PaintMode::Replace)
+        {
+            mark.paint_shadow(square, mark.rounding, &mut indicator);
+            mark.paint_body(square, mark.rounding, &style, mark.blur, &mut indicator);
+            if mark.blur > 0.0 {
+                ui.context.paint_blur(
+                    id.with("mark-blur"),
+                    ui.window,
+                    ui.clip,
+                    crate::Blur::new(square)
+                        .radius(mark.blur)
+                        .corner_radius(mark.rounding),
+                );
+            }
             let point = |x, y| square.min + Vec2::new(x, y) * side;
-            let width = (side * 0.1).max(1.0);
+            let width = component.indicator_width.unwrap_or((side * 0.1).max(1.0));
+            let color = super::appearance::alpha(mark.text_color, hover.opacity * mark.opacity);
             indicator.extend([
                 Paint::Shape(Shape::Line {
                     start: point(0.23, 0.51),
@@ -182,6 +309,11 @@ impl Widget for Checkbox<'_> {
                     color,
                 }),
             ]);
+        }
+        if let Some(h) = &self.painter {
+            if h.mode == super::theme::PaintMode::After {
+                h.run(&mut indicator, ui.clip_rect(), info);
+            }
         }
         ui.context
             .paint(id.with("indicator"), ui.window, ui.clip, indicator);

@@ -284,7 +284,11 @@ pub(super) fn show<T: Numeric>(
             .height(style.height)
             .padding(style.padding)
             .rounding(style.rounding)
-            .font_size(style.font_size);
+            .font_size(style.font_size)
+            .style(crate::TextEditStyle {
+                surface: style.surface,
+                ..Default::default()
+            });
         editor.exact_id = Some(id);
         editor.select_all = select_all;
         editor.affixes = (options.prefix.clone(), options.suffix.clone());
@@ -325,28 +329,43 @@ pub(super) fn show<T: Numeric>(
             .context
             .measure_text(&shown, style.font_size, f32::INFINITY)
             .y;
-        ui.context.paint(
-            id.with("body"),
+        let effective = ui.style().clone();
+        let mut base = crate::components::appearance::Appearance::new(
+            style.fill,
+            Border::NONE,
+            effective.text_color,
+        );
+        base.rounding = style.rounding;
+        base.blur = 0.0;
+        base.opacity = effective.opacity;
+        let appearance = ui.animate_control(
+            response,
+            crate::HoverStyle::fill(style.hovered),
+            false,
+            style.surface,
+            crate::ControlState::from_response(response, false),
+            base,
+            style.hovered,
+        );
+        let mut paint = Vec::new();
+        appearance.paint_shadow(rect, appearance.rounding, &mut paint);
+        appearance.paint_body(
+            rect,
+            appearance.rounding,
+            &effective,
+            appearance.blur,
+            &mut paint,
+        );
+        let (_, filter) = ui.resolved_blur(appearance.blur, style.surface.has_blur_override());
+        ui.context.paint_blur(
+            id.with("blur"),
             ui.window,
             ui.clip,
-            vec![Paint::Shape(
-                Shape::rect(
-                    rect,
-                    if response.hovered && options.enabled {
-                        style.hovered
-                    } else {
-                        style.fill
-                    },
-                )
-                .corner_radius(style.rounding)
-                .border(if response.focus_visible {
-                    ui.style().focus_border
-                } else {
-                    Border::NONE
-                })
-                .into(),
-            )],
+            crate::Blur::new(rect)
+                .radius(filter)
+                .corner_radius(appearance.rounding),
         );
+        ui.context.paint(id.with("body"), ui.window, ui.clip, paint);
         ui.context.paint(
             id.with("text"),
             ui.window,
@@ -357,9 +376,9 @@ pub(super) fn show<T: Numeric>(
                 size: style.font_size,
                 wrap_width: f32::INFINITY,
                 color: if options.enabled {
-                    ui.style().text_color
+                    appearance.text_color
                 } else {
-                    ui.style().muted_text
+                    ui.style().disabled_text
                 },
             }],
         );
@@ -371,10 +390,15 @@ pub(super) fn show<T: Numeric>(
             ui.window,
             ui.clip,
             vec![Paint::Shape(
-                Shape::rect(response.rect, Color::TRANSPARENT)
-                    .corner_radius(style.rounding)
-                    .border(Border::new(1.0, style.invalid))
-                    .into(),
+                Shape::rect(
+                    response
+                        .rect
+                        .shrink(if response.has_focus { 2.0 } else { 0.0 }),
+                    Color::TRANSPARENT,
+                )
+                .corner_radius(style.rounding)
+                .border(Border::new(1.0, style.invalid))
+                .into(),
             )],
         );
     }

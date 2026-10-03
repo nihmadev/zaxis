@@ -8,10 +8,11 @@ use super::{Response, Ui, Widget};
 pub struct Separator {
     direction: Layout,
     length: Option<f32>,
-    thickness: f32,
+    thickness: Option<f32>,
     color: Option<Color>,
-    spacing: f32,
-    inset: f32,
+    style: crate::SeparatorStyle,
+    spacing: Option<f32>,
+    inset: Option<f32>,
 }
 
 impl Default for Separator {
@@ -25,10 +26,11 @@ impl Separator {
         Self {
             direction: Layout::Horizontal,
             length: None,
-            thickness: 1.0,
+            thickness: None,
             color: None,
-            spacing: 0.0,
-            inset: 0.0,
+            style: Default::default(),
+            spacing: None,
+            inset: None,
         }
     }
 
@@ -42,6 +44,10 @@ impl Separator {
     }
 
     /// Preferred width (horizontal) or height (vertical). Width is limited by the UI.
+    pub fn style(mut self, style: crate::SeparatorStyle) -> Self {
+        self.style = style;
+        self
+    }
     pub fn length(mut self, length: f32) -> Self {
         assert!(
             length.is_finite() && length >= 0.0,
@@ -53,10 +59,10 @@ impl Separator {
 
     pub fn thickness(mut self, thickness: f32) -> Self {
         assert!(
-            thickness.is_finite() && thickness > 0.0,
+            thickness.is_finite() && thickness >= 0.0,
             "separator thickness must be finite and positive"
         );
-        self.thickness = thickness;
+        self.thickness = Some(thickness);
         self
     }
 
@@ -71,7 +77,7 @@ impl Separator {
             spacing.is_finite() && spacing >= 0.0,
             "separator spacing must be finite and non-negative"
         );
-        self.spacing = spacing;
+        self.spacing = Some(spacing);
         self
     }
 
@@ -81,7 +87,7 @@ impl Separator {
             inset.is_finite() && inset >= 0.0,
             "separator inset must be finite and non-negative"
         );
-        self.inset = inset;
+        self.inset = Some(inset);
         self
     }
 }
@@ -89,29 +95,34 @@ impl Separator {
 impl Widget for Separator {
     fn ui(self, ui: &mut Ui<'_>) -> Response {
         let id = ui.next_id("separator");
+        let mut style = ui.style().separator;
+        style.merge(self.style);
+        let thickness = self.thickness.or(style.thickness).unwrap_or(1.0).max(0.0);
+        let spacing = self.spacing.or(style.spacing).unwrap_or(0.0).max(0.0);
+        let inset = self.inset.or(style.inset).unwrap_or(0.0).max(0.0);
         let width = ui.available_width();
         let size = match self.direction {
             Layout::Horizontal => Vec2::new(
                 self.length.unwrap_or(width).min(width),
-                self.thickness + self.spacing * 2.0,
+                thickness + spacing * 2.0,
             ),
             Layout::Vertical => Vec2::new(
-                (self.thickness + self.spacing * 2.0).min(width),
+                (thickness + spacing * 2.0).min(width),
                 self.length.unwrap_or(0.0),
             ),
         };
         let rect = ui.allocate_space(size);
         let (offset, line_size) = match self.direction {
             Layout::Horizontal => {
-                let inset = self.inset.min(size.x * 0.5);
+                let inset = inset.min(size.x * 0.5);
                 (
-                    Vec2::new(inset, self.spacing),
-                    Vec2::new(size.x - inset * 2.0, self.thickness),
+                    Vec2::new(inset, spacing),
+                    Vec2::new(size.x - inset * 2.0, thickness),
                 )
             }
             Layout::Vertical => {
-                let inset = self.inset.min(size.y * 0.5);
-                let thickness = self.thickness.min(size.x);
+                let inset = inset.min(size.y * 0.5);
+                let thickness = thickness.min(size.x);
                 (
                     Vec2::new((size.x - thickness) * 0.5, inset),
                     Vec2::new(thickness, size.y - inset * 2.0),
@@ -124,7 +135,10 @@ impl Widget for Separator {
             ui.clip,
             vec![Paint::Shape(Shape::Rect {
                 rect: Rect::from_min_size(rect.min + offset, line_size),
-                fill: self.color.unwrap_or(ui.style().border.color),
+                fill: self
+                    .color
+                    .or(style.color)
+                    .unwrap_or(ui.style().border.color),
                 rounding: CornerRadius::ZERO,
                 border: Border::NONE,
             })],
