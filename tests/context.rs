@@ -252,7 +252,6 @@ fn hover_wrapper_custom_paint_disabled_priority_and_override_scope() {
         sibling,
         "wrapper style must not leak to siblings"
     );
-    drop(draw);
     assert_eq!(
         calls, 1,
         "custom paint skips disabled controls and non-hovered passes"

@@ -1,0 +1,9 @@
+timeout = 20
+max_retries = 2
+max_concurrency = 8
+include_fragments = "anchor-only"
+include_verbatim = false
+include_mail = false
+exclude_all_private = true
+extensions = ["md", "mdx", "html"]
+exclude_path = ['(^|[/\\])(node_modules|target|out|\.next|\.source)([/\\]|$)']

@@ -37,10 +37,8 @@ impl ImageCache {
                         e.document = Some(document);
                         e.revisions[1] += 1;
                     }
-                    if matches!(e.document, Some(Document::Svg { .. })) {
-                        if !result.loaded {
-                            e.revisions[1] += 1;
-                        }
+                    if matches!(e.document, Some(Document::Svg { .. })) && !result.loaded {
+                        e.revisions[1] += 1;
                     }
                     e.displayed = Some(pixels.clone());
                     e.revisions[0] += 1;

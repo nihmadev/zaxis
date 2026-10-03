@@ -49,7 +49,8 @@ pub(super) fn create_with_fragment(
     });
     const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
         wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4];
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("zaxis pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
@@ -85,6 +86,5 @@ pub(super) fn create_with_fragment(
         },
         multiview_mask: None,
         cache: None,
-    });
-    pipeline
+    })
 }

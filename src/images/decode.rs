@@ -267,14 +267,13 @@ pub(super) fn rasterize(
     })
 }
 pub(super) fn unpremultiply(pixels: &mut [u8]) {
-    for p in pixels.chunks_exact_mut(4) {
+    for p in pixels.as_chunks_mut::<4>().0 {
         let a = u32::from(p[3]);
         for c in &mut p[..3] {
-            *c = if a == 0 {
-                0
-            } else {
-                ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8
-            };
+            *c = (u32::from(*c) * 255 + a / 2)
+                .checked_div(a)
+                .unwrap_or(0)
+                .min(255) as u8;
         }
     }
 }

@@ -94,7 +94,7 @@ impl ImageCase {
             || side
                 .checked_mul(side)
                 .and_then(|n| n.checked_mul(4 * resources * 2))
-                .map_or(true, |n| n > 128 << 20)
+                .is_none_or(|n| n > 128 << 20)
         {
             Some(format!(
                 "{resources} sources at {side}² exceed default CPU budget"
@@ -216,7 +216,7 @@ impl Probe {
             c.clear_image_cache();
         }
         if let Some(h) = self.handle {
-            let index = if self.case == ImageCase::Dimensions && step % 2 == 0 {
+            let index = if self.case == ImageCase::Dimensions && step.is_multiple_of(2) {
                 2
             } else {
                 step % 2
@@ -258,7 +258,7 @@ impl Probe {
                 .resizable(false)
                 .show(c, |ui| {
                     if self.case == ImageCase::Empty
-                        || self.case == ImageCase::RepeatedShow && self.step % 2 == 0
+                        || self.case == ImageCase::RepeatedShow && self.step.is_multiple_of(2)
                     {
                         return;
                     }

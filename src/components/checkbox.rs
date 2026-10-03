@@ -89,12 +89,12 @@ impl Widget for Checkbox<'_> {
             .size
             .unwrap_or(font_size * 1.25)
             .max(10.0)
-            .min(128.0)
+            .clamp(10.0, 128.0)
             .min(available);
         let gap = if label.is_empty() {
             0.0
         } else {
-            style.spacing.max(0.0).min(8.0)
+            style.spacing.max(0.0).clamp(0.0, 8.0)
         };
         let label_width = (available - side - gap).max(0.0);
         let text_size = if label.is_empty() {

@@ -55,7 +55,7 @@ impl Entry {
             .as_ref()
             .map(Document::size)
             .or(self.intrinsic)
-            .or_else(|| match self.source {
+            .or(match self.source {
                 Source::Rgba(s, _) => Some(s),
                 _ => None,
             })

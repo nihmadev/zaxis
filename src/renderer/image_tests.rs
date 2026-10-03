@@ -234,11 +234,13 @@ fn image_gpu_alpha_tint_rounding_and_filter_readback() {
             assert_eq!(at(86, 88)[3], 255);
             assert_eq!(at(89, 88)[3], 0);
             let coverage: Vec<_> = bytes
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .filter(|p| p[3] > 0 && p[3] < 255)
                 .collect();
             assert!(!coverage.is_empty());
-            assert!(bytes.chunks_exact(4).all(|p| p[0] == p[3]));
+            assert!(bytes.as_chunks::<4>().0.iter().all(|p| p[0] == p[3]));
             drop(bytes);
             readback.unmap();
         }

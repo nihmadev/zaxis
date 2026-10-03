@@ -9,17 +9,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Default)]
 pub(crate) struct Animations {
     entries: HashMap<Id, Box<dyn Entry>>,
     observed: Vec<Id>,
-}
-impl Default for Animations {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::new(),
-            observed: Vec::new(),
-        }
-    }
 }
 
 trait Entry {
@@ -220,22 +213,19 @@ impl Animations {
         pass: Pass,
     ) -> Animated<super::SpringState<T>> {
         self.observed.push(id);
-        if !self.entries.contains_key(&id) {
+        self.entries.entry(id).or_insert_with(|| {
             if initial.is_none() {
                 let rest = super::SpringState {
                     value: target.clone(),
                     velocity: T::zero(),
                 };
-                self.entries.insert(
-                    id,
-                    Box::new(Slot::new(
-                        rest.clone(),
-                        Some(rest),
-                        None,
-                        AnimationOptions::default(),
-                        pass.now,
-                    )),
-                );
+                Box::new(Slot::new(
+                    rest.clone(),
+                    Some(rest),
+                    None,
+                    AnimationOptions::default(),
+                    pass.now,
+                ))
             } else {
                 let initial = initial.unwrap_or(super::SpringState {
                     value: target.clone(),
@@ -254,9 +244,9 @@ impl Animations {
                     AnimationOptions::default(),
                     pass.now,
                 );
-                self.entries.insert(id, Box::new(slot));
+                Box::new(slot)
             }
-        }
+        });
         let slot = self.slot::<super::SpringState<T>>(id).unwrap();
         if slot
             .target
@@ -321,7 +311,7 @@ impl Animations {
         pass: Pass,
     ) -> Animated<T> {
         self.observed.push(id);
-        if !self.entries.contains_key(&id) {
+        self.entries.entry(id).or_insert_with(|| {
             let from = initial.unwrap_or_else(|| target.clone());
             let track: Option<Box<dyn Animation<T>>> = (from != target).then(|| {
                 Box::new(Tween::with_options(
@@ -330,17 +320,14 @@ impl Animations {
                     options.clone(),
                 )) as _
             });
-            self.entries.insert(
-                id,
-                Box::new(Slot::new(
-                    from,
-                    Some(target.clone()),
-                    track,
-                    AnimationOptions::default(),
-                    pass.now,
-                )),
-            );
-        }
+            Box::new(Slot::new(
+                from,
+                Some(target.clone()),
+                track,
+                AnimationOptions::default(),
+                pass.now,
+            ))
+        });
         let slot = self.slot::<T>(id).unwrap();
         if slot.target.as_ref() != Some(&target) {
             slot.evaluate(pass.now, pass.reduced);

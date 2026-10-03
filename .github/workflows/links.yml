@@ -1,0 +1,31 @@
+name: Documentation links
+
+on:
+  pull_request:
+    paths: ['**/*.md', 'docs/content/**', 'lychee.toml', '.github/workflows/links.yml']
+  push:
+    paths: ['**/*.md', 'docs/content/**', 'lychee.toml', '.github/workflows/links.yml']
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check local documentation links
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml --offline '*.md' 'docs/content/**/*.mdx' 'crates/*/README.md'
+          fail: true
+      - name: Check external documentation links
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml '*.md' 'docs/content/**/*.mdx' 'crates/*/README.md'
+          fail: true

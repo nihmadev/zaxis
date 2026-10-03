@@ -327,7 +327,7 @@ impl Case {
             Self::Blur24 => 24.0,
             Self::Blur64 => 64.0,
             Self::BlurDynamic => {
-                if step % 2 == 0 {
+                if step.is_multiple_of(2) {
                     8.0
                 } else {
                     24.0
@@ -481,7 +481,7 @@ impl Scene {
             self.scroll.input(&mut self.context, self.case, step);
             return;
         }
-        let forward = step % 2 == 0;
+        let forward = step.is_multiple_of(2);
         match self.case {
             Case::Cold => {
                 self.context = Context::new();
@@ -910,7 +910,7 @@ impl Scene {
             self.input_verified,
             "input was not delivered or repaint scheduling failed"
         );
-        let forward = self.step % 2 == 0;
+        let forward = self.step.is_multiple_of(2);
         match self.case {
             Case::Button | Case::Followup | Case::KeyboardButton => {
                 assert_eq!(

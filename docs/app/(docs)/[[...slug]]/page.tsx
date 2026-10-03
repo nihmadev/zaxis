@@ -20,7 +20,7 @@ export default async function Page({ params }: Props) {
       <DocsBody>
         <MDX components={getMDXComponents({ a: createRelativeLink(source, page) })} />
       </DocsBody>
-      <EditOnGitHub href={`${repository}/edit/master/docs/content/docs/${page.path}`} />
+      <EditOnGitHub href={`${repository}/edit/main/docs/content/docs/${page.path}`} />
     </DocsPage>
   );
 }

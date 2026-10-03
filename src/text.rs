@@ -423,11 +423,10 @@ impl TextSystem {
                         // Swash color images are premultiplied; atlas textures are straight RGBA.
                         let alpha = u32::from(p[3]);
                         let unpremultiply = |c: u8| {
-                            if alpha == 0 {
-                                0
-                            } else {
-                                (u32::from(c) * 255 / alpha).min(255) as u8
-                            }
+                            (u32::from(c) * 255)
+                                .checked_div(alpha)
+                                .unwrap_or(0)
+                                .min(255) as u8
                         };
                         [
                             unpremultiply(p[0]),
@@ -561,7 +560,9 @@ mod tests {
                     assert!(text.pages.iter().any(|page| page
                         .image
                         .pixels
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .any(|p| p[3] != 0 && (p[0] != p[1] || p[1] != p[2]))));
                 }
             }

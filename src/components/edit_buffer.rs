@@ -23,7 +23,7 @@ pub(crate) fn word_at(text: &str, cursor: usize) -> Range<usize> {
         .map(|(start, word)| start..start + word.len())
         .unwrap_or_else(|| {
             text.split_word_bound_indices()
-                .last()
+                .next_back()
                 .map_or(0..0, |(start, word)| start..start + word.len())
         });
     let points = boundaries(text);

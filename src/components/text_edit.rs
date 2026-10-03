@@ -358,7 +358,7 @@ impl Widget for TextEdit<'_> {
                 let blink_id = id.with("cursor-blink");
                 let create = || {
                     crate::Procedural::new(true, move |elapsed: Duration| {
-                        let show = (elapsed.as_nanos() / interval.as_nanos()) % 2 == 0;
+                        let show = (elapsed.as_nanos() / interval.as_nanos()).is_multiple_of(2);
                         let remainder = Duration::new(
                             ((elapsed.as_nanos() % interval.as_nanos()) / 1_000_000_000) as u64,
                             ((elapsed.as_nanos() % interval.as_nanos()) % 1_000_000_000) as u32,

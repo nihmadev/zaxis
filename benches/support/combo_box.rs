@@ -39,7 +39,7 @@ impl Probe {
         match case {
             Case::ComboToggle => {
                 // Reverse while still animating, including close -> immediate reopen.
-                if step % 4 == 0 {
+                if step.is_multiple_of(4) {
                     key(c, KeyCode::Enter);
                 }
                 if step % 4 == 2 {
@@ -63,7 +63,11 @@ impl Probe {
                     ModifiersState::empty().into(),
                 ));
                 self.filter_submitted = c
-                    .on_text_event(if step % 2 == 0 { "Group 1" } else { "Group 2" })
+                    .on_text_event(if step.is_multiple_of(2) {
+                        "Group 1"
+                    } else {
+                        "Group 2"
+                    })
                     .consumed;
             }
             Case::ComboUpdates => {

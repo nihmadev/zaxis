@@ -82,7 +82,7 @@ layout, input, repaint scheduling, custom hosts, renderer, and drawing protocol.
 | Add transitions or a custom spring | [Animation](https://nihmadev.github.io/zaxis/animation/) |
 | Integrate an event loop | [Custom host](https://nihmadev.github.io/zaxis/integration/) |
 | Find a public type or method | [API index](https://nihmadev.github.io/zaxis/api/) |
-| Build or publish the documentation | [Site setup](https://github.com/nihmadev/zaxis/blob/master/docs/README.md) |
+| Build or publish the documentation | [Site setup](https://nihmadev.github.io/zaxis/development/) |
 
 ## Run the examples
 
@@ -123,7 +123,7 @@ wakeup, bounded CPU/GPU caches and explicit update/reload/release operations.
 See [image API, memory limits and custom host integration](https://nihmadev.github.io/zaxis/components/image/).
 Run `cargo run --release --example images -- --smoke-test` for the public API example.
 
-The [measurement report](https://github.com/nihmadev/zaxis/blob/master/docs/images-benchmarks-2026-10-03.md) includes CPU/GPU stage
+The [measurement report](https://github.com/nihmadev/zaxis/blob/main/docs/images-benchmarks-2026-10-03.md) includes CPU/GPU stage
 distributions and sustained scroll/reload process-memory measurements.
 
 ## Optional features
@@ -172,6 +172,6 @@ For sensitive vulnerabilities, contact Telegram privately; see [SECURITY.md](SEC
 
 Source: [MIT](LICENSE). Bundled Lato and Noto Color Emoji fonts:
 [Lato OFL](assets/OFL-Lato.txt),
-[Noto Emoji OFL](https://github.com/nihmadev/zaxis/blob/master/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
+[Noto Emoji OFL](https://github.com/nihmadev/zaxis/blob/main/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
 Lucide-derived icons: [ISC](assets/LUCIDE-LICENSE). Include the corresponding
 licenses when redistributing these assets.

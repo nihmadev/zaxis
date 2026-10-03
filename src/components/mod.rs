@@ -72,5 +72,5 @@ fn visible_label(text: &str) -> &str {
     text.split_once("##").map_or(text, |(visible, _)| visible)
 }
 fn font_size(size: f32) -> f32 {
-    size.max(1.0).min(256.0)
+    size.max(1.0).clamp(1.0, 256.0)
 }

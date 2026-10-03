@@ -168,7 +168,7 @@ impl Widget for Image {
                 * (limit / desired.max(Vec2::splat(0.001)))
                     .min_element()
                     .min(1.0)
-                    .max(0.0)
+                    .clamp(0.0, 1.0)
         };
         let rect = ui.allocate_space(size);
         let response = ui.response(id, rect, self.interactive);

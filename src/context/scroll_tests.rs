@@ -326,8 +326,7 @@ fn reveal_element_and_stable_ids_survive_hidden_frames() {
     let last = c
         .previous_hits
         .iter()
-        .filter(|h| h.action == HitAction::Activate)
-        .last()
+        .rfind(|h| h.action == HitAction::Activate)
         .unwrap();
     assert!(!last.rect.intersect(out.viewport).is_empty());
     assert!(out.offset.y > 0.0);

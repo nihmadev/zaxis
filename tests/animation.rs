@@ -170,7 +170,7 @@ fn pause_preserves_delay_resume_excludes_paused_time_and_cancel_is_terminal() {
     assert_eq!(read(&mut ctx, start + ms(10_700), id).value, 5.0);
     ctx.run_at(start + ms(10_800), |ctx| {
         ctx.cancel_animation(id);
-        let s = ctx.animate(id, || panic_track());
+        let s = ctx.animate(id, panic_track);
         assert_eq!(s.status, AnimationStatus::Cancelled);
         assert_eq!(s.value, 6.0);
         assert!(!s.just_completed);

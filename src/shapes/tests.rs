@@ -72,7 +72,7 @@ fn soft_shadow_fades_without_overlapping_alpha_or_invalid_vertices() {
 
 fn sample(mesh: &Mesh, point: Vec2) -> [f32; 4] {
     let mut color = [0.0; 4];
-    for triangle in mesh.indices.chunks_exact(3) {
+    for triangle in mesh.indices.as_chunks::<3>().0 {
         let vertices = [0, 1, 2].map(|i| mesh.vertices[triangle[i] as usize]);
         let [a, b, c] = vertices.map(|v| Vec2::from_array(v.position));
         let area = (b - a).perp_dot(c - a);
@@ -88,8 +88,8 @@ fn sample(mesh: &Mesh, point: Vec2) -> [f32; 4] {
             continue;
         }
         for (vertex, weight) in vertices.into_iter().zip(weights) {
-            for channel in 0..3 {
-                color[channel] += vertex.color[channel] * vertex.color[3] * weight;
+            for (channel, value) in color.iter_mut().enumerate().take(3) {
+                *value += vertex.color[channel] * vertex.color[3] * weight;
             }
             color[3] += vertex.color[3] * weight;
         }

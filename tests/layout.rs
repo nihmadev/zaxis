@@ -108,7 +108,6 @@ fn fill_reserves_following_button_shares_space_resizes_and_settles() {
     let (_, wider, _) = draw(&mut c, 480.0, &mut build);
     near(wider.rect.size().x, edit.rect.size().x + 120.0);
     assert!(!c.needs_repaint());
-    drop(build);
     assert_eq!(calls, 3);
     let (a, b, start) = draw(&mut c, 400.0, |ui| {
         ui.horizontal(|ui| {

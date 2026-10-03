@@ -403,9 +403,8 @@ impl Widget for ColorPicker<'_> {
             }
         }
         // Paint after editing so the preview reflects this pass's final color.
-        let mut swatch_paint = Vec::new();
         // Preserve the actual selected color when the row uses a hover gradient.
-        swatch_paint.push(rounded(swatch, *self.color, 4.0, style.border));
+        let swatch_paint = vec![rounded(swatch, *self.color, 4.0, style.border)];
         ui.context
             .paint(id.with("swatch"), ui.window, ui.clip, swatch_paint);
         ui.context.paint(

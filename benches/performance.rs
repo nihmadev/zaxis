@@ -623,7 +623,7 @@ impl GpuRunner<'_> {
                 .images(image_before, active.scene.context.image_metrics());
             active.samples.images(&mut active.scene.context);
             active.samples.renderer(&mut state.renderer);
-            if active.scene.images.is_some() && active.samples.total.len() % 16 == 0 {
+            if active.scene.images.is_some() && active.samples.total.len().is_multiple_of(16) {
                 active.samples.memory();
             }
         } else {

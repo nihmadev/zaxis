@@ -10,10 +10,26 @@ Use Rust 1.90 or newer. Run from the repository root:
 
 ```sh
 cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo check --workspace --all-targets --locked
 cargo test --workspace --lib --tests --examples --locked
 cargo test --workspace --doc --locked
 ```
+
+Clippy CI uses Rust 1.98.0 with the root `clippy.toml`; the minimum supported compiler
+remains 1.90. Dependency policy is in `deny.toml`: run `cargo deny --locked check`.
+Duplicate dependency versions are warnings; vulnerabilities, yanked releases,
+unapproved licenses, and unknown sources fail the check. The unmaintained
+`ttf-parser` advisory has a documented temporary exception pending upstream migration.
+
+Root `lychee.toml` configures documentation link checks. With lychee installed:
+
+```sh
+lychee --config lychee.toml --offline '*.md' 'docs/content/**/*.mdx' 'crates/*/README.md'
+```
+
+Local links are checked on documentation changes. External links are checked weekly
+and through the Documentation links workflow's manual run, separately from release CI.
 
 `cargo test --all-targets` runs the custom benchmark harness; use the commands above
 for correctness checks and `cargo bench --bench performance` for benchmarks.

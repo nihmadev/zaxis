@@ -195,7 +195,9 @@ fn gpu_combo_text_fits_rows_at_multiple_dpi() {
                 let mut file = std::fs::File::create("target/combo-fixed.ppm").unwrap();
                 write!(file, "P6\n{} {}\n255\n", physical.width, physical.height).unwrap();
                 let rgb: Vec<_> = pixels
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .flat_map(|p| p[..3].iter().copied())
                     .collect();
                 file.write_all(&rgb).unwrap();

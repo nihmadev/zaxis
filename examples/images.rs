@@ -118,11 +118,8 @@ impl App for Images {
         {
             match self.phase {
                 0 => {
-                    c.update_image(
-                        raw,
-                        ImageSource::rgba([2, 2], vec![0, 255, 255, 128].repeat(4)),
-                    )
-                    .unwrap();
+                    c.update_image(raw, ImageSource::rgba([2, 2], [0, 255, 255, 128].repeat(4)))
+                        .unwrap();
                     self.phase = 1;
                 }
                 1 => {
