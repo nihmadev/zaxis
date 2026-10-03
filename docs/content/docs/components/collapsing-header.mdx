@@ -1,0 +1,53 @@
+---
+title: CollapsingHeader
+description: Stable disclosure, measured content, independent header actions.
+---
+
+```rust
+use zaxis::CollapsingHeader;
+let out = CollapsingHeader::new("appearance", "Appearance")
+    .default_open(true)
+    .show_with_actions(ui, |ui| ui.button("Reset").clicked(), |ui| {
+        ui.checkbox(&mut animations, "Animations");
+    });
+if out.actions { animations = true; }
+```
+
+`new(id_source, caption)` requires identity separate from the caption. Repeated
+captions and reordered siblings retain independent state. `Ui::collapsing` is the
+simple closed-by-default shortcut. `id_source` replaces the constructor key.
+`default_open` applies only at initialization; `open(&mut bool)` is authoritative
+every pass and receives user changes once. Output contains `header_response`,
+logical `open`, `changed`, `body: Option<R>` and the actions closure's result.
+
+The complete header including chevron is one activation region. A pointer release
+inside or focused Enter/Space release toggles it once. Right actions have their own
+stable scope, are measured once, aligned right and clipped at narrow widths. Their
+input does not toggle the disclosure. Use explicit Ids for dynamic action controls.
+As with other deferred layouts, use `Ui::displayed_rect`/`Context::visual_rect` for
+screen coordinates of responses returned by actions. Popup actions inherit local
+theme and use the existing Popup layers.
+
+`enabled(false)` disables header/actions/content. `expandable(false)` locks the
+current expansion while leaving actions and content usable. `icon(ImageSource)`
+uses Image's existing resource pipeline. No icon pack is required.
+
+Height animation uses `Ui::reveal_with`: the body runs at most once per pass,
+measures actual current height, and retargets from displayed height during reversal.
+Initially closed content is not built. During exit it may be built for painting,
+but loses input immediately. Focus in the closing subtree returns to the header.
+Once closed it allocates no height, builds no body and requests no animation frames.
+Clips, scroll routing and neighboring layout use displayed height. Nested retained
+headers survive hiding by their ancestor; omitting the whole ancestor releases them.
+The application must continue to evaluate the component to observe events.
+
+`animate_height(false)` gives immediate allocation. Chevron rotation shares the
+motion engine and is independent of height animation. Reduced motion snaps both.
+`CollapsingStyle` exposes shared `DisclosureStyle` header geometry and ControlStyle
+state surfaces, content padding, spacing, animate_height and motion. These optional
+fields merge with inherited `Style::collapsing`, including explicit zero/transparent
+values. Zero header height intentionally hides the header. Theme changes retain state.
+
+Run `cargo run --example collapsing_headers`. `--smoke-test` verifies native
+presentation only. The example includes nesting, right actions, repeated captions,
+reordering, controlled expansion, icons and dark/light/high-contrast themes.
