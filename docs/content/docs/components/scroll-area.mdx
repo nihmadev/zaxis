@@ -94,6 +94,11 @@ already reflects clamping.
 
 ## Reveal an element
 
+`show_rows_keyed(ui, pitch, count, key_for_index, build_row)` uses application
+keys as the row scope instead of indices. It preserves descendant control Ids
+after sorting/insertion/moving a row; adding a key under ordinary show_rows still
+inherits its index scope. Keys must be unique. TreeView uses this keyed variant.
+
 A builder target uses unscrolled content coordinates:
 
 ```rust

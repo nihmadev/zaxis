@@ -1,0 +1,102 @@
+---
+title: TreeView
+description: Application-owned hierarchical models, one focus stop and virtual rows.
+---
+
+Implement `TreeModel`: `revision() -> u64`, `roots()`, `children(Id)` return
+iterators of stable Ids; `node(Id) -> Option<TreeNode>` returns a borrowed label,
+optional borrowed ImageSource, enabled flag and TreeChildren state. `parent(Id)`
+is optional for ordinary rendering and required for reveal outside the cached list.
+Id must uniquely identify a node in this tree independent of label, parent and order.
+`node` must resolve collapsed and offscreen nodes; None means removed from the model.
+Keep lookup cheap, preferably O(1). Increment revision for every relevant model
+change, including labels, enabled flags and loading states. Data length/address are
+never used as revision substitutes. Closures and model references are not retained.
+
+```rust
+use zaxis::{TreeView, TreeEvent};
+let mut view = TreeView::new("objects")
+    .open(&mut open_nodes).selected(&mut selected)
+    .expand_on_double_click(true).max_height(300.0);
+if let Some(node) = pending_reveal.take() { view = view.reveal_node(node); }
+let out = view.show_with_actions(ui, &model, |ui, node| {
+    if ui.button("Edit").clicked() { pending_edit = Some(node); }
+});
+for event in out.events {
+    if let TreeEvent::RequestChildren { node } = event { request_load(node); }
+}
+```
+
+`Ui::tree(id_source, model)` is the uncontrolled shortcut. `default_open` and
+`default_selected` initialize once. Mutable `open`/`selected` bindings override
+defaults and retained values each pass; gestures update them once and produce
+`OpenChanged { node, open }`/`Selected { node: Option<Id> }`. Selection stays
+logical when collapsed. Removing the selected node clears it and emits Selected(None).
+Supplying selected alone never opens ancestors. `reveal_node` explicitly opens the
+parent path, scrolls and focuses the target, including targets outside the viewport.
+Consume application reveal requests once. Unavailable children can arrive on a later
+revision; the pending target is then focused. Invalid/missing/cyclic paths are reported.
+
+Chevron clicks toggle branches without selecting. Row clicks select without
+toggling. Leaves reserve indentation but have no active chevron. Double-clicking
+a leaf activates it. A branch double-click activates by default; enabling
+`expand_on_double_click` toggles it instead. Right actions use independent stable
+tree+node scopes and never select or expand accidentally. Secondary click on a row
+emits `ContextAction { node }`; the application decides what action/menu to show.
+Action popup controls use existing Popup and inherit the creating Ui theme.
+
+Focus and selection are independent. TreeOutput.id is one real focus-engine Tab
+stop, with TreeOutput.focused as its active descendant. A focus ring can overlay
+selected. Tab enters/leaves the tree, skipping row actions; those actions can gain
+pointer focus and their keyboard input belongs to their control. TextEdit and action
+controls retain their normal keys. Up/Down skip disabled rows; Home/End go to first/
+last enabled row in the entire logical list. Left closes a branch or moves to the
+nearest enabled parent. Right opens a branch or enters its first accessible descendant.
+Enter activates once (key repeats do not activate), Space selects once. Navigation
+keys repeat normally. `selection_follows_focus(true)` opts into selection on focus
+movement/entry. Focus movement reveals its row without resetting scroll on steady passes.
+
+Disabled rows cannot select, activate, expand or receive navigation focus; their
+pointer regions explicitly block interaction. Their enabled children remain usable
+when the branch is already open. Controlled expansion and explicit reveal may open
+disabled ancestors. Left skips disabled ancestors. When focused content is hidden,
+focus goes to the nearest visible enabled ancestor; deletion falls back to the nearest
+available row. Offscreen active descendants remain focused. Focused row actions that
+are hidden/removed return to the tree owner. Whole-tree enabled(false) disables actions.
+
+TreeChildren has Leaf, Unloaded, Loading, Loaded, Error. All non-Leaf states remain
+expandable, even when children() is empty. Opening Unloaded/Error on an action emits
+one RequestChildren; steady passes and initial default/controlled open do not launch
+loads. Close/reopen permits retry. Library code never launches IO. The adapter can
+return currently available children while Loading; model revision updates the list
+when they arrive. Selection/loading state belong to the application.
+
+The cached preorder list contains only expanded nodes and navigation metadata,
+not copied model labels/icons. Closed subtrees are not traversed. Rebuild costs
+O(expanded rows + retained open IDs), and occurs on revision/expansion changes.
+Steady rendering costs O(viewport rows + controlled open set comparison), with direct
+selected lookup. Navigation uses cached enabled indices; parent/reveal path walks are
+O(depth). Memory is O(expanded rows + open IDs). `ScrollArea::show_rows_keyed` supplies
+stable row scopes independent of row index; existing show_rows remains compatible.
+Viewport rows alone execute paint/actions. Row height is fixed and must be positive.
+Expansion changes logical rows immediately; only chevrons animate. `rows_built`,
+`visible_rows`, `logical_rows`, `rebuilt`, viewport/scroll output support diagnostics.
+
+Duplicate Ids and cycles encountered during expanded-list rebuilding report
+TreeIssue::DuplicateOrCycle and skip repeated occurrences deterministically (first
+occurrence wins). Missing references report MissingNode. Closed invalid subgraphs are
+checked when opened, not scanned each pass. Invalid graphs have diagnostic behavior;
+valid globally unique node identities are the model contract.
+
+TreeStyle.row uses shared DisclosureStyle geometry/ControlStyle surfaces. Indent,
+optional guide Border and ScrollStyle are configurable. Header size/stroke, icon
+size/gap, padding, typography, border/gradient/shadow, selected/hover/pressed/disabled/
+focus surfaces and motion inherit active Theme/Style, including local scopes.
+Explicit zero indent/stroke, transparent fills and Border::NONE survive overrides.
+Theme changes preserve selection, focus, expansion and scroll. Reduced motion snaps.
+
+Run `cargo run --example tree` for SplitPane objects, equal captions, model edits,
+controlled expansion/reveal, lazy loading, icons and 10,000 virtualized objects.
+`--smoke-test` checks presentation and callback count only; it is not visual or
+physical mouse/keyboard verification. Existing performance harness cases `tree_*`
+and `collapsing_*` cover cache reuse, revision, navigation, reveal, expansion and lifecycle.

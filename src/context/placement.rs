@@ -29,6 +29,17 @@ pub(crate) struct Placements {
     pub outstanding: usize,
 }
 impl Context {
+    pub(crate) fn placement_hit_ids(&self, p: &Placement) -> Vec<Id> {
+        p.hits
+            .iter()
+            .map(|(h, _)| h.id)
+            .chain(
+                self.scrolling.hits[p.hits_range.clone()]
+                    .iter()
+                    .map(|(h, _)| h.id),
+            )
+            .collect()
+    }
     pub(crate) fn hide_placement_animations(&mut self, p: &Placement) {
         self.animations.hide_since(p.animation_start);
     }
