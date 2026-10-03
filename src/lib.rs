@@ -29,14 +29,22 @@ pub use animation::{
     Sequence, Spring, SpringOptions, SpringState, SpringValue, Stagger, Tween, TweenOptions, Wake,
 };
 pub use app::{run, run_with_options, App, Frame, RunError, RunOptions};
+pub use components::theme::*;
 pub use components::{
     Align, Blur, Button, Checkbox, ColorPicker, ColorPickerType, Column, ColumnWidth, ComboBox,
-    ComboBoxOption, ComboBoxStyle, DragValue, Grid, GridOutput, GridRow, GridStyle, GridUi, Hover,
-    HoverFill, HoverStyle, Image, ImageFit, ImageOutput, Loader, NumberInput, NumberStyle, Numeric,
-    Popup, PopupOutput, Presence, Progress, ProgressState, Reorder, ReorderUi, Response, Root,
-    ScrollArea, ScrollAreaOutput, ScrollStyle, SelectionIndicator, Separator, Slider, SliderStatus,
-    SortDirection, SortRequest, Style, Table, TableBody, TableOutput, TableStyle, Text, TextEdit,
-    TitleBar, TitleBarResponse, Ui, Widget, WidgetState, Window,
+    ComboBoxOption, ComboBoxStyle, ContextMenu, ContextMenuItem, ContextMenuOutput,
+    ContextMenuStyle, DragValue, Grid, GridOutput, GridRow, GridStyle, GridUi, Hover, HoverFill,
+    HoverStyle, Image, ImageFit, ImageOutput, Loader, NumberInput, NumberStyle, Numeric, Popup,
+    PopupOutput, Presence, Progress, ProgressState, Reorder, ReorderUi, Response, Root, ScrollArea,
+    ScrollAreaOutput, ScrollStyle, SelectionIndicator, Separator, Slider, SliderStatus,
+    SortDirection, SortRequest, SplitBoundaryOutput, SplitHandle, SplitHandleStyle, SplitOutput,
+    SplitPane, SplitPanel, SplitPanelOutput, SplitSize, SplitStyle, SplitSurface, SplitUi, Style,
+    Table, TableBody, TableOutput, TableStyle, Text, TextEdit, TitleBar, TitleBarResponse, Tooltip,
+    TooltipStyle, TooltipWidget, Ui, Widget, WidgetState, Window,
+};
+pub use components::{
+    CollapsingHeader, CollapsingOutput, CollapsingStyle, DisclosureStyle, TreeChildren, TreeEvent,
+    TreeIssue, TreeModel, TreeNode, TreeOutput, TreeStyle, TreeView,
 };
 pub use context::{CacheStats, Context, EventResponse, Id, InputState};
 pub use glam::{vec2, Vec2};

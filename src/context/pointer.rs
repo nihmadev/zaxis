@@ -7,6 +7,40 @@ use crate::{Rect, Vec2};
 use winit::event::ElementState;
 
 impl Context {
+    pub(super) fn secondary_button(&mut self, state: ElementState) -> bool {
+        if state == ElementState::Released {
+            self.input.secondary_down = false;
+            self.input.secondary_released = true;
+            return self.popup.is_some();
+        }
+        if self.input.secondary_down {
+            return self.popup.is_some();
+        }
+        self.input.secondary_down = true;
+        self.input.secondary_pressed = true;
+        self.secondary_target = None;
+        if self.popup.is_some() {
+            self.dismiss_popup(true);
+            return true;
+        }
+        if let Some(pointer) = self.input.pointer {
+            if self.tree_context(pointer) {
+                return true;
+            }
+            let window = self.top_window(pointer);
+            if let Some(hit) = self.previous_hits.iter().rev().find(|hit| {
+                Some(hit.window) == window
+                    && hit.action == HitAction::ContextMenu
+                    && hit.rect.contains(pointer)
+                    && hit.clip.contains(pointer)
+            }) {
+                self.secondary_target = Some((hit.id, pointer));
+                return true;
+            }
+        }
+        false
+    }
+
     pub(super) fn primary_button(&mut self, state: ElementState) -> bool {
         match state {
             ElementState::Pressed => {
@@ -35,7 +69,11 @@ impl Context {
                     if self.windows.contains_key(&hit.window) {
                         self.raise_window(hit.window);
                     }
-                    self.set_focus(hit.action.focusable().then_some(hit.id));
+                    let focus = match hit.action {
+                        HitAction::TreeRow { tree, .. } => Some(tree),
+                        _ => hit.action.focusable().then_some(hit.id),
+                    };
+                    self.set_focus(focus);
                     if hit.action != HitAction::Block {
                         self.capture = Some(Capture {
                             hit,
@@ -51,6 +89,9 @@ impl Context {
                                     state.drag = Some((column, width));
                                 }
                             }
+                        }
+                        if matches!(hit.action, HitAction::SplitResize { .. }) {
+                            self.split_pointer(hit.id, self.input.pointer.unwrap(), 1);
                         }
                         if hit.action == HitAction::TextEdit {
                             let pointer = self.input.pointer.unwrap();
@@ -106,6 +147,21 @@ impl Context {
                 self.input.primary_down = false;
                 self.input.primary_released = true;
                 if let Some(capture) = self.capture.take() {
+                    if self
+                        .input
+                        .pointer
+                        .and_then(|p| self.hit_test(p))
+                        .is_some_and(|h| h.id == capture.hit.id)
+                    {
+                        self.tree_click(capture.hit);
+                    }
+                    if matches!(capture.hit.action, HitAction::SplitResize { .. }) {
+                        self.split_pointer(
+                            capture.hit.id,
+                            self.input.pointer.unwrap_or(capture.pointer),
+                            2,
+                        );
+                    }
                     if capture.hit.action == HitAction::DragValue {
                         if let Some(pointer) = self.input.pointer {
                             self.number_input
@@ -155,6 +211,9 @@ impl Context {
         self.input.pointer = Some(pointer);
         self.update_auto_scroll_pointer(pointer);
         if let Some(capture) = self.capture {
+            if matches!(capture.hit.action, HitAction::SplitResize { .. }) {
+                self.split_pointer(capture.hit.id, pointer, 0);
+            }
             if capture.hit.action == HitAction::DragValue {
                 self.number_input
                     .entry(capture.hit.id)

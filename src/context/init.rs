@@ -31,6 +31,11 @@ impl Context {
                 ..Default::default()
             },
             style: Style::default(),
+            theme: None,
+            style_revision: 0,
+            local_styles: HashMap::new(),
+            local_style_serial: 0,
+            palette_transition: None,
             logical_size: Vec2::ZERO,
             scale: 1.0,
             dirty: true,
@@ -68,9 +73,12 @@ impl Context {
             numbers: HashMap::new(),
             combo_boxes: HashMap::new(),
             combo_input: HashMap::new(),
+            context_menus: HashMap::new(),
+            secondary_target: None,
             popup: None,
             dismissed_popups: HashSet::new(),
             popup_layers: Vec::new(),
+            tooltips: Default::default(),
             color_pickers: HashMap::new(),
             text_edits: HashMap::new(),
             clipboard: None,
@@ -93,6 +101,13 @@ impl Context {
             layouts: HashMap::new(),
             tables: HashMap::new(),
             column_resize: HashMap::new(),
+            splits: HashMap::new(),
+            split_input: HashMap::new(),
+            split_click: None,
+            collapsing_headers: HashMap::new(),
+            trees: HashMap::new(),
+            tree_input: HashMap::new(),
+            tree_click: None,
         }
     }
 }

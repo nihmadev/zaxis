@@ -14,6 +14,8 @@ impl Context {
         });
         match hit.map(|hit| hit.action) {
             Some(HitAction::ColumnResize { .. }) => CursorIcon::ColResize,
+            Some(HitAction::SplitResize { vertical: false }) => CursorIcon::EwResize,
+            Some(HitAction::SplitResize { vertical: true }) => CursorIcon::NsResize,
             Some(HitAction::Resize) => CursorIcon::NwseResize,
             Some(HitAction::TextEdit) => CursorIcon::Text,
             Some(HitAction::DragValue) => CursorIcon::EwResize,

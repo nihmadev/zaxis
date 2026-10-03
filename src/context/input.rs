@@ -10,6 +10,9 @@ pub struct InputState {
     pub pointer: Option<Vec2>,
     pub primary_down: bool,
     pub middle_down: bool,
+    pub secondary_down: bool,
+    pub secondary_pressed: bool,
+    pub secondary_released: bool,
     pub primary_pressed: bool,
     pub primary_released: bool,
     pub scroll_delta: Vec2,
@@ -24,6 +27,8 @@ pub struct InputState {
 impl InputState {
     pub(super) fn finish_frame(&mut self) {
         self.primary_pressed = false;
+        self.secondary_pressed = false;
+        self.secondary_released = false;
         self.primary_released = false;
         self.scroll_delta = Vec2::ZERO;
         self.keys_pressed.clear();

@@ -2,6 +2,10 @@
 
 mod animation;
 mod cursor;
+mod disclosure;
+#[cfg(test)]
+#[path = "../tests/disclosure/interaction.rs"]
+mod disclosure_tests;
 mod events;
 mod frame;
 mod geometry;
@@ -22,6 +26,20 @@ pub(crate) mod scroll;
 mod scroll_input;
 #[cfg(test)]
 mod scroll_input_tests;
+mod split;
+#[cfg(test)]
+#[path = "../tests/split/button.rs"]
+mod split_button_tests;
+#[cfg(test)]
+#[path = "../tests/split/events.rs"]
+mod split_tests;
+mod theme;
+#[cfg(test)]
+mod theme_regression_tests;
+#[cfg(test)]
+mod theme_tests;
+pub(crate) mod tooltip;
+mod tree;
 mod viewport;
 mod windows;
 
@@ -31,6 +49,9 @@ mod animation_tests;
 mod color_picker_tests;
 #[cfg(test)]
 mod combo_box_tests;
+#[cfg(test)]
+#[path = "../tests/context_menu/interaction.rs"]
+mod context_menu_tests;
 #[cfg(test)]
 mod cursor_tests;
 #[cfg(test)]
@@ -82,6 +103,11 @@ pub struct Context {
     pub(crate) native_chrome: Option<native_chrome::NativeChrome>,
     input: InputState,
     style: Style,
+    pub(crate) theme: Option<crate::Theme>,
+    pub(crate) style_revision: u64,
+    pub(crate) local_styles: HashMap<Id, (Style, u64, u64)>,
+    pub(crate) local_style_serial: u64,
+    pub(crate) palette_transition: Option<()>,
     logical_size: Vec2,
     scale: f32,
     dirty: bool,
@@ -119,9 +145,12 @@ pub struct Context {
     pub(crate) numbers: HashMap<Id, crate::components::number_input::NumberState>,
     pub(crate) combo_boxes: HashMap<Id, crate::components::combo_box::ComboBoxState>,
     pub(crate) combo_input: HashMap<Id, Vec<KeyCode>>,
+    pub(crate) context_menus: HashMap<Id, crate::components::context_menu::MenuState>,
+    pub(crate) secondary_target: Option<(Id, Vec2)>,
     pub(crate) popup: Option<popup::PopupState>,
     pub(crate) dismissed_popups: HashSet<Id>,
     pub(crate) popup_layers: Vec<Id>,
+    pub(crate) tooltips: tooltip::Tooltips,
     pub(crate) color_pickers: HashMap<Id, crate::components::color_picker::ColorPickerState>,
     pub(crate) text_edits: HashMap<Id, crate::components::text_edit::TextEditState>,
     clipboard: Option<arboard::Clipboard>,
@@ -144,6 +173,14 @@ pub struct Context {
     pub(crate) layouts: HashMap<Id, crate::components::ui::FlowState>,
     pub(crate) tables: HashMap<Id, crate::components::table::TableState>,
     column_resize: HashMap<(Id, Id), f32>,
+    pub(crate) splits: HashMap<Id, crate::components::split_pane::SplitState>,
+    split_input: HashMap<Id, Vec<crate::components::split_pane::SplitInput>>,
+    split_click: Option<interaction::ClickSequence>,
+    pub(crate) collapsing_headers:
+        HashMap<Id, crate::components::collapsing_header::CollapsingState>,
+    pub(crate) trees: HashMap<Id, crate::components::tree_view::TreeState>,
+    pub(crate) tree_input: HashMap<Id, Vec<crate::components::tree_view::TreeInput>>,
+    tree_click: Option<interaction::ClickSequence>,
 }
 
 impl Context {
@@ -168,10 +205,17 @@ impl Context {
         &self.style
     }
     pub fn set_style(&mut self, style: Style) {
+        self.theme = None;
+        self.palette_transition = None;
+        self.animations.remove(Id::new("theme-palette"));
+        if self.style == style {
+            return;
+        }
         if style.motion.reduced_motion && !self.style.motion.reduced_motion {
             self.animations.reduce_motion(self.frame_time);
         }
         self.style = style;
+        self.style_revision = self.style_revision.wrapping_add(1);
         self.request_repaint();
     }
     pub fn draw_data(&self) -> &DrawData {

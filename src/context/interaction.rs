@@ -7,10 +7,15 @@ use winit::keyboard::{KeyCode, ModifiersState};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HitAction {
     Block,
+    ContextMenu,
     Activate,
+    Focus,
     ComboBox,
+    Tree,
+    TreeRow { tree: Id, node: Id, chevron: bool },
     Slider,
     DragValue,
+    SplitResize { vertical: bool },
     TextEdit,
     Move,
     Resize,
@@ -22,7 +27,14 @@ impl HitAction {
     pub(super) fn focusable(self) -> bool {
         matches!(
             self,
-            Self::Activate | Self::ComboBox | Self::Slider | Self::TextEdit | Self::DragValue
+            Self::Activate
+                | Self::Focus
+                | Self::ComboBox
+                | Self::Tree
+                | Self::Slider
+                | Self::TextEdit
+                | Self::DragValue
+                | Self::SplitResize { .. }
         )
     }
 }
@@ -198,7 +210,10 @@ impl Context {
     pub(super) fn hit_test(&self, pointer: Vec2) -> Option<HitRegion> {
         let window = self.top_window(pointer)?;
         self.previous_hits.iter().rev().copied().find(|hit| {
-            hit.window == window && hit.rect.contains(pointer) && hit.clip.contains(pointer)
+            hit.action != HitAction::ContextMenu
+                && hit.window == window
+                && hit.rect.contains(pointer)
+                && hit.clip.contains(pointer)
         })
     }
 }

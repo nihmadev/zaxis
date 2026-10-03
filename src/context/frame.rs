@@ -30,6 +30,7 @@ impl Context {
         self.dirty = false;
         self.ime_area = None;
         self.frame += 1;
+        self.sample_theme_palette();
         self.images.begin_frame(self.frame, self.frame_time);
         self.text.begin_frame();
         self.stats.ui_passes += 1;
@@ -67,6 +68,7 @@ impl Context {
             .filter(|(_, window)| window.last_frame == self.frame)
             .map(|(id, _)| *id)
             .collect();
+        self.finish_tooltips();
         let ranks: std::collections::HashMap<_, _> = self
             .layers
             .iter()
@@ -100,6 +102,9 @@ impl Context {
         self.animations.finish_pass(self.frame);
         self.tab_pages
             .retain(|_, state| state.last_frame == self.frame);
+        self.context_menus
+            .retain(|_, state| state.last_frame == self.frame);
+        self.secondary_target = None;
         self.effect_states
             .retain(|_, state| state.last_frame == self.frame);
         self.visual_meshes.retain(|id, _| self.seen.contains(id));
@@ -109,6 +114,7 @@ impl Context {
         self.grids.retain(|_, state| state.last_frame == self.frame);
         self.layouts
             .retain(|_, state| state.last_frame == self.frame);
+        self.local_styles.retain(|_, s| s.2 == self.frame);
         self.previous_hits = std::mem::take(&mut self.hits);
         self.cache
             .retain(|_, element| element.last_frame == self.frame);
@@ -132,6 +138,12 @@ impl Context {
         }) {
             self.capture = None;
         }
+        self.splits
+            .retain(|_, state| state.last_frame == self.frame);
+        self.trees.retain(|_, state| state.last_frame == self.frame);
+        self.tree_input.clear();
+        self.finish_collapsing_headers();
+        self.split_input.clear();
         self.clicked.clear();
         self.slider_input.clear();
         self.text_edit_input.clear();

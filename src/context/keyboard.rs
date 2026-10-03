@@ -130,6 +130,12 @@ impl Context {
         if state == ElementState::Pressed {
             self.focus_visible = true;
         }
+        if self.split_key(code, state == ElementState::Pressed) {
+            return true;
+        }
+        if self.tree_key(code, state, repeat) {
+            return true;
+        }
         let focused_action = self.focused_widget.and_then(|id| {
             self.previous_hits
                 .iter()
@@ -198,13 +204,19 @@ impl Context {
                     let buttons: Vec<_> = self
                         .previous_hits
                         .iter()
-                        .filter(|h| h.action.focusable() && !h.rect.intersect(h.clip).is_empty())
+                        .filter(|h| {
+                            h.action.focusable()
+                                && !self.tree_tab_action(h.id)
+                                && !h.rect.intersect(h.clip).is_empty()
+                        })
                         .map(|h| h.id)
                         .collect();
                     if !buttons.is_empty() {
-                        let current = self
-                            .focused_widget
-                            .and_then(|id| buttons.iter().position(|button| *button == id));
+                        let current = self.focused_widget.and_then(|id| {
+                            buttons
+                                .iter()
+                                .position(|button| *button == self.tree_tab_owner(id))
+                        });
                         let next = if self.input.modifiers.shift_key() {
                             current.map_or(buttons.len() - 1, |i| {
                                 (i + buttons.len() - 1) % buttons.len()

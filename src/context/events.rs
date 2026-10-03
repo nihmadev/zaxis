@@ -5,7 +5,7 @@ use crate::Vec2;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
-    keyboard::PhysicalKey,
+    keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
 };
 
 impl Context {
@@ -35,6 +35,8 @@ impl Context {
                     consumed = true;
                 } else if *button == MouseButton::Left {
                     consumed = self.primary_button(*state);
+                } else if *button == MouseButton::Right {
+                    consumed = self.secondary_button(*state);
                 }
                 consumed |= self.popup.is_some();
                 true
@@ -57,7 +59,7 @@ impl Context {
                 true
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if let PhysicalKey::Code(code) = event.physical_key {
+                if let Some(code) = navigation_code(event.physical_key, &event.logical_key) {
                     consumed = self.on_key_event(code, event.state, event.repeat).consumed;
                 }
                 if event.state == ElementState::Pressed {
@@ -112,6 +114,8 @@ impl Context {
                     self.dismiss_popup(false);
                     self.input.primary_down = false;
                     self.input.middle_down = false;
+                    self.input.secondary_down = false;
+                    self.secondary_target = None;
                     self.stop_auto_scroll();
                     self.input.keys_down.clear();
                     self.capture = None;
@@ -140,5 +144,51 @@ impl Context {
             self.request_repaint();
         }
         EventResponse { consumed, repaint }
+    }
+}
+
+// Navigation follows key meaning: NumPad with NumLock off has a numeric physical
+// scan code but an arrow/Home/End logical key. Letter shortcuts stay physical.
+fn navigation_code(physical: PhysicalKey, logical: &Key) -> Option<KeyCode> {
+    let code = match logical {
+        Key::Named(NamedKey::ArrowUp) => KeyCode::ArrowUp,
+        Key::Named(NamedKey::ArrowDown) => KeyCode::ArrowDown,
+        Key::Named(NamedKey::ArrowLeft) => KeyCode::ArrowLeft,
+        Key::Named(NamedKey::ArrowRight) => KeyCode::ArrowRight,
+        Key::Named(NamedKey::Home) => KeyCode::Home,
+        Key::Named(NamedKey::End) => KeyCode::End,
+        Key::Named(NamedKey::PageUp) => KeyCode::PageUp,
+        Key::Named(NamedKey::PageDown) => KeyCode::PageDown,
+        _ => {
+            return match physical {
+                PhysicalKey::Code(code) => Some(code),
+                _ => None,
+            }
+        }
+    };
+    Some(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn keypad_navigation_uses_logical_key_without_changing_numeric_input() {
+        let physical = PhysicalKey::Code(KeyCode::Numpad1);
+        assert_eq!(
+            navigation_code(physical, &Key::Named(NamedKey::End)),
+            Some(KeyCode::End)
+        );
+        assert_eq!(
+            navigation_code(physical, &Key::Character("1".into())),
+            Some(KeyCode::Numpad1)
+        );
+        assert_eq!(
+            navigation_code(
+                PhysicalKey::Code(KeyCode::Numpad2),
+                &Key::Named(NamedKey::ArrowDown)
+            ),
+            Some(KeyCode::ArrowDown)
+        );
     }
 }
