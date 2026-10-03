@@ -1,0 +1,53 @@
+---
+title: ContextMenu
+description: Context actions with icons, separators, and edge captions.
+---
+
+Attach a menu to a response in the same UI scope. Right-click opens it at the
+pointer. The shared popup layer handles viewport fitting, Escape, outside presses,
+focus restoration, and clipping independently from the target's parent.
+
+```rust
+use zaxis::{ContextMenuItem, Id};
+
+let items = [
+    ContextMenuItem::new("copy", "Copy").icon("+").right_text("Ctrl+C"),
+    ContextMenuItem::separator(),
+    ContextMenuItem::new("export", "Export").left_text("01").enabled(false),
+];
+let target = ui.button("Document");
+if ui.context_menu(target, &items).selected == Some(Id::new("copy")) {
+    // Perform the action once.
+}
+```
+
+`icon` accepts a font glyph. `icon_shapes` accepts vector shapes in an 18 × 18
+logical-pixel box. Icons align in a compact column; left captions precede their labels;
+`right_text` aligns to the trailing edge. Action IDs must be unique and remain
+stable when labels or item order change. Duplicate visible labels are supported.
+Shortcut captions are display text; shortcut handling belongs to the application.
+
+Use `ContextMenu::new(source, &items).style(style).show(ui, target)` for custom
+proportions and popup/control appearances. `open_at(position)` opens on that pass;
+omit it on following passes to retain the menu. `ContextMenuOutput` reports the
+open state, popup rectangle, and selected action ID.
+
+Arrow keys skip separators and disabled items. Home/End select the first/last
+enabled action; Enter/Space activate it. Long menus scroll automatically when
+keyboard selection moves outside the viewport. Passive text responses can also
+have a menu without changing their primary-click behavior.
+
+Hover and keyboard highlighting update immediately, without a tween. Unchanged
+item measurements are retained; long menus build only rows that intersect the
+viewport, including menus with mixed action and separator heights.
+
+The release CPU stress benchmark covers idle, hover, keyboard navigation, and
+scrolling with 10, 100, 1,000, and 10,000 items:
+
+```sh
+cargo bench --bench context_menu -- --iterations 1000 --output target/context-menu-benchmark.json
+```
+
+```sh
+cargo run --example context_menu
+```
