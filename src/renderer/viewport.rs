@@ -80,20 +80,39 @@ impl Renderer {
 }
 
 pub(super) fn scissor(rect: Rect, scale: f32, viewport: PhysicalSize<u32>) -> Option<[u32; 4]> {
+    // Keep every rasterized pixel inside the logical clip. Outward rounding
+    // leaks content across adjacent panels at fractional DPI/drag positions.
     if rect.is_empty() {
         return None;
     }
     let x0 = (rect.min.x * scale)
-        .floor()
+        .ceil()
         .clamp(0.0, viewport.width as f32) as u32;
     let y0 = (rect.min.y * scale)
-        .floor()
+        .ceil()
         .clamp(0.0, viewport.height as f32) as u32;
     let x1 = (rect.max.x * scale)
-        .ceil()
+        .floor()
         .clamp(0.0, viewport.width as f32) as u32;
     let y1 = (rect.max.y * scale)
-        .ceil()
+        .floor()
         .clamp(0.0, viewport.height as f32) as u32;
     (x1 > x0 && y1 > y0).then_some([x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vec2;
+
+    #[test]
+    fn fractional_clips_never_include_pixels_outside_the_panel() {
+        let viewport = PhysicalSize::new(800, 600);
+        let rect = Rect::from_min_max(vec2(10.25, 20.5), vec2(50.75, 60.25));
+        assert_eq!(scissor(rect, 1.25, viewport), Some([13, 26, 50, 49]));
+        let clipped = Rect::from_min_max(vec2(-5.0, -8.0), vec2(900.0, 700.0));
+        assert_eq!(scissor(clipped, 1.25, viewport), Some([0, 0, 800, 600]));
+        let thin = Rect::from_min_max(vec2(10.25, 0.0), vec2(10.5, 5.0));
+        assert_eq!(scissor(thin, 1.25, viewport), None);
+    }
 }
