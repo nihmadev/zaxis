@@ -1,0 +1,183 @@
+---
+title: SplitPane
+description: Stable, resizable panels with single-pass content and adjacent resizing.
+---
+
+`SplitPane` divides its remaining Ui rectangle along either axis. Every panel has
+an application key; labels and indices do not identify retained sizes or focus.
+Content callbacks execute once, with resolved bounds, and never enter Context.
+
+```rust
+use zaxis::{SplitPanel, SplitSize};
+
+let layout = ui.split_horizontal("workspace", [
+    SplitPanel::new("files").default_size(SplitSize::Pixels(180.0)).min_size(60.0),
+    SplitPanel::new("editor"),
+    SplitPanel::new("inspector").default_size(SplitSize::Fraction(0.25)),
+], |split| {
+    split.panel("files", |ui| { ui.button("main.rs"); });
+    split.panel("editor", |ui| {
+        ui.split_vertical("editor-log", [SplitPanel::new("code"), SplitPanel::new("log")], |split| {
+            split.panel("code", |ui| { ui.label("Code"); });
+            split.panel("log", |ui| { ui.label("Log"); });
+        });
+    });
+    split.panel("inspector", |ui| { ui.label("Properties"); });
+});
+```
+
+Use `SplitPane::horizontal(id)` / `vertical(id)` for builders: `panels`, `panel`,
+`size`, `style`, `gap`, `handle`, `resizable`, `reset` and `double_click_reset`.
+`size(Vec2)` reserves at most the remaining Ui rectangle. Empty splits still
+reserve their requested rectangle; one panel takes the entire interior.
+Duplicate IDs, unknown content IDs and repeated content builds panic. Content
+may be built in any order; unbuilt panels still reserve and paint their surface.
+All types are exported from `components`, the crate root and `widgets`.
+
+## Sizes and deterministic constraints
+
+Sizes include a panel's border and padding. Container padding and its safe corner
+insets are deducted before distribution; panel padding never changes its outer
+size. Dimensions use logical pixels; the host handles DPI. No animation sits
+between pointer movement and the next pass's resolved layout.
+
+`default_size` applies to a new ID or a reset. `size` is authoritative on every
+pass. `Pixels` is fixed, `Fraction` requests a fraction of panel space excluding
+gaps, and `Weight` receives remaining space (default: 1). Fractions may exceed 1;
+the shrink rule resolves overcommit. All dimensions, fractions, radii and style
+measurements must be finite and nonnegative. Weights must be finite and positive.
+NaN, infinity, negative values and zero weights panic, including direct struct
+field assignments. Omitted maximum means unbounded; `minimum > maximum` raises
+maximum to minimum. Shadow spread may be signed, but must be finite.
+
+The same allocator is used for initialization, viewport changes and reset:
+
+1. Deduct container insets. Cap each gap to available length / boundary count.
+2. If minima exceed panel space, shrink minima proportionally to fit. No negative
+   size, overflow, hidden container expansion or interaction outside its bounds.
+3. Clamp pixel/fraction preferences. Distribute flexible weights over their
+   remaining total share, freezing constrained panels and redistributing.
+4. If preferences overcommit, shrink in proportion to capacity above minimum.
+   Otherwise give spare space to weights, then fractions, then all panels equally,
+   respecting maxima. With all maxima exhausted, divide unavoidable surplus
+   equally beyond maximum: filling the container has priority over infeasible maxima.
+5. Accumulate endpoints in f64, convert cumulative endpoints to logical f32 and
+   force the last endpoint to the exact available edge. Do not round every panel
+   independently. There is no accumulating pixel-rounding debt.
+
+Container fit outranks infeasible constraints. Feasible min/max outrank size
+preferences. Controlled values outrank retained preferences, which outrank defaults.
+Fixed sizes remain explicit while space and limits permit. On a user resize,
+flexible panel sizes become relative weights, preserving the chosen proportions
+across viewport changes. Constraints may temporarily clamp those proportions;
+viewport clamping alone does not overwrite retained preferences.
+
+Dragging changes only two neighbours and preserves their combined size. Both
+panels' limits apply simultaneously. Compressed/expanded infeasible sizes become
+effective limits for that gesture so a press never jumps to an impossible minimum.
+There is no implicit redistribution to distant panels during a drag.
+
+## Results and application-owned sizes
+
+`SplitOutput` returns the closure result, allocated `rect`, panel IDs, actual
+resolved sizes, outer `bounds` and separate `content_bounds`. Coordinates are
+logical layout coordinates, like `Response::rect`; enclosing visual mappings and
+deferred parent alignment may subsequently place them in screen coordinates.
+Boundary outputs include pair IDs, clipped interactive bounds, enabled/hover/focus,
+`resize_started`, `changed`, `resize_ended` and `cancelled`. The aggregate `changed`
+also reports viewport, topology, reset and authoritative changes.
+
+```rust
+// Keep application state keyed by panel Id, not its current position.
+let result = zaxis::SplitPane::horizontal("controlled")
+    .panels([
+        SplitPanel::new("sidebar").size(SplitSize::Pixels(sidebar_width)),
+        SplitPanel::new("main"),
+    ])
+    .show(ui, |split| {
+        split.panel("sidebar", |ui| { ui.label("Sidebar"); });
+        split.panel("main", |ui| { ui.label("Main"); });
+    });
+if result.boundaries.iter().any(|b| b.changed) {
+    sidebar_width = result.panels[0].size;
+}
+```
+
+A controlled resize proposes resolved sizes in that pass's output. Feed them back
+to accept the resize. Each new pass still applies the application's values; no
+internal feedback overwrites them. An external edit or viewport/constraint change
+during capture rebases the gesture at the last consumed pointer position. The next
+pointer event applies only its subsequent delta. Release finishes the gesture.
+
+`reset(true)` is level-triggered and restores all default preferences, cancelling
+capture. Controlled values still win. Home/Backspace, and opt-in double click,
+reset just the neighbouring pair's default ratio while preserving its current
+sum and all other panels. Removing a panel discards its preference; reinsertion
+uses its default. Reordering existing panels preserves their sizes. Boundary IDs
+use the ordered neighbouring pair: focus survives when that pair remains adjacent.
+Deleting/reversing a pair, disabling it or changing the split axis cancels its drag.
+Deleting a whole split cancels capture and removes its retained state at pass end.
+
+## Styling and clipping
+
+Style priority is `Style::split`, then `SplitPane::style`, then its `gap` / `handle`
+builders, then a panel's full `surface` / following `handle` override. Overrides
+replace that surface/handle; copy the shared value to change individual fields.
+`SplitSurface` provides fill, asymmetric `CornerRadius`, border, padding, shadow and
+backdrop blur, with matching builders. `SplitStyle` provides common container and
+panel surfaces, gap, handle, content spacing and keyboard steps. It uses the existing
+Style and Color types; there is no separate theme or token dependency.
+
+`SplitHandleStyle` independently controls hit width, visible thickness, central
+length, rounding, cross-axis inset, idle/hover/pressed/focus colors and an optional
+capture indicator. A wide hit zone does not require a wide gap or visible strip.
+
+| Handle kind | Appearance and interaction |
+| --- | --- |
+| `Line` | Thin full-length line, respecting cross-axis inset |
+| `Grip` | Short central rounded grip, no separator line |
+| `Invisible` | Hidden until hover/focus/capture, then central indicator |
+| `PanelEdge` | Hidden indicator; trailing inner edge of the preceding panel |
+
+Hit zones are capped at adjacent panel midpoints to avoid overlapping boundaries.
+PanelEdge stays inside its preceding panel, has no external-edge hit region and
+never makes the whole content surface draggable. Boundaries are registered after
+children and win only inside their zone; buttons elsewhere receive normal input.
+An enclosing boundary wins an overlapping nested boundary. Popups keep their
+existing higher overlay layer. `resizable(false)` / `resizable_after(false)` removes
+boundary interaction, preserving layout, styling and child input.
+
+The renderer has rectangular clips. SplitPane **does not implement rounded stencil
+clipping**. It uses a provably inscribed content rectangle. For a normalized radius
+`r`, each adjoining inset is at least `r * (1 - 1/sqrt(2)) + border.width`, or requested
+padding when larger. Opposite insets collapse proportionally on tiny surfaces.
+This leaves a small unused corner band, including with zero requested padding.
+Every child's paint, text, image, blur, transformed geometry, hit region and nested
+scroll viewport is bounded by that same content rectangle. Popups retain portals.
+Shadows may extend under neighbours within the parent clip; content cannot.
+Container corners use the same rule for panel surfaces and handle bounds.
+
+GPU scissors quantize inward (ceil minimum, floor maximum), keeping fractional-DPI
+clips inside their logical bounds instead of leaking a pixel into adjacent panels.
+This can omit a subpixel strip at a clip edge. Existing translation and uniform
+scale mappings apply to paint, clips and drag coordinates together. `Ui::visual`
+supports only axis-aligned transforms, consistent with its existing contract.
+
+## Keyboard and lifecycle
+
+Tab / Shift+Tab visits enabled boundaries alongside child controls. Focus shows an
+indicator, including for invisible handles. Left/Right resizes horizontal pairs;
+Up/Down resizes vertical pairs. Shift selects the large step (default 24 vs 4 logical
+pixels). Home or Backspace resets the pair. Escape cancels capture, retaining the
+last accepted layout. Arrows are routed only when focus is on a boundary; TextEdit
+and other child controls keep their own keyboard input.
+
+Pointer capture continues outside the hit zone and container; axis cursor remains
+active until release, Escape, native focus loss, disabling or component/pair removal.
+Unchanged passes reuse existing geometry and schedule no ongoing frames. Changed
+paint elements use the existing cache; an untouched neighbouring panel retains its
+geometry.
+
+Run `cargo run --example split_pane` for three external panels, a three-panel vertical
+nest, rounded cards, image overflow, blur, TextEdit, Table and ScrollArea. Add
+`-- --smoke-test` for the existing short native/GPU startup-and-close convention.
