@@ -1,0 +1,192 @@
+---
+title: Layout
+icon: Rows3
+description: Rows and columns, alignment, flexible space, size limits, padding, and clipping.
+---
+
+## Coordinates
+
+All UI positions, sizes, font sizes, padding, spacing, radii, and border widths use
+logical pixels. The origin is the top-left of the native viewport; x points right,
+y points down. Physical dimensions equal logical dimensions multiplied by DPI scale.
+
+Custom hosts set the viewport with:
+
+```rust
+context.set_viewport(window.inner_size(), window.scale_factor());
+```
+
+The runner does this automatically. `context.viewport()` returns the logical `Rect`;
+`context.scale_factor()` returns physical pixels per logical pixel.
+
+## Vertical layout
+
+`Window::show` creates a vertical `Ui`. Each allocation advances downward by its
+height plus `Style::spacing`. Controls appear in construction order.
+
+```rust
+ui.label("General");
+ui.checkbox(&mut enabled, "Enabled");
+ui.button("Apply");
+```
+
+`Ui::available_width()` returns the remaining width from the current cursor to the
+content bounds. It never returns a negative width. Built-in controls apply their
+own width limits; `allocate_space` does not automatically constrain requested sizes.
+
+## Horizontal rows
+
+```rust
+ui.horizontal(|ui| {
+    ui.button("Apply");
+    ui.button("Cancel");
+});
+ui.label("Below the row");
+```
+
+`horizontal` creates a nested row at the parent cursor. Child allocations advance
+rightward, with spacing between them. The parent allocates the row's occupied size
+after the closure returns. The row has its own ID scope and inherits the parent's clip.
+
+Rows do not wrap. `Layout::{Vertical, Horizontal}` selects the allocation direction;
+alignment and sizing are separate scope helpers.
+
+## Alignment
+
+`Align::{Start, Center, End}` is shared by layout scopes, Grid, and Table.
+Rows align on their vertical axis within the tallest item. Columns align horizontally
+within their available width. Oversized content stays at the leading edge.
+
+```rust
+ui.horizontal_aligned(Align::Center, |ui| {
+    ui.label("Project");
+    ui.button("Open");
+});
+
+ui.vertical_aligned(Align::End, |ui| {
+    ui.button("Apply");
+});
+```
+
+## Flexible space
+
+`spacer()` takes a share of unused space on the current main axis: width in a row,
+height in a column. Multiple spacers and fill scopes share it equally. Explicit
+`add_space` gaps and style spacing are accounted for before distribution.
+
+```rust
+ui.horizontal_aligned(Align::Center, |ui| {
+    ui.label("Name");
+    ui.spacer();
+    ui.button("Edit");
+});
+```
+
+`fill` reserves the same kind of share for a column of arbitrary content. It accounts
+for siblings both before and after the scope. A default `TextEdit` uses the allocated
+width inside a horizontal fill scope; an explicit `TextEdit::width` still takes priority.
+
+```rust
+ui.horizontal_aligned(Align::Center, |ui| {
+    ui.label("Search:");
+    ui.fill(|ui| {
+        ui.text_edit(&mut query);
+    });
+    ui.button("Clear");
+});
+```
+
+Callbacks execute **once per UI pass**, including callbacks that mutate application
+state. Spacers and alignment place paint and hit regions together on the current pass.
+Fill uses the previous pass's measured sibling sizes to provide a build-time extent;
+on first use or changed content, it can schedule a follow-up redraw to settle that extent.
+Viewport resizing recomputes the share using the existing measurements.
+
+If fixed items and spacing exceed the bounds, flexible shares become zero. Fixed
+allocations are not compressed by a constraint solver; enclosing clips or scroll areas
+handle overflow.
+
+## Size scopes
+
+```rust
+ui.with_width(240.0, |ui| {
+    ui.text_edit(&mut query);
+});
+
+ui.horizontal(|ui| {
+    ui.with_min_width(120.0, |ui| { ui.button("Apply"); });
+    ui.with_max_width(180.0, |ui| { ui.label("A bounded caption"); });
+});
+```
+
+| Width helper | Height counterpart | Behavior |
+| --- | --- | --- |
+| `with_width` | `with_height` | Reserve an exact extent |
+| `with_min_width` | `with_min_height` | Reserve at least this extent; larger content can expand it |
+| `with_max_width` | `with_max_height` | Bound the extent and clip overflow |
+
+Dimensions must be finite and nonnegative. Zero is allowed. Scopes inherit the current
+direction and keep limits local to their closure. Exact and maximum scopes clip overflow;
+minimum scopes allow it to expand. A default `TextEdit` uses an exact width scope's width.
+
+## Response coordinates
+
+`Response::rect`, component output rectangles, and custom allocations use build coordinates. Deferred
+alignment and spacing can move them before the enclosing scope finishes. After the
+scope returns, use `ui.displayed_rect(&response)` for final bounds, or
+`context.visual_rect(response.id, response.rect)` after `Context::run`. Drawing from
+`allocate_space` followed by `paint` moves together with its allocation. Pointer
+input, hit clips, and IME placement follow the same placement operation.
+
+## Empty space and custom allocations
+
+| Method | Result |
+| --- | --- |
+| `ui.add_space(amount)` | Advance in the current layout direction; negative amounts become zero |
+| `ui.spacer()` | Take an equal share of unused main-axis space |
+| `ui.allocate_space(size) -> Rect` | Reserve a rectangle at the cursor, advance by its size plus style spacing |
+| `ui.clip_rect() -> Rect` | Return the current content clip in viewport coordinates |
+| `ui.paint(shape)` | Paint without allocating additional layout space |
+
+For custom geometry, allocate first and draw relative to the returned rectangle.
+See [Drawing](./drawing.mdx).
+
+## Padding
+
+`Padding` has public `left`, `right`, `top`, and `bottom` fields:
+
+```rust
+use zaxis::Padding;
+
+let uniform = Padding::all(16.0);
+let axes = Padding::symmetric(16.0, 8.0);
+let custom = Padding { left: 12.0, right: 20.0, top: 8.0, bottom: 8.0 };
+```
+
+`symmetric(horizontal, vertical)` sets matching opposite sides. `size()` returns
+combined horizontal/vertical insets; `inset(rect)` applies them. Negative sides are
+treated as zero. Window and button builders accept padding overrides.
+
+## Clipping
+
+Window content is clipped to a rectangular content area intersected with the viewport.
+Resizable panels keep content away from the resize grip. Button captions use an
+additional clip inside button padding. Hit testing also respects the clip rectangle.
+
+A taller layout does not enlarge its panel automatically. Wrap it in `ScrollArea`
+for scrolling. Shape clipping is rectangular; rounded window corners do not create a stencil mask.
+
+## Scroll viewports
+
+Wrap long content in [ScrollArea](./components/scroll-area.mdx). It measures the
+child layout, clips paint and interaction, and retains an offset by stable ID.
+`Ui::available_height()` returns remaining layout height; `Ui::clip_rect()` returns
+the visible intersection, including ancestor scroll viewports.
+
+## Shared columns
+
+[Grid](./components/grid.mdx) adds fixed, content-sized and weighted remainder
+columns, minimum widths, aligned cells and rows measured from their tallest cell.
+Cells accept arbitrary components and nested `horizontal`/`vertical` layouts;
+callbacks execute once per pass. [Table](./components/table.mdx) uses the same
+columns with pinned headers, mouse resizing and fixed-height row virtualization.

@@ -1,0 +1,97 @@
+---
+title: Desktop runner
+icon: AppWindow
+description: App, Frame, native window configuration, lifecycle, and startup errors.
+---
+
+## Entry points
+
+```rust
+pub fn run(app: impl App) -> Result<(), RunError>;
+pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunError>;
+```
+
+Call either entry point on the main thread. winit generally permits one event loop
+per process. The call blocks until the loop exits.
+
+`App` requires one method:
+
+```rust
+fn update(&mut self, context: &mut Context, frame: &mut Frame<'_>);
+```
+
+The runner owns the native window, renderer, and context. It invokes `update` inside
+`Context::run` on each visible `RedrawRequested`. Build the UI directly in `update`.
+
+## Configure the native window
+
+```rust
+use zaxis::{App, PresentationMode, RunError, RunOptions};
+use zaxis::winit::{dpi::LogicalSize, window::Window};
+
+fn open(app: impl App) -> Result<(), RunError> {
+    zaxis::run_with_options(app, RunOptions {
+        window_attributes: Window::default_attributes()
+            .with_title("Inspector")
+            .with_inner_size(LogicalSize::new(1024.0, 720.0))
+            .with_min_inner_size(LogicalSize::new(640.0, 480.0)),
+        presentation_mode: PresentationMode::Immediate,
+    })
+}
+```
+
+`RunOptions` contains `window_attributes: winit::window::WindowAttributes` and
+`presentation_mode: PresentationMode`. Defaults:
+
+| Setting | Value |
+| --- | --- |
+| Native title | `zaxis` |
+| Native inner size | 860 × 560 logical pixels |
+| Presentation | `PresentationMode::Vsync` |
+
+Native `WindowAttributes` can use logical or physical dimensions. The zaxis panel
+builder `Window` controls panels inside the native window; its dimensions are always
+logical pixels. See [Window](./components/window.mdx).
+
+## Frame
+
+| Method | Behavior |
+| --- | --- |
+| `frame.window() -> &Arc<winit::window::Window>` | Access the native window, change its title, request redraw, or clone its handle |
+| `frame.close()` | Request exit after the current frame is successfully presented |
+
+An OS close request exits directly. `frame.close()` waits for `RenderStatus::Presented`;
+a transient retry can delay shutdown.
+
+The runner does not expose its `Renderer` through `Frame`. Runtime presentation
+switching uses a [custom host](./integration.mdx).
+
+## Lifecycle
+
+| Event | Runner action |
+| --- | --- |
+| Initial resume | Create native window and renderer, set viewport, request redraw |
+| Input | Forward to `Context`; request redraw when its response requires it |
+| Resize or DPI change | Refresh viewport from actual native size and scale, resize renderer |
+| Occlusion or zero native size | Stop rendering and wait for events |
+| Unocclusion | Request redraw |
+| Surface timeout, lost, or outdated | Retry after 16 ms; renderer handles surface recovery |
+| GPU device loss | Recreate renderer with the current presentation mode, request redraw |
+| Suspend | Drop native window/renderer, clear focus and held input |
+| Resume after suspend | Recreate native resources; retain application and UI state |
+
+The event loop uses `ControlFlow::Wait` while idle and `WaitUntil` for repaint
+deadlines. Surface retry backoff takes precedence over immediate UI repaint requests.
+
+## Errors
+
+`RunError` implements `Display` and `std::error::Error`:
+
+| Variant | Failure |
+| --- | --- |
+| `EventLoop(EventLoopError)` | Create or run the winit event loop |
+| `Window(OsError)` | Create the native window |
+| `Render(RenderError)` | Initialize the renderer or handle an unrecoverable rendering failure |
+
+Return this error from `main`, or handle it in your application launcher. Renderer
+error variants are described in [Renderer](./renderer.mdx#errors).

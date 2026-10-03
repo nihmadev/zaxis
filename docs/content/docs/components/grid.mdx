@@ -1,0 +1,99 @@
+---
+title: Grid
+icon: Grid2X2
+description: Shared columns, arbitrary cell components, compact forms, and single-pass measurement.
+---
+
+`Grid` places arbitrary child `Ui` content in rows sharing the same columns.
+It supports any positive number of columns. It is a container with `show`, not a
+`Widget`; existing `horizontal` and `vertical` layouts remain available inside cells.
+
+```rust
+use zaxis::{Align, Column, Grid};
+
+Grid::new("preferences")
+    .columns([
+        Column::content("label").min_width(90.0),
+        Column::remainder("value").min_width(140.0),
+        Column::fixed("action", 80.0).align(Align::End, Align::Center),
+    ])
+    .show(ui, |grid| {
+        grid.row("notifications", |row| {
+            row.cell(|ui| { ui.label("Notifications"); });
+            row.cell(|ui| { ui.checkbox(&mut enabled, "Enabled"); });
+            row.cell(|ui| { ui.button("Reset"); });
+        });
+        grid.row("volume", |row| {
+            row.cell(|ui| { ui.label("Volume"); });
+            row.cell(|ui| { ui.slider(&mut volume, 0.0..=100.0); });
+        });
+    });
+```
+
+Rows may omit trailing cells. More cells than declared columns are rejected.
+Use persistent application keys for `Grid::new` and `grid.row`; row and column
+IDs scope nested controls, including repeated labels.
+
+## Column policies
+
+Widths include cell padding and are shared by every row. `Column` is also used
+by [Table](./table.mdx).
+
+| Builder / policy | Behavior |
+| --- | --- |
+| `Column::fixed(id, width)` | Fixed logical width, raised to `min_width` if needed |
+| `Column::content(id)` | Maximum measured occupied cell width, including padding |
+| `Column::remainder(id)` | Minimum width plus a share of remaining space |
+| `Column::new(id, ColumnWidth::Remainder(weight))` | Positive weighted share of spare space |
+| `min_width(width)` | Nonnegative lower bound |
+| `align(horizontal, vertical)` | `Align::{Start, Center, End}` within each padded cell |
+
+Fixed widths, content widths, minima and column gaps are reserved first. Remaining
+space is distributed between remainder columns by weight. If these reservations
+exceed the available width, spare space becomes zero: minima remain intact and
+content overflows. Cells clip paint and input independently. Wrap the grid in
+`ScrollArea::both()` to make overflow accessible. Padding and available sizes
+never produce negative rectangles. Oversized aligned content starts at the leading edge.
+
+The height of each row is the tallest measured cell plus vertical cell padding,
+or `GridStyle::row_min_height`, whichever is larger. Row gaps are added between
+rows, with no trailing gap.
+
+## Measurement and callbacks
+
+Every row/cell callback executes **once per UI pass**, including callbacks binding
+mutable values. Paint, hit regions, nested scroll viewports, blur and IME geometry
+are recorded and placed together after measurement; measuring does not replay
+application code or mutate bound values twice.
+
+Content columns measure with the grid's available width as their wrapping budget
+(or their existing width when wider). Use `Text::wrap(false)` or explicit custom
+allocations for unbounded intrinsic content. A content-sized cell should use natural
+component widths: a fill-width control will naturally claim the offered width.
+
+The grid initially resolves columns using the previous pass's content measurements.
+After the callbacks it updates shared widths and places cells. When a changed
+content width changes the width offered to another cell, it requests a follow-up
+redraw for that cell's wrapping or responsive layout. This also happens on first
+appearance. Callbacks still execute once on each pass. Stable layouts sleep and
+reuse cached geometry. Content widths can shrink when data changes.
+
+Responses returned *inside* callbacks describe the build coordinates. After a
+measurement/alignment change, use `GridOutput::cells` for final cell bounds rather
+than retaining a response rectangle. Grid output contains `inner`, `rect`,
+`widths`, `measured_widths`, `rows`, and `cells`. An enclosing ScrollArea may apply
+its own final offset correction, as with ordinary child responses.
+
+## Style and builders
+
+`Style::grid` holds `GridStyle`: outer `padding`, `cell_padding`, `spacing: Vec2`
+(column/row gaps), `component_spacing` inside cells, `row_min_height`, `fill`, and
+`rounding`. Defaults use ten-pixel card padding, eight-pixel column gaps,
+six-pixel row/component gaps and a quiet grey surface.
+
+Override the whole style with `style(GridStyle)`, or individual inherited values
+with `padding`, `cell_padding`, `spacing` and `fill`. `width` limits the offered
+width to the parent allocation; it does not discard column minima.
+`Ui::grid(id, columns, build)` is the short form.
+
+Run `cargo run --example grid_table` for nested settings cards and a data table.

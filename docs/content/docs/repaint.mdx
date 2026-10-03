@@ -1,0 +1,130 @@
+---
+title: Repaint scheduling
+icon: Timer
+description: Redraw requests, follow-up passes, timers, animation, and background workers.
+---
+
+## Request the right kind of redraw
+
+| Change | Action |
+| --- | --- |
+| Button activation, checkbox toggle, slider update through `Ui::add` | Built-in helper schedules a follow-up UI pass |
+| Model changed outside the UI | Update the model and call native `window.request_redraw()` |
+| Custom mutation inside the UI affects controls already built | Call `context.request_repaint()` |
+| Built-in or custom animation | [Animation API](./animation.mdx) automatically manages visible channels and deadlines |
+| Application timer | Call `context.request_repaint_after(duration)` on each relevant UI pass |
+| OS exposure redraw | Rebuild UI and present even when the geometry is unchanged |
+
+Repaint requests schedule work. They do not invalidate every cached mesh. Every
+`Context::run` evaluates the callback and compares the resulting paint descriptions.
+
+## Timers and animation
+
+Use the [animation engine](./animation.mdx) for transitions, keyframes and custom
+motion. Its cancellable deadlines stop when the animation is no longer visible.
+The timer API below is for application work with an independent deadline.
+
+This app displays elapsed time and schedules a new pass every 100 ms:
+
+```rust title="src/main.rs"
+use std::time::{Duration, Instant};
+use zaxis::{App, Context, Frame, Window};
+
+struct Clock { started: Instant }
+
+impl App for Clock {
+    fn update(&mut self, context: &mut Context, _frame: &mut Frame<'_>) {
+        Window::new("Clock").show(context, |ui| {
+            ui.label(format!("Elapsed: {:.1}s", self.started.elapsed().as_secs_f32()));
+        });
+        context.request_repaint_after(Duration::from_millis(100));
+    }
+}
+
+fn main() -> Result<(), zaxis::RunError> {
+    zaxis::run(Clock { started: Instant::now() })
+}
+```
+
+The earliest requested deadline wins. A deadline is cleared when it has elapsed and
+the next `run` starts. Future deadlines survive intervening redraws. Schedule the next
+animation frame from each callback while the animation is active; an earlier future
+deadline already recorded in the context is not postponed by a later request.
+
+`Duration::ZERO` requests an immediate repaint. A delay that cannot be added to
+`Instant::now()` is ignored.
+
+## Changes after an earlier control
+
+```rust
+ui.label(format!("Count: {count}"));
+if ui.button("Increment").clicked() {
+    count += 1;
+}
+```
+
+The label above was built before the increment. `Ui::add` requests a second pass on
+the click, so the next pass displays the new count. This also applies to checkbox
+and slider helpers. Arbitrary mutations unrelated to a widget response need an
+explicit repaint when they affect an earlier element.
+
+## Background workers
+
+Clone `frame.window()` into a worker after updating shared model state. Request a
+native redraw to wake the sleeping event loop. This complete example starts one
+worker and displays its result:
+
+```rust title="src/main.rs"
+use std::sync::{Arc, Mutex};
+use zaxis::{App, Context, Frame, Window};
+
+struct WorkerApp {
+    result: Arc<Mutex<Option<String>>>,
+    started: bool,
+}
+
+impl App for WorkerApp {
+    fn update(&mut self, context: &mut Context, frame: &mut Frame<'_>) {
+        if !self.started {
+            self.started = true;
+            let result = Arc::clone(&self.result);
+            let window = Arc::clone(frame.window());
+            std::thread::spawn(move || {
+                let output = "Finished".to_owned();
+                *result.lock().unwrap() = Some(output);
+                window.request_redraw();
+            });
+        }
+        let message = self.result.lock().unwrap().clone();
+        Window::new("Worker").show(context, |ui| {
+            ui.label(message.as_deref().unwrap_or("Working"));
+        });
+    }
+}
+
+fn main() -> Result<(), zaxis::RunError> {
+    zaxis::run(WorkerApp {
+        result: Arc::new(Mutex::new(None)),
+        started: false,
+    })
+}
+```
+
+The native window handle belongs to that window instance. Suspend/resume recreates
+the native window; long-lived workers must refresh their redraw target. A custom
+host can use an `EventLoopProxy` user event to wake the loop independently of the
+window instance, then update the model and request redraw in its handler.
+
+## Custom host scheduling
+
+`needs_repaint()` reports an immediate request or elapsed deadline. `next_repaint()`
+returns the earliest recorded `Instant`. After presenting, inspect both in the
+host's `about_to_wait`:
+
+1. Request native redraw when `needs_repaint()` is true.
+2. Use `ControlFlow::WaitUntil(deadline)` for a future deadline.
+3. Use `ControlFlow::Wait` with no pending deadline.
+4. Back off transient renderer retries, even if the UI continues requesting repaint.
+
+`request_repaint()` alone does not wake a custom host's sleeping native loop. The
+runner applies these rules automatically. See [Custom host](./integration.mdx).

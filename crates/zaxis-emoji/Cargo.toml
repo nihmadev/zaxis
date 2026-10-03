@@ -1,0 +1,16 @@
+[package]
+name = "zaxis-emoji"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.90"
+description = "Bundled Noto Color Emoji font data for zaxis"
+license = "OFL-1.1"
+readme = "README.md"
+repository = "https://github.com/nihmadev/zaxis"
+documentation = "https://docs.rs/zaxis-emoji"
+keywords = ["emoji", "font", "noto", "gui"]
+categories = ["gui"]
+include = ["/src/**", "/assets/**", "/Cargo.toml", "/README.md"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]

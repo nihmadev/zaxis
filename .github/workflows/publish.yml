@@ -1,0 +1,91 @@
+name: Publish crate
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crates-io-publish
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Linux dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libudev-dev libx11-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.90.0'
+      - name: Verify release identity
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import tomllib
+
+          with open("Cargo.toml", "rb") as source:
+              version = tomllib.load(source)["package"]["version"]
+          if os.environ["RELEASE_TAG"] != f"v{version}":
+              raise SystemExit(f"Release tag must be v{version}")
+          title = os.environ["RELEASE_NAME"]
+          if not title.startswith(f"{version} ") or not title[len(version) + 1:].strip():
+              raise SystemExit(f"Release title must be '{version} <adjective>', e.g. '{version} Blinking'")
+          PY
+      - name: Select unpublished package versions
+        id: registry
+        run: |
+          python3 - <<'PY'
+          import os
+          import tomllib
+          import urllib.error
+          import urllib.request
+
+          packages = []
+          for manifest in ["crates/zaxis-emoji/Cargo.toml", "Cargo.toml"]:
+              with open(manifest, "rb") as source:
+                  package = tomllib.load(source)["package"]
+              url = f"https://crates.io/api/v1/crates/{package['name']}/{package['version']}"
+              request = urllib.request.Request(url, headers={"User-Agent": "zaxis-release-workflow"})
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      if response.status != 200:
+                          raise SystemExit(f"Unexpected registry response: {response.status}")
+              except urllib.error.HTTPError as error:
+                  if error.code != 404:
+                      raise
+                  packages.extend(["--package", package["name"]])
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"packages={' '.join(packages)}\n")
+          if not packages:
+              print("All package versions already published; registry upload is skipped.")
+          PY
+      - name: Verify package
+        if: steps.registry.outputs.packages != ''
+        run: cargo publish --workspace --dry-run --locked
+      - name: Authenticate with crates.io
+        if: steps.registry.outputs.packages != ''
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish
+        if: steps.registry.outputs.packages != ''
+        run: |
+          read -r -a packages <<< "$PUBLISH_PACKAGES"
+          cargo publish --locked "${packages[@]}"
+        env:
+          PUBLISH_PACKAGES: ${{ steps.registry.outputs.packages }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

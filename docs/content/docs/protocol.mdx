@@ -1,0 +1,184 @@
+---
+title: Drawing protocol
+icon: Braces
+description: DrawData, global mesh indices, ordered commands, textures, and backend cache keys.
+---
+
+`zaxis::protocol` exposes `DrawData`, `GeometryUpdate`, `DrawCommand`, `Vertex`,
+`TextureId`, and `TextureImage`. All six are re-exported at the crate root. Older `zaxis::shapes`
+paths preserve `DrawData`, `DrawCommand`, `Vertex`, and `TextureId`.
+
+The protocol module has no direct winit or wgpu dependency. The crate still always
+includes both integration dependencies. A producer can build frames without a UI
+context; a backend can consume complete frames without accessing UI internals.
+
+## Produce a frame
+
+This complete example constructs an untextured triangle:
+
+```rust title="src/main.rs"
+use zaxis::{vec2, DrawCommand, DrawData, Rect, TextureId, Vertex};
+
+fn main() {
+    let mut data = DrawData::new(vec2(800.0, 600.0), 1.0);
+    data.vertices = [[20.0, 20.0], [120.0, 20.0], [20.0, 120.0]]
+        .map(|position| Vertex {
+            position,
+            uv: [0.5, 0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        })
+        .to_vec();
+    data.indices = vec![0, 1, 2];
+    data.commands.push(DrawCommand {
+        indices: 0..3,
+        clip_rect: Rect::from_min_size(vec2(0.0, 0.0), data.logical_size),
+        texture: TextureId::WHITE,
+        blur: None,
+    scroll_hint: false,
+    });
+    data.revision += 1;
+    // A host can now pass `&data` to Renderer::render.
+}
+```
+
+Reuse this `DrawData` between frames. Calling its constructor for each pass creates
+a new source identity and prevents cache reuse.
+
+## DrawData
+
+| Public field | Contract |
+| --- | --- |
+| `vertices: Vec<Vertex>` | Shared vertices; logical positions and linear colors |
+| `indices: Vec<u32>` | Global indices into the shared vertex vector |
+| `commands: Vec<DrawCommand>` | Ordered indexed draws |
+| `logical_size: Vec2` | Finite, positive logical viewport dimensions |
+| `scale_factor: f32` | Finite, positive physical pixels per logical pixel |
+| `revision: u64` | Geometry revision within the producer |
+| `geometry_update: Option<GeometryUpdate>` | Optional dirty ranges relative to one preceding revision; defaults to `None` |
+| `source: u64` | Unique producer identity, stable across its frames |
+| `textures: Vec<TextureImage>` | Complete current payloads for referenced nonwhite textures |
+| `texture_options: HashMap<TextureId, TextureOptions>` | Optional per-texture filter and managed image lifetime; omitted entries keep the legacy contract |
+| `texture_budget_bytes: u64` | Managed GPU texel residency budget; text/unmanaged payloads are excluded |
+| `texture_binding_budget: usize` | Managed bindings budget, including aliases sharing a texel allocation |
+
+`DrawData::new(logical_size, scale_factor)` allocates a unique source. `default()`
+also allocates a unique source but starts with zero viewport and scale; set them
+before rendering. Constructor identities come from a process-local atomic counter.
+Independent producers must never share a geometry cache identity.
+
+Treat the frame as immutable during rendering. Increment `revision` after editing
+vertices, indices, commands, clip rectangles, or viewport geometry. Texture changes
+use image revisions separately.
+
+## GeometryUpdate
+
+`GeometryUpdate` contains `from_revision`, `to_revision`, and `vertices`/`indices`
+vectors of `Range<usize>`. Ranges address buffer elements, not byte offsets. Every
+changed vertex and index must be covered, including appended elements that are drawn.
+`to_revision` must equal the frame revision. Commands remain a complete ordered list.
+An empty range list permits a command or viewport change without buffer writes.
+
+The built-in renderer uses the hint only when it has validated and uploaded the same
+source at exactly `from_revision`, and neither buffer has shrunk. Otherwise it
+validates and uploads the complete frame. Buffer allocation uploads that entire
+buffer; dense updates can also select a complete transfer. Custom backends can always ignore the hint: DrawData still contains complete
+geometry. Retained buffers can contain unused ranges; commands select the live draws.
+
+Manual producers should leave `geometry_update` as `None` unless they track all
+modifications. Clear or replace a previous hint after changing the frame. Supplying
+incomplete dirty ranges violates the same cache contract as an unchanged revision.
+
+## Vertex
+
+`Vertex` has `#[repr(C)]` and derives `bytemuck::Pod` and `Zeroable`:
+
+| Field | Layout / meaning |
+| --- | --- |
+| `position: [f32; 2]` | Logical x/y, top-left origin |
+| `uv: [f32; 2]` | Normalized texture coordinates |
+| `color: [f32; 4]` | Linear RGB plus straight alpha |
+
+Stride is 32 bytes; offsets are 0, 8, and 16. The built-in pipeline uses a triangle
+list, no face culling, and `u32` indices. Form complete triangles in each draw range.
+
+Do not supply sRGB byte values divided by 255 as linear vertex RGB. For an sRGB
+channel `s` normalized to 0–1, use `s / 12.92` when `s <= 0.04045`, otherwise
+`((s + 0.055) / 1.055)^2.4`. Alpha remains linear and is not premultiplied.
+
+## DrawCommand
+
+```rust
+DrawCommand {
+    indices: 0..6,
+    clip_rect,
+    texture: TextureId::WHITE,
+    blur: None,
+    scroll_hint: false,
+}
+```
+
+`indices: Range<u32>` selects entries in `DrawData::indices`, not vertex numbers.
+Values inside that range are global vertex indices. There is no per-command base
+vertex offset. Commands render in vector order; reordering translucent draws changes
+the output. Empty index ranges and empty physical clips are skipped.
+
+Logical clips convert to physical scissors by flooring min coordinates, ceiling max
+coordinates, and clamping to the physical surface. A custom backend must preserve
+this DPI conversion and command ordering.
+
+`blur: Some(sigma)` replaces the mesh-covered backdrop with a Gaussian blur of
+all preceding draws. Sigma uses logical pixels and must be finite and in `(0, 64]`.
+Use `TextureId::WHITE`; UV and vertex color do not affect this backdrop command.
+Clipping, mesh coverage, rounded geometry, and draw order still apply. Custom
+backends must implement the effect; it cannot be rendered as an ordinary textured draw.
+
+`scroll_hint: true` uses the procedural scroll-edge fragment shader instead of
+sampling the texture. Use `TextureId::WHITE`; UV.y runs from 0 at the transparent
+edge to 1 at the viewport boundary (swap UV axes for horizontal hints). Multiply
+premultiplied vertex color by `t^3 * (t * (6*t - 15) + 10)`, with `t = clamp(UV.y, 0, 1)`.
+Ordinary commands set `scroll_hint: false`. A command cannot combine this with
+backdrop blur. Effects participate in batching and revision comparisons, so a
+backend must preserve them even when geometry ranges are unchanged.
+
+## TextureImage
+
+```rust
+use std::sync::Arc;
+use zaxis::{TextureId, TextureImage};
+
+let image = TextureImage {
+    id: TextureId(1),
+    size: [1, 1],
+    pixels: Arc::new(vec![255, 255, 255, 255]),
+    revision: 1,
+};
+```
+
+| Field | Contract |
+| --- | --- |
+| `id: TextureId` | Identity referenced by commands; zero is reserved |
+| `size: [u32; 2]` | Nonzero physical width and height |
+| `pixels: Arc<Vec<u8>>` | Tightly packed row-major sRGB RGBA8, straight alpha |
+| `revision: u64` | Increment whenever pixels change |
+
+Payload length must equal width × height × 4, without row padding. Use one current
+payload per texture ID. `TextureId::WHITE` is `(0)` and is supplied by the built-in
+renderer; do not include a replacement payload for it.
+
+The built-in sampler filters linearly. Same-size changed images update the existing
+GPU texture; size changes recreate it. Uploads replace the full image rather than a
+dirty subregion. Glyph atlas IDs are scoped to their producer; do not merge unrelated
+contexts' texture payloads without remapping IDs and commands.
+
+## Backend cache keys
+
+- Geometry: `(source, revision)`.
+- Textures: producer identity, texture ID, size, and image revision.
+- Viewport uniform: logical viewport size.
+
+Changing producer clears the built-in renderer's nonwhite texture cache. Omitted
+texture IDs within the same producer are not immediately freed by that renderer.
+Never rely on cache retention instead of supplying complete current texture payloads.
+
+To consume UI-produced frames, call `context.draw_data()` after `context.run`.
+For upload counters and allocation behavior, use [Performance](./performance.mdx).

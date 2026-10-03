@@ -1,0 +1,49 @@
+---
+title: Separator
+icon: Minus
+description: Horizontal and vertical dividing lines, allocation, spacing, and validation.
+---
+
+```rust
+ui.separator();
+```
+
+The default separator fills the available width with a 1-pixel line in
+`Style::border.color`. It does not capture input or receive focus.
+
+## Builders
+
+```rust
+use zaxis::{Color, Separator};
+
+ui.add(Separator::new().thickness(2.0).color(Color::gray(100)).inset(8.0));
+ui.horizontal(|ui| {
+    ui.button("First");
+    ui.add(Separator::vertical(38.0).spacing(4.0));
+    ui.button("Second");
+});
+```
+
+| Method | Default / requirement |
+| --- | --- |
+| `new()` / `default()` | Horizontal line |
+| `vertical(length)` | Vertical line with explicit logical height |
+| `length(f32)` | Horizontal: available width; finite and nonnegative |
+| `thickness(f32)` | 1; finite and positive |
+| `color(Color)` | `Style::border.color` |
+| `spacing(f32)` | 0; extra space on each perpendicular side; finite and nonnegative |
+| `inset(f32)` | 0; shorten both ends without changing allocation; finite and nonnegative |
+
+Invalid builder measurements panic. All values use logical pixels. Horizontal
+length is limited by available width; vertical length is clipped by the enclosing UI.
+
+## Allocation
+
+| Orientation | Allocated size |
+| --- | --- |
+| Horizontal | `min(length, available_width)` × `(thickness + 2 × spacing)` |
+| Vertical | `min(thickness + 2 × spacing, available_width)` × `length` |
+
+Normal `Style::spacing` still applies between this allocation and the next control.
+Builder `spacing` does not replace it. `inset` is capped at half the line length;
+at that value the visible line has zero length while the allocated space remains.

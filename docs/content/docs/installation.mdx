@@ -1,0 +1,99 @@
+---
+title: Installation
+icon: Download
+description: Toolchain, dependencies, and adding the library from this repository.
+---
+
+## Requirements
+
+- Stable Rust `1.90` or newer, as declared in `Cargo.toml`.
+- A desktop display and a functioning GPU backend for applications and GPU smoke tests.
+- The platform libraries required by winit and wgpu. Backend dependencies are not optional.
+
+Update the stable toolchain with rustup:
+
+```sh
+rustup update stable
+```
+
+The minimum supported Rust version is checked in CI with the committed lockfile.
+Newer compatible dependency releases may raise their own compiler requirements;
+retain a compatible lockfile or update Rust when resolving them.
+
+## Add the dependency
+
+The first development release is **0.0.1 Blinking**. Its public API may change
+between development releases. Once published on crates.io:
+
+```toml title="Cargo.toml"
+[dependencies]
+zaxis = "=0.0.1"
+```
+
+Before publication, or to follow repository development:
+
+```toml title="Cargo.toml"
+[dependencies]
+zaxis = { git = "https://github.com/nihmadev/zaxis" }
+```
+
+For a checkout next to your application:
+
+```toml title="Cargo.toml"
+[dependencies]
+zaxis = { path = "../zaxis" }
+```
+
+Pin a Git dependency with `rev = "<commit>"` when reproducible builds require a
+specific library revision. Commit your application's `Cargo.lock`.
+
+## Run from source
+
+```sh
+git clone https://github.com/nihmadev/zaxis.git
+cd zaxis
+cargo run --example demo
+```
+
+The demo selects immediate presentation. Enable synchronized presentation with:
+
+```sh
+cargo run --example demo -- --vsync
+```
+
+## Dependency versions
+
+These are the manifest requirements, not a claim about the newest upstream releases.
+
+| Crate | Requirement | Used for |
+| --- | --- | --- |
+| `winit` | `0.30.13` | Native window and event loop |
+| `wgpu` | `30.0.1` | Surface, GPU device, buffers, and textures |
+| `glam` | `0.33.12` | `Vec2` and `vec2` |
+| `ab_glyph` | `0.2.32` | Font metrics and rasterization |
+| `bytemuck` | `1.25.2`, feature `derive` | Checked vertex and uniform byte conversion |
+| `pollster` | `1.0.1` | Blocking GPU initialization in desktop hosts |
+| `image` | `=0.25.9` | PNG, JPEG, WebP, BMP and optional GIF/TIFF decoding |
+| `resvg` | `=0.48.1` | Bounded CPU SVG parsing and rasterization |
+
+PNG/JPEG/WebP/BMP/SVG work without initialization. Default features `image-gif`
+and `image-tiff` additionally enable GIF and TIFF. Disable default features to omit
+those codecs and the bundled emoji font; built-in core formats remain available.
+The default `bundled-emoji` feature uses the separate `zaxis-emoji` data crate.
+To omit only that font while keeping optional codecs:
+
+```toml title="Cargo.toml"
+[dependencies]
+zaxis = { version = "=0.0.1", default-features = false, features = ["image-gif", "image-tiff"] }
+```
+
+Emoji then use system font fallback, with coverage depending on installed fonts.
+See [Image](./components/image.mdx)
+for limits, identity, async host wakeup and SVG resource/font policy.
+
+`zaxis::winit`, `zaxis::wgpu`, `zaxis::Vec2`, and `zaxis::vec2` re-export the integration
+types. Use these paths to keep your host aligned with the library's dependency versions.
+Custom hosts that use `pollster` and applications that load `ab_glyph::FontArc` need
+their own direct dependencies on those crates.
+
+To create an application, use [First application](./quickstart.mdx).

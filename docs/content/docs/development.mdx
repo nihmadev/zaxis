@@ -1,0 +1,166 @@
+---
+title: Development
+icon: Code
+description: Source map, verification commands, component extension points, and documentation publishing.
+---
+
+## Source map
+
+| Path | Responsibility |
+| --- | --- |
+| `src/lib.rs` | Public modules and crate-root integration re-exports |
+| `src/app.rs` | Desktop lifecycle, redraw scheduling, surface retry, GPU recovery |
+| `src/context.rs`, `src/context/` | Input, IDs, retained window state, paint comparison, frame assembly |
+| `src/components/` | One component per file; shared `Ui`, `Widget`, `Response`, `Style` |
+| `src/layout.rs` | Logical padding and allocation cursors |
+| `src/shapes.rs` | Geometry types, curve normalization, shape tessellation |
+| `src/text.rs` | Font layout, rasterization, paged atlas |
+| `src/protocol/` | Public draw frames, commands, vertices, and texture images |
+| `src/renderer.rs`, `src/renderer/` | GPU initialization, validation, buffers, textures, viewport, surface, frame submission |
+| `src/shaders/` | UI projection, scroll hints, and backdrop blur shaders |
+| `src/widgets.rs` | Compatibility exports |
+| `crates/zaxis-emoji/` | Optional bundled emoji font data and its OFL license |
+| `examples/` | Runner and custom-host references |
+| `tests/context.rs`, `src/context/slider_tests.rs` | Input, IDs, cache, layout, DPI, and slider interaction |
+| `tests/shapes.rs` | Asymmetric corners and inset-border geometry |
+| `tests/support/gpu_cache.rs` | Actual GPU cache checks used by integration smoke test |
+| `docs/content/docs/` | MDX documentation |
+
+## Verify the library
+
+```sh
+cargo fmt --all -- --check
+cargo check --workspace --all-targets --locked
+cargo test --workspace --lib --tests --examples --locked
+cargo test --workspace --doc --locked
+```
+
+The checks include settings example model/layout tests. Do not use
+`cargo test --all-targets` for ordinary correctness checks: the custom benchmark
+harness requires `cargo bench`. Rust CI checks Linux, Windows, macOS, and Rust 1.90;
+it skips adapter-dependent GPU tests.
+
+To check the minimum toolchain and optional codec boundary:
+
+```sh
+cargo +1.90.0 check --workspace --all-targets --locked
+cargo check --lib --no-default-features --locked
+```
+
+GPU pipeline and native runner checks require a desktop and functioning GPU:
+
+```sh
+cargo run --example demo -- --smoke-test
+cargo run --example settings -- --smoke-test
+cargo run --example integration -- --smoke-test
+```
+
+For profiling rather than correctness checks, use [Performance](./performance.mdx#verification-and-profiling).
+
+## Custom components
+
+Outside the crate, implement `Widget` by composing the public controls. For example,
+this passive status row returns the text label's response:
+
+```rust
+use zaxis::{Color, Response, Text, Ui, Widget};
+
+struct StatusRow {
+    text: String,
+    color: Color,
+}
+
+impl Widget for StatusRow {
+    fn ui(self, ui: &mut Ui<'_>) -> Response {
+        ui.horizontal(|ui| {
+            ui.add(Text::new("●").color(self.color));
+            ui.label(self.text)
+        })
+    }
+}
+```
+
+Use `ui.add(StatusRow { ... })`. `Ui::add` applies follow-up repaint when the returned
+response clicks or changes. A composed component's response describes the control
+it returns, not automatically the entire row.
+
+Public `Ui::allocate_space` and `paint` support passive geometry. Hit registration,
+paint descriptions, and response construction internals are private. A new interaction
+primitive needs crate changes rather than an external `Response` literal.
+
+Inside the library, add a component in this order:
+
+1. Create `src/components/<name>.rs` with builders, its `Widget` implementation, and optional `impl Ui<'_>` helper.
+2. Declare `pub mod <name>;` and re-export the type in `src/components/mod.rs`.
+3. Add a crate-root re-export in `src/lib.rs` if it belongs in the root API.
+4. Use stable scoped IDs, clipped hit regions, and cached paint descriptions.
+5. Define whether activation/value change sets the response flags; route helpers through `Ui::add`.
+6. Add the component page and update the API index.
+
+Existing `zaxis::widgets` compatibility exports then pick up the component automatically.
+
+## Work on the documentation
+
+The site uses Fumadocs, MDX, Next.js static export, and Tailwind CSS. Node.js 22 or
+newer is required; CI uses Node.js 24.
+
+```sh
+cd docs
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000`. Page content is in `content/docs/*.mdx`; folder
+`meta.json` files control navigation order. Frontmatter contains `title`, `description`,
+and a Lucide `icon` name registered in `lib/source.ts`.
+
+Use relative `.mdx` links for documentation pages. `createRelativeLink` resolves
+them to site routes and Next.js applies the deployment base path. Keep text task
+oriented: commands, signatures, defaults, limits, and a direct link for the next task.
+
+```sh
+npm run typecheck
+npm run build
+```
+
+The result is `docs/out`, containing static HTML, assets, `.nojekyll`, and the search
+index. Search runs in the browser; it requires no API server or external search account.
+
+## GitHub Pages
+
+Set repository **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
+The `Documentation` workflow builds pull requests and deploys pushes to the default
+branch (`main` or `master`). It can also be started with `workflow_dispatch`.
+
+The workflow uses `/<repository>` for project sites and an empty base path for a
+repository named `*.github.io`. For this repository the target is
+[nihmadev.github.io/zaxis](https://nihmadev.github.io/zaxis/).
+
+To reproduce that project path locally in PowerShell:
+
+```powershell
+$env:NEXT_PUBLIC_BASE_PATH = '/zaxis'
+npm run build
+```
+
+To build for a `nihmadev.github.io` repository, leave `NEXT_PUBLIC_BASE_PATH` empty.
+Upload the contents of `out`, not the Next.js source or `.next` directory. Deep routes
+export as `page/index.html`, so direct links work on Pages without a server rewrite.
+
+## Licenses
+
+Source is [MIT licensed](https://github.com/nihmadev/zaxis/blob/master/LICENSE).
+The bundled unmodified Lato font uses the
+[SIL Open Font License](https://github.com/nihmadev/zaxis/blob/master/assets/OFL-Lato.txt).
+The bundled Noto Color Emoji font also uses the
+[SIL Open Font License](https://github.com/nihmadev/zaxis/blob/master/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
+Include both licenses when redistributing these fonts.
+
+## Contributions and releases
+
+See [CONTRIBUTING.md](https://github.com/nihmadev/zaxis/blob/master/CONTRIBUTING.md)
+for contribution guidelines and
+[RELEASING.md](https://github.com/nihmadev/zaxis/blob/master/RELEASING.md) for publication.
+The first development release is **0.0.1 Blinking**, tagged `v0.0.1`.
+Report problems in [GitHub Issues](https://github.com/nihmadev/zaxis/issues)
+or contact [@nihmadev on Telegram](https://t.me/nihmadev).

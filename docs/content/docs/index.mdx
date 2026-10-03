@@ -1,0 +1,52 @@
+---
+title: zaxis
+icon: BookOpen
+description: An event-driven immediate mode GUI for desktop tools, written in Rust.
+---
+
+Build the UI on each redraw. Application values live in your `App`; zaxis retains
+window geometry, focus, pointer capture, and CPU/GPU caches. The event loop sleeps
+between input, native redraws, and requested deadlines.
+
+## Find a task
+
+| Task | Page |
+| --- | --- |
+| Add zaxis to a project | [Installation](./installation.mdx) |
+| Open a window and handle a button | [First application](./quickstart.mdx) |
+| Run the demo or settings example | [Examples](./examples.mdx) |
+| Change the native window or exit | [Desktop runner](./app.mdx) |
+| Arrange controls in rows | [Layout](./layout.mdx) |
+| Repeat captions or change a title | [IDs and retained state](./ids.mdx) |
+| Use buttons, checkboxes, or sliders | [Components](./components/index.mdx) |
+| Change colors, spacing, or fonts | [Style](./style.mdx), [Text](./components/text.mdx) |
+| Draw rectangles, circles, or lines | [Drawing](./drawing.mdx) |
+| Update from a timer or worker | [Repaint scheduling](./repaint.mdx) |
+| Integrate with a winit event loop | [Custom host](./integration.mdx) |
+| Change presentation or handle GPU failures | [Renderer](./renderer.mdx) |
+| Produce meshes or write a backend | [Drawing protocol](./protocol.mdx) |
+| Inspect cache activity | [Performance](./performance.mdx) |
+| Locate an exported type or method | [API index](./api.mdx) |
+| Diagnose a failure | [Troubleshooting](./troubleshooting.mdx) |
+
+## Current scope
+
+zaxis **0.0.1 Blinking** is a development release requiring Rust 1.90 or newer.
+Public APIs may change between development releases. It uses Rust 2021, winit,
+wgpu, and a shaping/rasterization engine based on cosmic-text. Both desktop backends
+are always included. The built-in runner owns one native window and one `Context`;
+multiple zaxis `Window` panels can share it.
+
+Components include windows, text, buttons, checkboxes, sliders, TextEdit with IME,
+ComboBox/Popup, numeric controls, color pickers, images, ScrollArea, Grid, and Table.
+The text engine supports complex shaping, bidirectional layout, system font fallback,
+and bundled color emoji. There is no OS accessibility bridge.
+See [limitations](./limitations.mdx) for the supported boundaries.
+
+Report problems through [GitHub Issues](https://github.com/nihmadev/zaxis/issues)
+or contact [@nihmadev on Telegram](https://t.me/nihmadev).
+
+Source code is MIT licensed. Bundled Lato and Noto Color Emoji fonts use the SIL
+Open Font License; redistribution must include the
+[Lato license](https://github.com/nihmadev/zaxis/blob/master/assets/OFL-Lato.txt)
+and [Noto Emoji license](https://github.com/nihmadev/zaxis/blob/master/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).

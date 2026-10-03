@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem in zaxis.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version or Git revision
+      placeholder: 0.0.1 Blinking, or a commit hash
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust version, GPU/backend, and DPI scale when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include a minimal example or exact steps, expected behavior, and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Include full errors or a screenshot for visual defects. Remove private data.

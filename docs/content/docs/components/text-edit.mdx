@@ -1,0 +1,114 @@
+---
+title: TextEdit
+icon: Type
+description: Single-line Unicode editing, selection, clipboard, and native IME composition.
+---
+
+```rust
+use zaxis::TextEdit;
+
+let response = ui.add(TextEdit::new(&mut name)
+    .id_source("name")
+    .placeholder("Enter a name")
+    .width(280.0));
+if response.changed() { /* the bound string was edited */ }
+if response.submitted() { /* Enter confirmed the current value */ }
+if response.lost_focus() { /* focus left this field */ }
+```
+
+`ui.text_edit(&mut text)` is the short form. The application owns the string;
+edits update it immediately. Enter does not insert a newline or clear focus.
+The three response flags are independent and can be true in the same pass.
+Each schedules a follow-up redraw, so earlier widgets observe model changes made
+by change, submit, or blur handlers.
+Focus transitions and input are queued by ID, including typing and switching fields
+before the next redraw. Read-only fields allow selection, navigation, and copying;
+disabled fields cannot focus or edit. `clicked()` is not used for text editing.
+
+| Builder | Default / behavior |
+| --- | --- |
+| `new(&mut String)` | Bind an application-owned string |
+| `id_source(impl Hash)` | Optional stable identity; otherwise call site and occurrence |
+| `placeholder(impl Into<String>)` | Empty; muted hint when the string is empty |
+| `width(f32)` | `Style::text_edit_width`; limited by available width |
+| `height(f32)` | `Style::text_edit_height`; at least font height plus padding |
+| `font_size(f32)` | `Style::text_edit_font_size` |
+| `padding(Padding)` | `Style::text_edit_padding` |
+| `rounding(CornerRadius)` | `Style::text_edit_rounding` |
+| `fill(Color)` | Quiet `Style::text_edit_fill`; theme hover state otherwise |
+| `text_color(Color)` | `Style::text_color`; muted when disabled |
+| `placeholder_color(Color)` | `Style::text_edit_placeholder` |
+| `selection_color(Color)` | `Style::text_edit_selection` |
+| `enabled(bool)` / `disabled(bool)` | Enabled by default; composes with parent groups |
+| `read_only(bool)` | False; blocks mutations and IME, retains copying |
+
+Repeated or reorderable fields should use `id_source` or `Ui::push_id` with stable
+model identities. Cursor, selection, scroll offset, blink timing and composition are
+retained by ID. External changes clamp the selection to valid grapheme boundaries
+and cancel the displayed composition and undo history; they do not report `changed()`.
+
+## Editing
+
+Click places the cursor; drag selects, including outside the field through pointer
+capture. Shift+click extends the current selection.
+Double-click selects a Unicode word (or a whitespace/punctuation segment);
+dragging afterwards extends by whole words. Triple-click selects the entire line.
+Repeated clicks must occur within 500 ms and 4 logical pixels in the same field.
+The field scrolls horizontally
+to keep the active cursor visible. Caret and hit-testing positions use the same
+font metrics, kerning and missing-glyph fallback as the text renderer.
+
+| Key | Action |
+| --- | --- |
+| Left / Right | Move by extended Unicode grapheme cluster |
+| Home / End | Start / end of the line |
+| Shift + movement | Extend selection |
+| Ctrl + Left / Right | Move across Unicode word boundaries |
+| Backspace / Delete | Delete selection or previous / next grapheme |
+| Ctrl + Backspace / Delete | Delete to the previous / next word boundary |
+| Ctrl+A | Select all |
+| Ctrl+C / X / V | Copy / cut / paste with the system clipboard |
+| Ctrl+Z | Undo, restoring cursor and selection |
+| Ctrl+Shift+Z / Ctrl+Y | Redo |
+| Enter | Set `submitted()` |
+| Tab / Shift+Tab | Move focus to the next / previous enabled control |
+
+History retains up to 100 undo steps per field. Consecutive single-grapheme typing
+within one second is grouped; navigation, selection, focus changes, deletion,
+paste and IME composition break the group. New edits after undo discard redo.
+Read-only fields retain their history but cannot undo or redo until editable.
+
+Command is also accepted for undo/redo, clipboard and word shortcuts on macOS. Keyboard
+repeats are supported. Control characters, including newlines and tabs, are removed
+from inserted or pasted text. Existing control characters in an externally supplied
+string display as spaces without mutating the bound value. Clipboard failures leave
+the string unchanged; failed copying never deletes a cut selection.
+
+Editing uses extended grapheme segmentation from
+[unicode-segmentation](https://docs.rs/unicode-segmentation/latest/unicode_segmentation/trait.UnicodeSegmentation.html)
+and the system clipboard through [arboard](https://docs.rs/arboard/latest/arboard/struct.Clipboard.html).
+Combining marks, flags, emoji modifiers and ZWJ sequences remain intact. Glyph
+coverage uses the same advanced shaping and bidirectional layout as labels, with
+system font fallback and bundled color emoji. Non-emoji script coverage still depends
+on available fonts. The editor is single-line; logical editing order does not imply
+a complete visual-navigation model for every mixed-direction text case.
+
+## IME and repaint scheduling
+
+Native `Ime::Preedit` appears underlined at the current selection without changing
+the string. The IME cursor and selected composition range are shown; `Ime::Commit`
+replaces the selection. Losing focus discards preedit. Enter used during composition
+does not also submit the field.
+
+The built-in runner enables native IME for the focused editable field and places
+its candidate window at the visible caret. Custom hosts must call
+`context.sync_ime(&window)` **after** `Context::run`, before presenting. The logical
+anchor is also available through `Context::ime_cursor_area()`.
+
+Focused cursor blinking uses `Style::text_edit_blink_interval` and repaint deadlines.
+The host sleeps with `WaitUntil`; no continuous polling is needed. Unfocused fields
+schedule no timers. Setting the interval to zero shows a steady cursor without
+blink timers. The cursor width is `Style::text_edit_cursor_width`.
+
+Run `cargo run --example text_edit` to try independent fields, Unicode, read-only,
+disabled state and separate change/Enter/blur counters.

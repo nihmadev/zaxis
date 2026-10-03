@@ -1,0 +1,94 @@
+---
+title: ComboBox
+icon: ListFilter
+description: Stable single selection, overlay popup, keyboard navigation and optional text filtering.
+---
+
+`ComboBox` binds an `Option<T>` where `T: Clone + PartialEq`. Options have separate
+IDs, values and labels. IDs must be unique and stable across insertion, removal
+and reordering. Labels can repeat and are rendered literally, including `##`.
+
+```rust
+use zaxis::{ComboBox, ComboBoxOption};
+
+let options = [
+    ComboBoxOption::new("eu", "europe", "Europe / Европа"),
+    ComboBoxOption::new("us", "america", "America"),
+    ComboBoxOption::new("offline", "offline", "Unavailable").disabled(true),
+];
+let mut selected = Some("europe");
+
+let response = ui.add(ComboBox::new(&mut selected, &options)
+    .id_source("region")
+    .label("region")
+    .filterable(true)
+    .width(240.0)
+    .visible_rows(5)
+    .animation_duration(std::time::Duration::from_millis(160)));
+if response.changed() {
+    // Persist selected or update the application.
+}
+```
+
+`ui.combo_box(&mut selected, &options)` is the short form without a caption or
+filter. Use `id_source` or `Ui::push_id` for dynamic/repeated controls.
+`default_open` sets the initial state; interaction is retained by ID afterward.
+
+`changed()` is true only when an enabled option changes the bound value.
+Selecting the current value closes the list without reporting a change.
+Disabled controls preserve layout and values; disabled options are visible but
+cannot be selected with the pointer or keyboard. An empty list cannot open.
+If a selected value disappears, the model is preserved and `placeholder` is
+shown until the application or user supplies a valid selection. Updating an
+open list preserves the active option by ID; a removed or disabled active option
+falls back to the first enabled match. Distinct values identify distinct selections.
+
+## Keyboard and filtering
+
+Tab focuses the trigger. Up/Down, Enter or Space opens the list, initially
+revealing the selected enabled option. Up/Down skips disabled options; Home/End
+selects the first/last active candidate; Page Up/Down moves by `visible_rows`.
+Enter selects the active option. Escape cancels and returns focus to the trigger.
+Tab closes the popup and continues normal focus traversal. Pointer selection
+also returns focus to the trigger. Navigation scrolls the active row into view.
+
+`filterable(true)` uses the existing `TextEdit`, including Unicode editing,
+clipboard and IME. Opening focuses an empty filter. Matching is a case insensitive
+substring of the label. Up/Down and Enter operate the results; Space, Home/End
+and Left/Right retain their text editing behavior. No matches leaves the filter
+editable without changing the selection. The query resets on the next opening.
+
+## Appearance and layering
+
+`Style::combo_box` contains `ComboBoxStyle`: the palette, compact 22-pixel trigger,
+20-pixel rows with 2-pixel gaps, caption spacing, trigger and popup padding,
+4-pixel rounding, thin idle/hover borders, and the 160 ms animation duration.
+The default list shows up to five row heights and reuses `ScrollArea` with
+virtual rows. The chevron rotates geometrically; the selected check is also
+vector geometry. Unselected labels use the muted color.
+
+Use `.style(custom_style)` for a complete per-widget override. Builders also
+override `width`, `trigger_height`, `row_height`, `row_gap`, `label_gap`,
+`padding`, `popup_padding`, `rounding`, `font_size`, `visible_rows` and
+`animation_duration`. These overrides are resolved against `Style::combo_box`
+each pass. `Style::motion.reduced_motion` removes transitions.
+
+The shared [Popup](./popup.mdx) places the list above every window and escapes
+the parent's clip. It fits horizontally to the viewport, opens upward when the
+bottom lacks room, and limits its height to available space. Outside presses
+close it and consume the gesture. Closing removes input regions immediately;
+the remaining visual transition owns no hits. Rapid toggles retarget the same
+animation channel from its current value. Settled or hidden animation schedules
+no redraws; a focused filter can still schedule its normal caret blink.
+
+Option IDs, enabled state and label content are compared against a retained
+snapshot while the popup is visible. Duplicate-ID validation and filter result
+rebuilding run only after changes. Folded labels survive reordering and are
+updated for in-place label edits. Closed controls do not scan/filter the entire
+list on each pass. [ComboBox benchmarks](../performance.mdx#stress-benchmark)
+measure cached, animated, keyboard, scroll, filter and live-update paths.
+
+Run `cargo run --example combo_box` for a long list, repeated labels, disabled
+options, delayed option updates, overlapping panels, a clipped parent and a
+draggable viewport-edge panel. `-- --open` opens the searchable list initially;
+`-- --smoke-test` renders the popup through the native GPU runner and exits.

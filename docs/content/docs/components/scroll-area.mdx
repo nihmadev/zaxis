@@ -1,0 +1,165 @@
+---
+title: ScrollArea
+icon: MoveVertical
+description: Measured scroll viewports, nested input routing, retained offsets, and fixed-row virtualization.
+---
+
+`ScrollArea` builds a child `Ui` through a closure. Import it from `zaxis` or
+`zaxis::components`. It is a container, like `Window`.
+
+```rust
+use zaxis::ScrollArea;
+
+let output = ScrollArea::vertical()
+    .id_source("preferences")
+    .max_height(320.0)
+    .show(ui, |ui| {
+        for item in &mut settings {
+            ui.push_id(item.id, |ui| {
+                ui.checkbox(&mut item.enabled, &item.name);
+            });
+        }
+    });
+```
+
+`ScrollAreaOutput` contains the closure's `inner` result, the scoped `id`,
+`viewport`, measured `content_size`, and final `offset`. Distances are logical
+pixels. The viewport is bounded by the available parent size and `max_width` /
+`max_height`; the default height limit is 300. It keeps its allocation when content
+is shorter, so siblings do not jump as the scroll range changes.
+
+The child layout extends downward for vertical scrolling. Horizontal scrolling
+uses a horizontal layout; `both()` uses a vertical layout with overflow on both
+axes. Use `content_width` for wide wrapped content, `Text::wrap(false)` for long
+lines, or `allocate_space` for explicitly sized content. `available_height` inside
+a vertically scrolling child describes layout capacity; use `clip_rect().size()`
+for its visible size.
+
+## Builders
+
+| Builder | Purpose |
+| --- | --- |
+| `vertical()`, `horizontal()`, `both()` | Enabled scroll axes |
+| `id_source(source)` / `id(Id)` | Stable ID scoped to the parent UI |
+| `max_width(width)`, `max_height(height)` | Viewport allocation limits |
+| `content_width(width)` | Child layout width; defaults to the content viewport width |
+| `style(ScrollStyle)` | Local chrome, padding, and spacing override |
+| `show_scrollbars(bool)` | Draw scrollbar thumbs, default true |
+| `overlay_scrollbars(bool)` | Draw thumbs over content without reserving gutters, default false |
+| `middle_mouse_scroll(bool)` | Middle-button autoscroll, default true |
+| `show_hints(bool)` | Fade at the bottom/right while later content remains, default true |
+| `scroll_offset(Vec2)` | Set the offset on this pass |
+| `scroll_to_rect(Rect)` | Reveal a rectangle in content coordinates |
+
+`Ui::scroll_vertical(build)` is the short form. Automatic IDs use the call site
+and occurrence within the current scope. Use explicit IDs or `push_id` for dynamic
+lists and areas that can be reordered. Offsets survive hidden passes for the
+context lifetime; hidden areas receive no input.
+
+## Input, clipping, and nested areas
+
+Wheel events route immediately to the deepest enabled visible area under the
+pointer in the top panel. Each axis consumes only the distance it can scroll;
+the remainder goes to its parent. Siblings never receive that remainder. At an
+outer boundary an unused wheel event reports `consumed = false`. Wheel input over
+a scrollbar belongs to that same area. Pixel deltas preserve fractional values
+and are divided by DPI scale once; native line deltas use `Style::font_size`. Shift converts vertical wheel input
+to horizontal scrolling.
+
+Thumb dragging captures the pointer through release, including outside the
+viewport. A short middle click starts autoscroll: move away from the click origin
+to scroll, with an 8 px dead zone and speed proportional to distance. Moving while
+holding the middle button scrolls until release. A second click, Escape, wheel
+input, leaving the native window, or losing focus stops the gesture. The initial
+area stays the target; unused motion still passes to its parent. Both axes work
+when enabled. Use `middle_mouse_scroll(false)` to opt out.
+
+Autoscroll requests a 16 ms deadline only while movement can change an offset;
+inside the dead zone or at an outer boundary it sleeps. Cancellation clears its
+own deadline without disturbing application timers. `Context::is_auto_scrolling()`
+reports whether the gesture is active. Tiny thumbs have a minimum length and an inward hit margin. Disabled
+areas retain their offset and layout but cannot capture or consume scrolling.
+
+Paint and hit regions use the same offset and the intersection of all ancestor
+viewports. Fully clipped controls are removed from hit testing and focus traversal;
+focused controls lose focus when scrolled out. Input bursts cannot click stale
+content geometry between a wheel event and the next redraw.
+
+Content is measured once per closure. After resize or content reduction, offset
+corrections are applied to deferred paint, hit regions, and IME coordinates before
+the frame is emitted. A follow-up repaint refreshes closure responses after a
+correction; a `Response::rect` captured inside that closure reflects its layout
+coordinates at the time of construction. The final `ScrollAreaOutput::offset`
+already reflects clamping.
+
+## Reveal an element
+
+A builder target uses unscrolled content coordinates:
+
+```rust
+ScrollArea::vertical()
+    .scroll_to_rect(Rect::from_min_size(vec2(0.0, 500.0), vec2(1.0, 30.0)))
+    .show(ui, build);
+```
+
+Inside the closure, `ui.scroll_to_response(&response)` or
+`ui.scroll_to_rect(response.rect)` accepts screen coordinates and targets the
+nearest containing area. Call it on the action that should reveal the element;
+calling it every frame continually overrides user scrolling. Oversized targets
+align their leading edge. Targets are clamped to measured content.
+
+## Fixed-height rows
+
+`show_rows` calls its callback only for rows that intersect the viewport. The
+full row pitch includes any gap. Each row has a separate layout, rectangular clip,
+and stable index scope; a row callback must fit its contents within that pitch.
+
+```rust
+let output = ScrollArea::vertical()
+    .id_source("events")
+    .max_height(180.0)
+    .show_rows(ui, 26.0, events.len(), |ui, index| {
+        ui.label(&events[index].title);
+    });
+// output.inner is the visible Range<usize>.
+```
+
+Total content height is `row_height * total_rows`; skipped rows execute no widgets.
+Count changes clamp the offset before selecting the visible range. To jump to an
+unbuilt row, use a builder target at `index * row_height` before `show_rows`.
+Row widget IDs follow indices. Keep durable per-item data in the application
+model when rows can be reordered; use ordinary `show` with model ID scopes when
+retained widget identity must follow an item across positions.
+
+## Style and repaint
+
+`Style::scroll` holds `ScrollStyle`. Defaults follow Rayfield's column proportions:
+2 px bars, 2 px insets, 8 px item spacing, a 6 px gutter margin, and a 26 px fade.
+Thumb colors use neutral muted gray. The edge hint is a procedural WGSL shadow
+in `src/shaders/scroll_hint.wgsl`: black with a peak alpha of 16/255 (about 6%) and
+a smootherstep fade with zero slope at both ends. It darkens content gently
+without a bright gray strip. `hint_color` and `hint_size` remain configurable. `ScrollStyle::compact()` uses 4 px bars and 2 px
+item spacing, matching the compact dropdown list. Thumb color, hovered color,
+minimum length, hint size/color, padding, and spacing are public fields.
+
+```rust
+let mut compact = ui.style().scroll;
+compact.bar_width = 4.0;
+compact.spacing = 2.0;
+ScrollArea::vertical().style(compact).show(ui, build);
+```
+
+Ordinary wheel scrolling has no continuous timer. Middle-button autoscroll uses
+its own cancellable deadline while moving; Vsync hosts follow presentation instead
+of adding a second 16 ms wait. Input, offset corrections, and ordinary
+widget changes request repaint; settled areas sleep. Unchanged deferred paint
+still uses the existing tessellation and frame geometry caches. Hidden translated
+paint retains its cached mesh and is omitted from frame geometry. Visible shapes
+reuse translated meshes; text preserves physical glyph raster phases. Virtual ranges
+may change element order/count, which uses the existing complete-upload fallback.
+
+Run `cargo run --example scroll_area` for long settings, two independent columns,
+a nested compact list with 10,000 rows, row-count changes, row reveal, and a
+nested two-axis canvas. The example's `--smoke-test` only verifies native
+presentation. Visual appearance and physical touchpad feel require interactive
+inspection on the target device.

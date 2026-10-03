@@ -1,0 +1,151 @@
+---
+title: Image
+description: Built-in asynchronous local images, SVG and bounded resource caches.
+---
+
+```rust
+ui.image("assets/photo.jpg");
+ui.image(include_bytes!("assets/logo.svg"));
+ui.add(Image::new(&source).size(vec2(240.0, 160.0))
+    .fit(ImageFit::Cover).filter(TextureFilter::Linear)
+    .corner_radius(12.0).opacity(0.8));
+```
+
+`ImageSource::rgba([width, height], pixels)` accepts tightly packed sRGB RGBA8
+with straight alpha. `ImageSource::encoded(bytes)` owns encoded bytes through an
+`Arc<Vec<u8>>`. Keep an owned source between frames; clones share storage and
+identity. Paths and `include_bytes!` need no handles, decoders or backend calls.
+The ordinary runner wakes automatically when a background result arrives.
+
+PNG, JPEG, WebP, BMP and SVG are built in. GIF and TIFF are enabled by the default
+`image-gif` and `image-tiff` features; `--no-default-features` removes those two.
+Encoded format is detected from content, including files with misleading
+extensions. Animated GIF/WebP display only their first frame. JPEG EXIF orientation
+is applied. ICC profiles, HDR and wide-gamut color management are not implemented;
+converted channels are interpreted as sRGB RGBA8, with lower precision when needed.
+
+Natural dimensions are logical layout units, independent of DPI. `size`, `max_size`
+and `aspect_ratio` reserve layout space; unknown natural size uses a small placeholder.
+Contain preserves the full image, cover crops centrally and stretch fills the box.
+`uv(Rect)` crops before fitting. Tint and opacity compose with subtree opacity.
+Rounded texture contours use the core tessellator and clipping. Images are decorative
+unless `.interactive(true)` enables the usual `Response` hit region.
+
+`Image::show(ui)` returns `ImageOutput { response, state }`. `ImageState` is Loading,
+Ready or Error; `Context::image_state` observes it. `.placeholder(false)` allows custom
+error/loading UI. Failed versions remain failed until explicit retry; they do not
+decode again every frame.
+
+SVG uses CPU rasterization through [resvg](https://github.com/linebender/resvg), then
+the existing GPU texture backend. Parsed trees and raster variants are separate.
+viewBox, intrinsic size, paths, fills, strokes, transforms, gradients and clipping
+are handled by the SVG engine. Text uses only bundled Lato with its OFL license;
+system fonts and linked fonts are not loaded. Filters, patterns and masks are explicitly
+rejected to bound intermediate raster allocations; clip paths are supported.
+Linked and data-URL images are disabled, no script execution or resource fetching
+occurs. This is not a general browser SVG implementation.
+
+Physical raster size accounts for DPI, visual scaling and UV enlargement. The largest
+visible demand shares a texture. During continuous resize the previous raster remains
+visible; after 120 ms without a size change one exact variant is requested. Each source
+retains at most three variants. Strong raster minification uses background area
+downsampling in linear color with premultiplied accumulation. Nearest uses original
+pixels. Linear GPU filtering interpolates premultiplied samples to avoid dark alpha edges.
+
+## Identity and lifetime
+
+Paths are normalized lexically against the Context's creation directory, without file
+I/O in the UI pass. Symlinks and case aliases are not canonicalized. Files are read once
+per retained version; there is no watcher. Static bytes use address and length, owned
+bytes/RGBA use the Arc allocation and dimensions, never a whole-buffer content hash.
+Use one `static` byte slice or retain one `ImageSource` to share embedded data across
+different call sites. Separate constant promotions can have different addresses.
+`.with_revision(n)` distinguishes explicit versions without copying encoded storage.
+
+`Context::load_image(source)` returns a pinned context-local handle. `update_image`
+replaces data without changing its texture ID; `reload_image` rereads/retries,
+`invalidate_image(source)` invalidates ordinary sources. Late results of earlier
+generations cannot overwrite replacements. `release_image` removes a handle;
+`clear_image_cache` releases decoded/raster data but retains recoverable source
+descriptions. A pinned handle is not invalidated by eviction; it can load again.
+Application-owned Arc clones keep their input bytes alive independently of cache eviction.
+
+Default per-Context limits: 16 MiB encoded, 8192 per dimension, 64 MiB decoded RGBA,
+1 MiB SVG XML, 50,000 XML nodes, 128 MiB CPU cache, 128 MiB managed GPU texels,
+512 descriptors, 1024 GPU bindings, eight pending jobs and 288 MiB in-flight
+reservation. Two lazy worker threads share the queue; conservative reservation
+allows two default-size jobs at once. Results remain charged until publication.
+Change these through `ImageLimits` and `Context::set_image_limits`.
+
+For a smaller retained footprint and bounded work on modest assets:
+
+```rust
+let mut limits = context.image_limits().clone();
+limits.cpu_cache_bytes = 32 << 20;
+limits.gpu_cache_bytes = 32 << 20;
+limits.max_encoded_bytes = 8 << 20;
+limits.max_decoded_bytes = 16 << 20;
+limits.max_inflight_bytes = 80 << 20;
+limits.max_pending_jobs = 2;
+context.set_image_limits(limits);
+```
+
+This intentionally rejects decoded images above 16 MiB (including 4096² RGBA).
+Eviction can release library-owned buffers, but cannot release your retained input
+Arc clones or force the system allocator/driver to return pages to the OS.
+
+Inactive entries/allocations are evicted under LRU budget pressure; absence from a
+frame does not immediately delete resources. Active sets exceeding the budget return
+errors. Parsed SVG bytes are conservatively estimated, GPU texel residency is an
+estimate from dimensions/format, not measured VRAM. Allocator retention, thread stacks,
+fonts, driver allocations and application-held buffers are outside those counters.
+Third-party codec scratch limits are best effort, not an OS sandbox.
+The CPU budget bounds retained image data, not the whole process working set:
+in-flight decoder reservations are separate and can temporarily add up to 288 MiB.
+GPU dimensions are validated against device limits before upload. `Renderer::clear_image_textures`
+explicitly drops managed residency; full DrawData restores it on the next render.
+Text atlas and low-level unmanaged textures retain their existing semantics.
+
+## Custom hosts and decoders
+
+Install `Context::set_image_waker` with a thread-safe callback that enqueues an event
+in your host loop. On that event request a UI pass/render. Do not access or lock the
+Context from the callback. `needs_repaint` sees completed results; `next_repaint`
+provides resize-settle deadlines. A sleeping host must actually be woken by its callback.
+No Tokio runtime, frequent polling or continuous redraw is required.
+
+Implement `ImageDecoder` and register an `Arc` with `Context::add_image_decoder` to
+recognize another encoded format. Built-ins remain installed. The decoder runs in a
+worker, must check supplied limits before allocation and return straight sRGB RGBA8.
+It must finish in bounded time. Context drop cancels queued work and callbacks;
+currently running codec work finishes without publishing. GPU creation always stays
+with the renderer owner.
+
+Custom renderers receive the same `TextureImage` payloads and mesh batches as text.
+`DrawData::texture_options` specifies per-image filtering and managed lifetime; missing
+options retain the legacy linear unmanaged contract. DrawData is complete, with no
+release deltas that can be lost when frames are skipped. Texture revisions are
+independent of geometry revisions, including fixed-size loading placeholders.
+
+## Validation and measurement
+
+```sh
+cargo run --release --example images -- --smoke-test
+cargo bench --bench performance -- --quick --cpu-only --filter image_ --sizes 64
+cargo bench --bench performance -- --cpu-only --filter image_ --sizes 64,256,1024,4096 --iterations 100
+cargo bench --bench performance -- --filter image_ --sizes 64,256 --gpu-wait --gpu-timestamps
+```
+
+Use `--help` for presentation mode and samples. Local deterministic assets are prepared
+outside timing. Cold files may be warm in the OS page cache. CPU service, queue delay,
+publication and first-ready latency are separate stages. SVG resize totals include the
+intentional settle delay and are not UI pass time. JSON includes process working set and
+Windows private commit snapshots, plus cache/GPU counters and estimated residency.
+Unsupported asset sets are reported explicitly.
+
+Opt-in timestamp diagnostics serialize readback after completion. Render-pass timestamps
+measure GPU draw execution. Diagnostic explicit-copy upload timestamps measure that copy
+path, which differs from production `queue.write_texture`. Exact production GPU transfer
+and GPU allocation times are unavailable. Texture/view/bind-group creation and write_texture
+durations are CPU API time. `--gpu-wait` is completion waiting, and render/present includes
+CPU and surface work. Neither is pure GPU time.

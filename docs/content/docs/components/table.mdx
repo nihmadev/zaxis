@@ -1,0 +1,115 @@
+---
+title: Table
+icon: Table2
+description: Pinned headers, shared column widths, resizing, stable row selection and virtual rows.
+---
+
+`Table` composes [Grid](./grid.mdx) columns with the existing
+[ScrollArea](./scroll-area.mdx). It owns presentation and interactions; the
+application owns data and sorting. It supports ordinary variable-height rows
+and fixed-height virtualization.
+
+The default surface is a rounded card with an eight-pixel radius, subtle border,
+eight-pixel outer padding and rounded header corners. Row and scrollbar clips
+stay inside the frame's curved edges, including custom radii or zero requested
+padding. `rounding`, `border`, and `padding` override the inherited style.
+
+```rust
+use zaxis::{Column, Id, Table};
+
+let output = Table::new("records")
+    .columns([
+        Column::fixed("id", 70.0).min_width(45.0).title("ID").sortable(true),
+        Column::remainder("name").min_width(130.0).title("Name").sortable(true),
+        Column::fixed("enabled", 110.0).title("Enabled"),
+    ])
+    .max_height(300.0)
+    .show_rows(ui, 36.0, records.len(), |body, index| {
+        let record = &mut records[index];
+        body.row(record.id, |row| {
+            row.cell(|ui| { ui.label(record.id.to_string()); });
+            row.cell(|ui| { ui.label(&record.name); });
+            row.cell(|ui| { ui.checkbox(&mut record.enabled, "Active"); });
+        });
+    });
+
+if let Some(request) = output.sort_request {
+    // Reorder records using request.column and request.direction.
+}
+```
+
+For variable-height rows, use `show(ui, |body| { ... })` and call
+`body.row(stable_key, build)` for each record. Row height is the tallest cell,
+subject to `TableStyle::row_min_height`. Any components, nested layouts or custom
+widgets may be placed in a cell.
+
+## Identity and virtual rows
+
+`show_rows(ui, full_row_height, total_count, build)` delegates visibility and
+offset clamping to `ScrollArea::show_rows`. It builds only visible rows; the
+`inner` output is their index range. The height is the complete pitch, including
+cell padding. Content taller than that height is clipped. Call `body.row` exactly
+once for each visible callback, with an application key such as a database ID.
+Use `body.row_id(Id, build)` for an already constructed ID.
+
+Never use a display index as the key for sortable/changing data. Rows and their
+controls are scoped by the table, persistent row key and column ID, so sorting
+or inserting data does not assign another record's identity to them. Virtual
+row layout caches are retained only for live rows. Bound values belong to the
+application; keep them outside the callback. Offscreen controls receive no input.
+
+## Header and resizing
+
+The header stays above the scrolling body. Horizontal offset moves header cells
+and body cells together, with exactly the same resolved widths. Width policies
+and minima are those of Grid. Content widths include header labels and observed
+row content; virtual tables retain the largest observed content width so scrolling
+does not make columns jump. A newly encountered wider cell schedules a redraw;
+the header and all built rows use the same widths on both passes.
+
+Hovering a header edge displays the native system column-resize cursor. Drag
+to resize its column. Pointer capture and the cursor continue outside the
+header until release, and `min_width` clamps the result. A resized column becomes
+a retained fixed width, keyed by column ID; other flexible columns receive the
+remaining space. Disable all handles with `resizable(false)`, or a particular
+handle with `Column::resizable(false)`. Widths and scroll offsets survive hiding
+and reordering the table. Widths are not persisted to disk by the library.
+
+The table scrolls both axes, using nested wheel routing, middle-button autoscroll
+and overlay scrollbars from ScrollArea. `scroll_offset(Vec2)` sets an offset for
+one pass; subsequent passes retain user scrolling. No separate scrolling engine
+is involved.
+
+## Selection and sorting
+
+Click passive row content or empty cell space to select that row. Interactive
+cell controls take precedence. `selected_row` and `row_clicked` return the
+application's row ID, never the display position. Selection is retained by default;
+`selected_row(Option<Id>)` supplies an application-controlled selection, and
+`selectable(false)` disables row activation.
+
+`Column::sortable(true)` makes a header emit `SortRequest { column: Id,
+direction: SortDirection::{Ascending, Descending} }`. Successive clicks toggle
+the direction. The request appears only on activation. The library does not
+reorder data or call a comparator. `sort(Option<SortRequest>)` supplies the
+currently applied sort indicator if the application controls sorting externally.
+
+## Style and output
+
+`Style::table` holds `TableStyle`: outer/cell padding, header and minimum row
+heights, component spacing, font size, surface/text/hover/selection/alternate
+colors, corner radii and border, separator width/color, resize handle width, striping/separator defaults
+and `ScrollStyle` chrome. Body viewport padding and row gaps are zero so header
+and body column edges match; table and cell padding handle the insets.
+
+Builders include `columns`, `column`, `style`, `rounding`, `border`, `padding`, `width`, `max_height`, `striped`,
+`separators`, `resizable`, `selectable`, `selected_row`, `sort`, and `scroll_offset`.
+The default total height limit is 300 logical pixels, clipped to the parent size.
+
+`TableOutput` contains `inner`, table `rect`, `header_rect`, body `viewport`,
+shared `widths`, final `offset`, `selected_row`, `row_clicked`, `sort_request`, and
+the built `(row_id, rect)` pairs. Virtual output stays proportional to visible rows.
+
+Run `cargo run --example grid_table`. The example has settings cards, a 10,000-row
+table, editable checkboxes, resizing and application-side sorting.
+It uses Immediate presentation without Vsync.

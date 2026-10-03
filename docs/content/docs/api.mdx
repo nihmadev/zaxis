@@ -1,0 +1,140 @@
+---
+title: API index
+icon: List
+description: Exported types and method groups with direct links to their contracts.
+---
+
+## Crate-root exports
+
+| Types / functions | Contract |
+| --- | --- |
+| `run`, `run_with_options`, `App`, `Frame`, `RunOptions`, `RunError` | [Desktop runner](./app.mdx) |
+| `Context`, `EventResponse`, `InputState` | [Context below](#context), [Input](./input.mdx), [Custom host](./integration.mdx) |
+| `Id` | [IDs and retained state](./ids.mdx) |
+| `Ui`, `Widget`, `Response` | [Ui below](#ui), [Components](./components/index.mdx), [Input](./input.mdx) |
+| `Window` | [Panel builders and geometry](./components/window.mdx) |
+| `Grid`, `GridUi`, `GridRow`, `GridStyle`, `GridOutput`, `Column`, `ColumnWidth`, `Align` | [Shared column layout](./components/grid.mdx) |
+| `Table`, `TableBody`, `TableStyle`, `TableOutput`, `SortRequest`, `SortDirection` | [Data table composition](./components/table.mdx) |
+| `ScrollArea`, `ScrollAreaOutput`, `ScrollStyle` | [Scroll viewports and virtualization](./components/scroll-area.mdx) |
+| `Popup`, `PopupOutput` | [Overlay layers and dismissal](./components/popup.mdx) |
+| `ComboBox`, `ComboBoxOption`, `ComboBoxStyle` | [Selection and filtering](./components/combo-box.mdx) |
+| `Text` | [Text builders and fonts](./components/text.mdx) |
+| `TextEdit` | [Single-line editing and IME](./components/text-edit.mdx) |
+| `Button` | [Button builders and activation](./components/button.mdx) |
+| `Checkbox` | [Boolean binding](./components/checkbox.mdx) |
+| `Slider`, `SliderStatus` | [Numeric binding](./components/slider.mdx) |
+| `ColorPicker`, `ColorPickerType` | [Color selection](./components/color-picker.mdx) |
+| `Separator` | [Dividing lines](./components/separator.mdx) |
+| `Style` | [Theme fields and defaults](./style.mdx) |
+| `Animation`, `Interpolate`, `Easing`, `Tween`, `TweenOptions`, `Keyframes`, `Keyframe`, `Repeat`, `Procedural`, `Wake` | [Animation tracks and extension contracts](./animation.mdx) |
+| `Animated`, `AnimationStatus`, `AnimationSample`, `AnimationOptions`, `MotionStyle` | [Animation state, scheduling and style](./animation.mdx) |
+| `Layout`, `Padding` | [Layout and insets](./layout.mdx) |
+| `Rect`, `RectShape`, `Shape`, `Border`, `CornerRadius`, `Color` | [Drawing](./drawing.mdx), [Color](./style.mdx#color) |
+| `DrawData`, `GeometryUpdate`, `DrawCommand`, `Vertex`, `TextureId`, `TextureImage` | [Drawing protocol](./protocol.mdx) |
+| `Renderer`, `RenderError`, `RenderStatus`, `PresentationMode` | [Renderer](./renderer.mdx) |
+| `CacheStats`, `RendererStats` | [Performance counters](./performance.mdx#counters) |
+| `Vec2`, `vec2` | glam two-dimensional vectors |
+| `winit`, `wgpu` | Integration-crate re-exports |
+
+## Context
+
+One context holds UI state for one native viewport.
+
+| Method | Returns / purpose |
+| --- | --- |
+| `Context::new()` / `default()` | Bundled font and default style |
+| `Context::with_font(FontArc)` | Custom font context |
+| `run(build: impl FnOnce(&mut Context))` | `bool`, currently always `true`; complete UI pass |
+| `run_at(Instant, build)`, `frame_time()`, `needs_repaint_at(Instant)` | Deterministic monotonic host clock |
+| `transition`, `transition_from`, `animate`, `animate_with` | [Retained visible animation channels](./animation.mdx) |
+| `sample_animation`, `animation_status`, `pause_animation`, `resume_animation`, `cancel_animation`, `finish_animation`, `restart_animation`, `restart_animation_with` | Animation sampling and controls |
+| `on_window_event(&WindowEvent)` | `EventResponse`; process native input immediately |
+| `on_key_event(KeyCode, ElementState, bool)` | `EventResponse`; physical key bridge, with repeat flag; text/modifiers supplied separately |
+| `sync_ime(&Window)` | Enable and position native IME after a custom host UI pass |
+| `ime_cursor_area()` | Optional logical composition window anchor |
+| `request_focus(Id)`, `close_popup()` | Move widget focus; close overlay and restore focus |
+| `on_text_event(&str)` | `EventResponse`; committed text bridge for TextEdit and editable color fields |
+| `input()` | `&InputState`; read accumulated input during the callback |
+| `cursor_icon()` | Native `winit::window::CursorIcon` for the hovered/captured region; applied automatically by the runner |
+| `style()` / `set_style(Style)` | `&Style` / replace style and request repaint |
+| `set_viewport(PhysicalSize<u32>, f64)` | Set physical size and DPI; request repaint on change |
+| `viewport()` | `Rect` in logical coordinates |
+| `scale_factor()` | `f32` physical pixels per logical pixel |
+| `draw_data()` | `&DrawData` from the most recent completed pass |
+| `request_repaint()` | Schedule another pass |
+| `request_repaint_after(Duration)` | Record the earliest future deadline |
+| `needs_repaint()` | `bool`; pending immediate request or elapsed deadline |
+| `next_repaint()` | `Option<Instant>` |
+| `wants_animation_frame()` | Continuous visible motion; Vsync hosts request the next presented frame |
+| `cache_stats()` | `CacheStats` snapshot |
+
+`set_viewport` substitutes 1 for a nonpositive or nonfinite input scale. Use ordinary
+finite positive DPI values; renderable logical viewport and scale are validated by
+the renderer. `Context` exposes no public per-widget hit registration, mesh painting,
+or retained-window reset API.
+
+## Ui
+
+Created by `Window::show`; construction fields are private.
+
+| Method | Returns / purpose |
+| --- | --- |
+| `add(impl Widget)` | `Response`; apply automatic follow-up repaint |
+| `add_enabled(bool, impl Widget)` | `Response`; conditionally enabled widget |
+| `add_enabled_ui(bool, build)` | Closure result; inherited enabled state for a group |
+| `is_enabled()` | `bool`; effective enabled state |
+| `label(text)` | `Response`; add `Text` |
+| `text_edit(&mut String)` | `Response`; add a single-line editor |
+| `muted(text)` | `Response`; add text in `Style::muted_text` |
+| `button(text)` | `Response`; add `Button` |
+| `button_enabled(bool, text)` | `Response`; conditional button |
+| `selectable(bool, text)` | `Response`; selected button appearance |
+| `selectable_value(&mut T, T, text)` | `Response`; update selection and report `changed()` |
+| `tab_bar(&mut T, (T, label) iterator)` | `Vec<Response>`; equal-width tabs bound to a selection |
+| `tab_pages(source, usize, Vec2, build)` | Fixed-size directed page transitions, latest pending selection |
+| `animation_id`, `transition`, `transition_from`, `animate`, `animate_with` | Scoped application animation channels |
+| `checkbox(&mut bool, text)` | `Response`; add `Checkbox` |
+| `checkbox_enabled(bool, &mut bool, text)` | `Response`; conditional checkbox |
+| `slider(&mut f32, RangeInclusive<f32>)` | `Response`; add `Slider` |
+| `slider_enabled(bool, &mut f32, range)` | `Response`; conditional slider |
+| `slider_labeled(&mut f32, range, text)` | `Response`; caption and value below track |
+| `color_picker(&mut Color, text)` | `Response`; expandable internal color editor |
+| `separator()` | `Response`; add horizontal `Separator` |
+| `horizontal(build)` | Closure result; nest a horizontal row |
+| `grid(source, columns, build)` | `GridOutput<R>`; shared columns with stable row keys |
+| `vertical(build)` | Closure result; nest a vertical column, including inside a row |
+| `push_id(impl Hash, build)` | Closure result; scope child IDs |
+| `style()` | `&Style` |
+| `context()` | `&mut Context` |
+| `available_width()` | `f32`; remaining logical width |
+| `clip_rect()` | `Rect`; logical content clip |
+| `add_space(f32)` | Advance layout cursor |
+| `allocate_space(Vec2)` | `Rect`; reserve custom geometry |
+| `paint(impl Into<Shape>)` | Add cached vector shape or `RectShape` builder |
+
+`Widget::ui(self, &mut Ui<'_>) -> Response` consumes the widget. Component `Response`
+methods are `clicked(self)` and `changed(self)`; geometry and hover/press/focus fields
+are public. Use `Ui::add` to preserve automatic repaint behavior for custom widgets.
+
+## Public modules
+
+| Module | Contents |
+| --- | --- |
+| `app` | Desktop runner types and functions |
+| `components` | Components, `Ui`, `Widget`, `Response`, `Style`; per-component submodules |
+| `context` | `Context`, `Id`, input and CPU cache counters |
+| `layout` | `Layout`, `Padding` |
+| `protocol` | Frame, vertex, command, texture protocol |
+| `renderer` | GPU renderer, errors, statuses, presentation, GPU counters |
+| `shapes` | Drawing primitives; compatibility re-exports of four protocol types |
+| `widgets` | Compatibility re-export of all components |
+
+The internal text engine and context/renderer implementation submodules are private.
+Generate compiler-linked API documentation locally with:
+
+```sh
+cargo doc --no-deps --open
+```
+
+Scroll containers also expose `Ui::scroll_vertical`, `Ui::scroll_to_rect`,
+`Ui::scroll_to_response`, and `Ui::available_height`. See [ScrollArea](./components/scroll-area.mdx).

@@ -1,0 +1,100 @@
+---
+title: Input and responses
+icon: Keyboard
+description: Pointer capture, keyboard focus, accumulated input, and event consumption.
+---
+
+## Response
+
+Every `Ui::add` and component convenience method returns a `Response` for that UI pass.
+
+| Field or method | Meaning |
+| --- | --- |
+| `id: Id` | Final scoped widget identity |
+| `rect: Rect` | Allocated rectangle in logical viewport coordinates |
+| `hovered: bool` | Pointer lies in the rectangle and clip, with no blocking front window or other capture |
+| `pressed: bool` | This interactive widget owns pointer capture or keyboard activation |
+| `has_focus: bool` | This enabled interactive widget has keyboard focus |
+| `focus_visible: bool` | Show the keyboard focus indication; mouse focus alone keeps it hidden |
+| `enabled: bool` | This control is interactive, including its parent group's enabled state |
+| `state() -> WidgetState` | `Disabled`, `Pressed`, `Hovered`, or `Idle`, in that priority order |
+| `clicked() -> bool` | A button/checkbox was activated on pointer or keyboard release |
+| `changed() -> bool` | A bound value changed during this pass |
+| `submitted() -> bool` | TextEdit received Enter outside IME composition |
+| `lost_focus() -> bool` | TextEdit lost focus, including between redraws |
+
+`clicked` and `changed` are private fields with public getters. Passive controls can
+be hovered, but cannot be pressed, focused, clicked, or changed. A disabled control
+may still report hover; it does not activate or change its bound value.
+
+Buttons report clicks without a value change. Checkboxes report both on a toggle.
+Sliders use `changed()` and do not report activation through `clicked()`.
+ColorPicker reports row activation through `clicked()` and color edits through
+`changed()`. Its RGB/HEX fields accept committed text from native events or
+`Context::on_text_event`. See [ColorPicker](./components/color-picker.mdx) for editing keys.
+
+## Pointer
+
+Primary-button press captures the hit region from the preceding UI pass. Releasing
+over that same button or checkbox activates it. Releasing elsewhere cancels activation.
+Sliders continue accepting captured pointer motion outside their rectangle and clamp
+to the range endpoints. Focus loss cancels capture and held input.
+
+Window clicks raise the panel to the front. The top visible window blocks controls in
+windows below it, including when its content has no interactive control at the pointer.
+Only the left mouse button activates built-in controls.
+
+Events are processed immediately against retained hit regions, so a press/release
+pair arriving before the next redraw is not lost. Pending activations are stored
+by ID; multiple activations of the same button between UI passes are not a click counter.
+
+## Keyboard
+
+| Key | Action |
+| --- | --- |
+| Tab / Shift+Tab | Next / previous enabled focusable control, wrapping at the ends |
+| Enter / Space | Press and release a focused button or checkbox |
+| Right / Up | Increase focused slider by one step |
+| Left / Down | Decrease focused slider by one step |
+| PageUp / PageDown | Increase / decrease slider by ten steps |
+| Home / End | Select slider minimum / maximum |
+
+Tab and button activation ignore key repeats. Slider adjustment accepts repeated
+key-press events. Focus traversal follows retained hit-region order after window
+layer ordering; fully clipped controls are skipped. Clicking a passive panel area
+clears widget focus.
+
+## InputState
+
+Read accumulated input during the UI callback through `context.input()` or
+`ui.context().input()`. Positions and scroll distances use logical pixels.
+
+| Field | Lifetime / units |
+| --- | --- |
+| `pointer: Option<Vec2>` | Last logical pointer position; `None` after cursor leave or focus loss |
+| `primary_down: bool` | Held state across passes |
+| `primary_pressed`, `primary_released` | Transitions accumulated since the preceding pass |
+| `scroll_delta: Vec2` | Accumulated logical delta; pixel events divided by scale, line events multiplied by style font size |
+| `keys_down: HashSet<KeyCode>` | Held physical keys across passes |
+| `keys_pressed`, `keys_released` | Accumulated physical-key transitions |
+| `modifiers: ModifiersState` | Current modifier state |
+| `text: String` | Text from pressed keyboard events and IME commits |
+| `focused: bool` | Native window focus state |
+
+`Context::run` clears transition sets, scroll delta, and text after the callback.
+Persistent pointer, held-key, and modifier state survive ordinary passes. Reading
+input after `run` cannot recover the cleared transitions. Text accumulation does not
+replace [TextEdit](./components/text-edit.mdx), which owns editing and IME composition state.
+
+## EventResponse
+
+Custom hosts call `context.on_window_event(&event)` and receive:
+
+| Field | Host action |
+| --- | --- |
+| `repaint: bool` | Request a native redraw |
+| `consumed: bool` | The UI handled the event; use this to gate other host input handlers |
+
+Consumed and repaint are independent. Pointer motion outside all panels can request
+a redraw without being consumed. Text and IME commits may accumulate without being
+consumed. For event routing, viewport updates, and deadlines, use [Custom host](./integration.mdx).

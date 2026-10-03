@@ -1,0 +1,125 @@
+---
+title: Drawing
+icon: Shapes
+description: Cached vector shapes, rectangles, corner radii, borders, and custom allocations.
+---
+
+Allocate layout space, then paint shapes in logical viewport coordinates:
+
+```rust
+use zaxis::{vec2, Border, Color, CornerRadius, Shape};
+
+let rect = ui.allocate_space(vec2(220.0, 72.0));
+ui.paint(Shape::rect(rect, Color::rgb(60, 110, 160))
+    .corner_radius(8.0)
+    .border(Border::new(1.0, Color::gray(140))));
+ui.paint(Shape::Circle {
+    center: rect.center(),
+    radius: 18.0,
+    fill: Color::WHITE,
+    border: Border::NONE,
+});
+ui.paint(Shape::Line {
+    start: rect.min,
+    end: rect.max,
+    width: 2.0,
+    color: Color::rgba(255, 255, 255, 160),
+});
+```
+
+`paint` allocates no space and adds no interactive hit region. Shapes are clipped
+to `ui.clip_rect()`, painted in call order within their panel layer, and cached by
+scoped sequence ID plus paint description and DPI.
+
+## Shape variants
+
+`Shape::rect` returns a `RectShape` builder with zero corner radius and no border.
+`corner_radius` accepts an `f32` or an asymmetric `CornerRadius`; `Ui::paint` accepts
+the builder directly. `Button`, `Checkbox`, and `Window` also offer `corner_radius`.
+The older `rounding` builders and `Shape::Rect` field remain available for compatibility.
+
+| Variant | Fields |
+| --- | --- |
+| `Shape::Rect` | `rect`, `fill`, `rounding`, `border` |
+| `Shape::Circle` | `center`, `radius`, `fill`, `border` |
+| `Shape::Line` | `start`, `end`, `width`, `color` |
+
+Empty rectangles, nonpositive circle radii, zero-length lines, and nonpositive line
+widths produce no geometry. Line ends are flat. Use finite positions and dimensions;
+nonfinite vertices are rejected by the renderer. There is no public path, arbitrary
+polygon or public mesh tessellator. See the built-in [Image](./components/image) component for textured content.
+
+## Rect
+
+`Rect { min: Vec2, max: Vec2 }` has public fields. Constructors normalize negative
+extent to zero:
+
+| Method | Behavior |
+| --- | --- |
+| `Rect::from_min_max(min, max)` | Raise max components to at least min |
+| `Rect::from_min_size(min, size)` | Negative size components become zero |
+| `size()` | `max - min` |
+| `center()` | `(min + max) / 2` |
+| `is_empty()` | Either dimension is zero or negative |
+| `contains(point)` | Includes min edges, excludes max edges |
+| `intersect(other)` | Intersection, normalized to an empty rect if disjoint |
+| `shrink(amount)` | Nonnegative inset capped at half the smaller dimension |
+| `translate(delta)` | Move both corners |
+
+## CornerRadius
+
+Use `CornerRadius::all(radius)`, `CornerRadius::ZERO`, or independent fields:
+
+```rust
+use zaxis::CornerRadius;
+
+let rounding = CornerRadius {
+    top_left: 12.0,
+    top_right: 4.0,
+    bottom_right: 12.0,
+    bottom_left: 4.0,
+};
+```
+
+Negative radii become zero during tessellation. When adjacent corners do not fit an
+edge, all radii are scaled proportionally. Curve segment counts adapt to physical
+radius and DPI. Rounded corners change the geometry, not the rectangular clip.
+
+## Border
+
+`Border { width: f32, color: Color }` is an inset border. Use
+`Border::new(width, color)` or `Border::NONE`. Border width is clamped to zero and
+half the smaller rectangle dimension, or to the circle radius. A border that consumes
+the full shape leaves only the border color; transparent or zero-width borders are
+disabled. The fill remains inside the inner border outline.
+
+For textured meshes or a different backend, use [Drawing protocol](./protocol.mdx).
+
+## Backdrop regions
+
+```rust
+use zaxis::{Blur, Color};
+
+Blur::new(rect)
+    .radius(12.0)
+    .corner_radius(8.0)
+    .tint(Color::rgba(47, 47, 47, 120))
+    .show(ui);
+// Rectangular shorthand:
+ui.blur(rect, 12.0);
+```
+
+A region allocates no layout space and adds no hit region. It blurs preceding
+content in call order, clips to the UI, and applies the optional tint afterwards.
+Zero radius disables blur while retaining the tint. Draw labels and controls
+after `show` to keep them sharp. `Context::paint_background(shape)` paints cached
+scene shapes behind all panels; call it before constructing windows.
+
+The built-in renderer uses two Gaussian passes in linear RGB and preserves MSAA
+when compositing rounded regions. It allocates intermediate textures on the first
+blur frame, reuses them until resize, and restricts filtering to each effect region
+plus kernel padding. Small radii reduce shader sample counts; larger radii use
+half or quarter resolution filter attachments. The scene and final UI keep native
+resolution and MSAA. Inherited control blur shares the panel backdrop; explicit
+control overrides create separate effects. Frames with no blur use the original
+single-pass path.

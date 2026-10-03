@@ -1,0 +1,122 @@
+---
+title: Renderer
+icon: Monitor
+description: Public methods, presentation modes, surface recovery, validation, and errors.
+---
+
+`Renderer` binds to one `Arc<winit::window::Window>`. It owns the GPU surface, instance,
+adapter, device, queue, buffers, textures, pipeline, and optional MSAA attachment.
+
+## Methods
+
+| Method | Result / action |
+| --- | --- |
+| `Renderer::new(Arc<Window>).await` | `Result<Renderer, RenderError>`; Vsync |
+| `Renderer::new_with_presentation_mode(window, mode).await` | Initialize with explicit presentation mode |
+| `resize(PhysicalSize<u32>)` | Reconfigure surface and MSAA; returns `Result<(), RenderError>` |
+| `render(&DrawData, Color)` | Present; returns `Result<RenderStatus, RenderError>` |
+| `presentation_mode()` | Return requested mode |
+| `set_presentation_mode(mode)` | Reconfigure presentation while preserving mesh/texture caches |
+| `stats()` | Snapshot cumulative `RendererStats` |
+| `adapter_info()` | `wgpu::AdapterInfo` for diagnostics |
+
+Initialization selects a low-power compatible adapter, requests downlevel GPU limits
+with the adapter's resolution limits, and creates the surface through safe `Arc`
+ownership. zaxis forbids unsafe Rust code.
+
+## Presentation modes
+
+| Mode | wgpu mode | Requested maximum frame latency |
+| --- | --- | --- |
+| `Vsync` (default) | FIFO | 2 |
+| `Immediate` | AutoNoVsync: immediate, then mailbox, then FIFO fallback | 1 |
+
+Immediate presentation can tear. `presentation_mode()` returns the requested enum,
+not the platform's selected fallback. To switch at runtime in a custom host:
+
+```rust
+renderer.set_presentation_mode(zaxis::PresentationMode::Immediate);
+window.request_redraw();
+```
+
+Changing mode does not rebuild the pipeline or invalidate geometry/texture caches.
+It survives surface resize and recovery. The built-in runner's initial mode comes
+from `RunOptions`; it does not expose a renderer to `App::update`.
+
+`supported_present_modes()` returns the modes advertised by the current surface.
+For diagnostics, `wait_idle(Duration)` waits for submitted GPU work with a timeout,
+reporting poll/device-loss errors. It serializes CPU/GPU execution and is intended
+for [completion benchmarks](./performance.mdx#stress-benchmark). It does not prove
+that the compositor has displayed a frame.
+
+## Color and antialiasing
+
+The renderer selects an sRGB surface format when available. If only RGBA8/BGRA8
+unorm is available, it uses an sRGB view for the attachment. Unsupported formats
+produce `UnsupportedSurface`.
+
+Vertex colors are linear straight-alpha floats. Textures use sRGB RGBA8 and straight
+alpha. The shader premultiplies vertex colors before interpolation and sampled
+textures before compositing. Premultiplied alpha blending runs on the sRGB
+attachment, keeping transparent contour and border transitions free of color halos.
+Clear `Color` converts to linear RGB.
+
+Built-in shapes use a one-physical-pixel coverage transition on their outer edges
+and between borders and fills. Arc tessellation limits chord error to 0.01 physical
+pixels at the current DPI (up to a resource cap for exceptionally large radii).
+Backdrop blur mixes the original and filtered RGBA by the same contour coverage.
+
+4× MSAA is enabled when the attachment format supports it; otherwise rendering uses
+one sample. Shape coverage smoothing works in both cases. There is no public
+sample-count override or access to internal GPU resources.
+
+## Surface outcomes
+
+| Acquisition condition | Renderer behavior |
+| --- | --- |
+| Success | Validate/upload as needed, draw, submit, notify native window, present |
+| Suboptimal | Present, then reconfigure to current native size |
+| Timeout | `RenderStatus::Retry` |
+| Occluded | `RenderStatus::Dormant` |
+| Outdated | Resize/reconfigure, then `Retry` |
+| Lost | Recreate surface, verify format, resize/reconfigure, then `Retry` |
+| Validation failure | `RenderError::Validation` |
+| Device loss callback | `RenderError::DeviceLost` |
+
+Zero-sized surfaces return `Dormant` without rendering. Hosts must delay retries
+and wake dormant windows only on relevant events. The runner implements this;
+custom hosts use [Custom host](./integration.mdx#renderer-outcomes).
+
+## Validation
+
+Before use, viewport size and scale must be finite and positive. Texture payloads
+must have nonzero dimensions within device limits and exactly width × height × 4 bytes.
+Geometry upload validates global indices, finite vertex fields, draw ranges, finite
+clips, referenced texture IDs, and GPU buffer limits. Surface resize validates the
+GPU texture-dimension limit.
+
+Geometry validation and uploads are keyed by `(DrawData::source, DrawData::revision)`.
+Editing vertices or commands without advancing the revision violates the cache
+contract; unchanged keys do not cause a fresh geometry validation. Textures have
+independent revision and size checks.
+When a [GeometryUpdate](./protocol.mdx#geometryupdate) names the exact validated
+parent revision, unchanged vertex/index ranges reuse that validation and upload.
+Dirty ranges and all draw commands are checked. A missing parent, shrinking buffers,
+or no hint selects complete validation; a newly allocated buffer is fully uploaded.
+
+## Errors
+
+`RenderError` implements `Display` and `std::error::Error`:
+
+| Variant | Meaning / response |
+| --- | --- |
+| `CreateSurface(CreateSurfaceError)` | Native GPU surface creation failed |
+| `RequestAdapter(RequestAdapterError)` | No compatible requested adapter was obtained |
+| `RequestDevice(RequestDeviceError)` | GPU device request failed |
+| `UnsupportedSurface` | No usable surface configuration/format, or recovered surface lost its format |
+| `DeviceLost(String)` | Recreate renderer; preserve context/model |
+| `Validation(String)` | GPU pipeline or surface validation failed |
+| `InvalidDrawData(&'static str)` | Fix viewport, geometry, command, texture payload, or exceeded GPU limits |
+
+Log `adapter_info()` and the full error when diagnosing a backend failure.
+Common symptoms and fixes are in [Troubleshooting](./troubleshooting.mdx).

@@ -1,0 +1,22 @@
+{
+  "title": "Components",
+  "icon": "Blocks",
+  "pages": [
+    "index",
+    "window",
+    "scroll-area",
+    "grid",
+    "table",
+    "popup",
+    "combo-box",
+    "text",
+    "image",
+    "text-edit",
+    "button",
+    "checkbox",
+    "slider",
+    "number-input",
+    "color-picker",
+    "separator"
+  ]
+}

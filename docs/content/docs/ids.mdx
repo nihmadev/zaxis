@@ -1,0 +1,94 @@
+---
+title: IDs and retained state
+icon: Fingerprint
+description: Stable identity for windows, changing captions, repeated controls, and dynamic lists.
+---
+
+## Identity rules
+
+| Element | Default identity |
+| --- | --- |
+| `Window` | Hash of `("window", full_title)` |
+| `Button` | UI scope, widget kind, and full caption |
+| `Checkbox` | UI scope, widget kind, and full caption |
+| `Slider` | UI scope, construction call site, and occurrence at that site; optional `id_source` override |
+| `Text`, `Separator`, shapes, rows | UI scope, element kind, and allocation sequence |
+
+An ID identifies retained focus, pointer capture, and cached geometry. Window IDs
+also retain position, size, and layer order. IDs are hashes for runtime identity;
+do not use `Id::value()` as a persistent file-format identifier.
+
+## Hidden suffixes
+
+`Window`, `Button`, and `Checkbox` hide everything from the first `##` in the rendered
+caption. The complete string still contributes to the default ID.
+
+```rust
+ui.button("Delete##first");
+ui.button("Delete##second");
+```
+
+Both buttons display `Delete`. Their IDs differ. A suffix does not stabilize a
+changing visible prefix: `Run 1##run` and `Run 2##run` still have different default IDs.
+`Text` displays `##` literally.
+
+`Slider::text` hides a `##` suffix but derives identity from the construction call
+site rather than the caption. Changing its displayed value or caption preserves ID.
+Repeated sliders at one call site have distinct occurrence IDs; use model-key
+`push_id` scopes when inserting or reordering rows built by that same call site.
+
+## Changing captions
+
+Use an explicit identity when the visible text changes:
+
+```rust
+use zaxis::{Button, Id, Window};
+
+Window::new(format!("Job {job_name}"))
+    .id(Id::new("job-panel"))
+    .show(context, |ui| {
+        ui.add(Button::new(format!("Runs: {runs}")).id_source("run-counter"));
+    });
+```
+
+`Button::id_source`, `Checkbox::id_source`, and `Slider::id_source` hash any `Hash`
+value and combine it with their UI scope. `Window::id` accepts a complete `Id`.
+
+## Repeated controls
+
+```rust
+for item in items {
+    ui.push_id(item.id, |ui| {
+        if ui.button("Delete").clicked() {
+            pending_delete = Some(item.id);
+        }
+    });
+}
+```
+
+Use a stable model key for `push_id`, especially if rows can be sorted or removed.
+An array index changes identity when preceding rows move. `push_id` restores the
+previous scope and allocation sequence after its closure; its return value is the
+closure's return value.
+
+Explicit `id_source` still inherits the surrounding scope. Moving a control to a
+different window, row, or `push_id` scope changes its final ID.
+
+## Id methods
+
+| Method | Result |
+| --- | --- |
+| `Id::new(value: impl Hash)` | Hash a new root identity |
+| `id.with(value: impl Hash)` | Derive a child identity from a parent |
+| `id.value() -> u64` | Read the underlying hash |
+
+## Removal and duplicates
+
+An omitted widget loses cached paint geometry at the end of that pass. Focus and
+capture are cleared when their matching interactive hit region disappears or changes
+kind. Omitted window geometry remains in the context; reopening the same window ID
+restores its position and size.
+
+Painting the same ID twice in one pass panics with `duplicate widget/paint ID`.
+Use separate scopes or explicit IDs. This includes duplicate window titles and
+duplicate same-kind captions inside a single scope.

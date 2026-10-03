@@ -1,0 +1,107 @@
+---
+title: Slider
+icon: SlidersHorizontal
+description: f32 ranges, stepping, normalization, capture, keyboard adjustment, and accents.
+---
+
+```rust
+ui.slider(&mut gain, 0.0..=1.0);
+```
+
+The slider is horizontal and binds an `&mut f32`. Use
+`ui.slider_labeled(&mut gain, 0.0..=1.0, "Gain")` for a caption and numeric value.
+
+## Builders
+
+```rust
+use zaxis::{Slider, SliderStatus};
+
+let response = ui.add(Slider::new(&mut volume, 0.0..=100.0)
+    .text("Volume").precision(0).suffix("%")
+    .step(5.0)
+    .width(280.0)
+    .enabled(sound)
+    .status(SliderStatus::Success));
+```
+
+| Method | Default / requirement |
+| --- | --- |
+| `new(&mut f32, RangeInclusive<f32>)` | Finite, ascending endpoints; equal endpoints allowed |
+| `id_source(impl Hash)` | Optional override; default is construction call site and occurrence within the scope |
+| `text(text)` | Optional caption and value below the track, including in horizontal rows |
+| `precision(usize)` | 2 decimal places; at most 16 |
+| `suffix(text)` | Empty; e.g. `"%"` or `" minutes"` |
+| `step(f32)` | Default continuous; explicit step must be finite and positive |
+| `enabled(bool)` | `true` |
+| `disabled(bool)` | Inverse of `enabled` |
+| `width(f32)` | 200 logical pixels; finite and positive; limited by available width |
+| `status(SliderStatus)` | `Normal` |
+| `color(Color)` | Override the enabled status accent |
+| `hover_style(HoverStyle)` | Theme hover preset for the thumb; see [Hover](../style.mdx#hover) |
+
+Track height is 28 logical pixels; a caption adds spacing and measured text height.
+The response rectangle covers the interactive track. The track is 6 pixels high and the thumb
+radius is at most 8 pixels, shrinking for narrow allocations. There is no vertical
+slider builder.
+
+Invalid ranges, nonpositive/nonfinite steps, and nonpositive/nonfinite widths panic
+when constructing the builder.
+
+## Normalization
+
+Enabled sliders normalize the bound value on every UI pass, even without user input:
+
+1. Convert `NaN` to the minimum; clamp out-of-range values and infinities.
+2. If a step is set, snap relative to the range minimum with nearest rounding.
+3. Clamp the snapped result to the endpoints.
+
+Both endpoints remain directly selectable when the step does not divide the span.
+For `0..=10` with step 3, regular ticks are 0, 3, 6, and 9; End and the far-right
+pointer position can select 10. Home always selects the minimum. An equal-endpoint
+range normalizes to that single value.
+
+`changed()` reports whether the final value differs from the value supplied at the
+start of the pass. Normalization can set it without input. A sequence of adjustments
+that returns to the original value does not report a net change.
+
+Disabled sliders leave the bound value untouched, including out-of-range values or
+`NaN`; their thumb uses a normalized value while the caption shows the unchanged bound value. They cannot focus or capture pointer
+input. Disabling a captured slider cancels capture when the pass finishes.
+
+## Pointer and keyboard
+
+Press anywhere in the control to focus it and select a value. Captured motion and
+release continue outside the control; values clamp at the endpoints. The thumb's
+center moves between track endpoints inset by its radius.
+
+| Key | Value change |
+| --- | --- |
+| Right / Up | +1 step |
+| Left / Down | −1 step |
+| PageUp / PageDown | ±10 steps |
+| Home / End | Minimum / maximum |
+
+Without an explicit step, the keyboard step is 1% of the range span. Key repeats
+are processed in event order. Enter and Space do not activate sliders.
+
+`Response::pressed` and `has_focus` expose interaction state. `clicked()` remains
+false; handle numeric updates through `changed()`.
+
+## Accent
+
+| Status | Default enabled accent |
+| --- | --- |
+| `Normal` | `Style::text_color` |
+| `Success` | RGB `(91, 184, 121)` |
+| `Warning` | RGB `(230, 177, 70)` |
+| `Error` | RGB `(220, 94, 94)` |
+
+`color` overrides these accents while enabled. Disabled sliders use
+`Style::muted_text`. The accent affects the filled track and thumb; status does not
+validate the bound value or change interaction rules.
+
+Sliders at distinct call sites do not share IDs. Repeated calls from one site use
+an occurrence counter per scope. Inserting ordinary text before them does not change
+their IDs. For reorderable lists, scope each row with its model key using `Ui::push_id`.
+Wrapper functions can propagate their caller location with `#[track_caller]`.
+See [IDs and retained state](../ids.mdx).

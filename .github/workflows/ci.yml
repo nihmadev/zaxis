@@ -1,0 +1,76 @@
+name: Rust CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  test:
+    name: ${{ matrix.os }} / Rust ${{ matrix.rust }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rust: '1.90.0'
+          - os: ubuntu-latest
+            rust: stable
+          - os: windows-latest
+            rust: stable
+          - os: macos-latest
+            rust: stable
+    runs-on: ${{ matrix.os }}
+    env:
+      ZAXIS_SKIP_GPU_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libudev-dev libx11-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - run: cargo check --workspace --all-targets --locked
+      - run: cargo test --workspace --lib --tests --examples --locked
+      - run: cargo test --workspace --doc --locked
+      - name: Check core image formats without optional codecs
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == '1.90.0'
+        run: cargo check --lib --no-default-features --locked
+      - name: Build API documentation
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == '1.90.0'
+        run: cargo doc --workspace --no-deps --all-features --locked
+        env:
+          RUSTDOCFLAGS: '-D warnings'
+      - name: Verify published package
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == '1.90.0'
+        run: cargo publish --workspace --dry-run --locked
+      - name: Check crate upload size
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == '1.90.0'
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          for manifest in ["Cargo.toml", "crates/zaxis-emoji/Cargo.toml"]:
+              with open(manifest, "rb") as source:
+                  package = tomllib.load(source)["package"]
+              archive = pathlib.Path("target/package") / f"{package['name']}-{package['version']}.crate"
+              size = archive.stat().st_size
+              print(f"{package['name']}: {size / 1024 / 1024:.3f} MiB compressed")
+              if size > 10 * 1024 * 1024:
+                  raise SystemExit("Crate exceeds crates.io's default 10 MiB upload limit")
+          PY

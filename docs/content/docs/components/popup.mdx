@@ -1,0 +1,51 @@
+---
+title: Popup
+icon: PanelsTopLeft
+description: Anchored overlay layers with viewport placement, dismissal and focus restoration.
+---
+
+`Popup` is a general overlay container with its own paint and input layer.
+It does not create a `Window`, allocate parent layout space or inherit the
+parent's clip. One popup owns input at a time; opening another dismisses the
+previous one.
+
+```rust
+use zaxis::{Popup, vec2};
+
+let trigger = ui.button("Open actions");
+if trigger.clicked() {
+    open = !open;
+}
+if let Some(output) = Popup::new("actions", trigger.rect)
+    .size(vec2(220.0, 110.0))
+    .return_focus(trigger.id)
+    .show(ui, &mut open, |ui| {
+        ui.button("First action")
+    })
+{
+    if output.inner.clicked() {
+        open = false;
+        ui.context().close_popup();
+    }
+}
+```
+
+`open: bool` belongs to the application. Pass the same scoped source each pass;
+`show` updates `open` after outside dismissal, Escape or a disabled parent.
+`Context::close_popup()` removes input regions and restores focus immediately;
+calling it inside the popup closure also updates `open` before `show` returns.
+The closure can compose existing controls, `ScrollArea` and `TextEdit`.
+`Context::request_focus(response.id)` focuses a popup child explicitly.
+
+`size`, `gap`, `padding`, `rounding`, `fill`, `border` and `return_focus` configure
+the container. `PopupOutput` returns the closure's result, the actual rectangle
+and `opens_upward`. Placement clamps width and horizontal position to the
+viewport; it chooses the side with sufficient or greater vertical space and
+limits height accordingly. Oversized content should use `ScrollArea`.
+
+Popup layers paint after all ordinary windows regardless of declaration or
+window raising order. A full viewport input blocker prevents lower windows
+from receiving pointer presses and scrolling. Outside presses consume the
+gesture before dismissal. Escape restores the requested focus (or the focus
+held before opening); Tab dismisses and resumes ordinary focus traversal.
+Losing native focus or omitting the popup/owner from a pass removes its hits.

@@ -1,0 +1,141 @@
+---
+title: Custom host
+icon: Plug
+description: Connect Context and Renderer to a winit ApplicationHandler without the built-in runner.
+---
+
+Use a custom host when you already own the event loop, need runtime presentation
+switching, or construct the context with a custom font. The complete runnable
+reference is [examples/integration.rs](https://github.com/nihmadev/zaxis/blob/master/examples/integration.rs).
+
+## Native resources
+
+Create the native window from winit's `resumed` callback. Store it in an `Arc` and
+initialize a renderer for that window:
+
+```rust
+use std::sync::Arc;
+use zaxis::{Context, PresentationMode, Renderer};
+use zaxis::winit::{event_loop::ActiveEventLoop, window::Window};
+
+fn initialize(event_loop: &ActiveEventLoop)
+    -> Result<(Arc<Window>, Context, Renderer), Box<dyn std::error::Error>>
+{
+    let window = Arc::new(event_loop.create_window(Window::default_attributes())?);
+    let renderer = pollster::block_on(Renderer::new_with_presentation_mode(
+        Arc::clone(&window), PresentationMode::Vsync,
+    ))?;
+    let mut context = Context::new();
+    context.set_viewport(window.inner_size(), window.scale_factor());
+    window.request_redraw();
+    Ok((window, context, renderer))
+}
+```
+
+This host uses `pollster = "1.0.1"` as a direct dependency. One `Context` is intended
+for one native viewport. Keep model and context outside disposable native resources
+if they must survive suspension.
+
+## Forward events
+
+For matching native `WindowId`, forward events to `Context::on_window_event` before
+your host-specific handling. Request native redraw when `EventResponse::repaint` is
+true. Use `consumed` to decide whether other application handlers should process input.
+
+After events and UI passes, apply the native cursor hint:
+`window.set_cursor(context.cursor_icon())`. It uses the same clipped hit regions
+as pointer input, including column resizing, window resize grips and text fields.
+The built-in desktop runner updates it automatically and keeps resize cursors
+active through pointer capture outside the control.
+
+| Native event | Host action after forwarding |
+| --- | --- |
+| `Resized` | Read actual inner size; update context viewport and call `renderer.resize` |
+| `ScaleFactorChanged` | Read actual inner size and scale; update viewport and renderer |
+| `Occluded(true)` | Suppress rendering and wait |
+| `Occluded(false)` | Request redraw |
+| `CloseRequested` | Exit the loop |
+| `RedrawRequested` | Run the UI and render, unless occluded or zero-sized |
+
+On resize/DPI changes, refresh from the window itself:
+
+```rust
+let size = window.inner_size();
+context.set_viewport(size, window.scale_factor());
+renderer.resize(size)?;
+```
+
+The event bridge updates DPI using its previous physical viewport estimate. Reading
+the native window afterwards establishes the actual viewport and surface size.
+
+## Build and present
+
+Do not skip `Context::run` on an OS redraw because `needs_repaint()` is false.
+The flag schedules future work; it does not mean the surface can skip presentation.
+
+```rust
+context.run(|context| {
+    zaxis::Window::new("Tools").show(context, |ui| {
+        ui.label("Ready");
+    });
+});
+let status = renderer.render(context.draw_data(), context.style().background)?;
+```
+
+`Context::run` currently always returns `true`. It builds a complete UI pass, updates
+the geometry cache, clears transient input after the callback, and exposes the frame
+through `draw_data()`. Repaint requests made during the callback survive it.
+
+## Renderer outcomes
+
+| Result | Host action |
+| --- | --- |
+| `Ok(Presented)` | Current frame is presented |
+| `Ok(Retry)` | Record a retry deadline, e.g. now + 16 ms |
+| `Ok(Dormant)` | Wait for resize, unocclusion, or another relevant native event |
+| `Err(DeviceLost(_))` | Recreate `Renderer` from the native `Arc`, preserve its presentation mode, request redraw |
+| Other `Err` | Stop or report the unrecoverable error |
+
+The renderer recovers lost/outdated surfaces itself and then returns `Retry`. Device
+loss requires a new renderer. Context and application state can be kept intact.
+
+## Sleep and retry backoff
+
+Use the following scheduling rule from `about_to_wait`. Pass your current retry
+deadline; clear it before attempting a redraw and replace it if that attempt returns
+`Retry`.
+
+```rust
+use std::time::Instant;
+use zaxis::Context;
+use zaxis::winit::event_loop::ControlFlow;
+
+fn schedule(context: &Context, retry_at: Option<Instant>) -> (bool, ControlFlow) {
+    let now = Instant::now();
+    let redraw = retry_at.map_or(context.needs_repaint(), |time| time <= now);
+    let deadline = retry_at.or(context.next_repaint()).filter(|time| *time > now);
+    (redraw, deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil))
+}
+```
+
+If `redraw` is true, call `window.request_redraw()`. Apply the returned control flow
+to the active event loop. A pending surface retry takes precedence over immediate UI
+repaint requests, preventing a busy retry loop. While the native viewport is occluded
+or has zero width/height, use `Wait` and suppress rendering.
+
+## Suspend and resume
+
+Drop renderer and native window on suspend where platform surface lifetime requires
+it. Clear input with `context.on_window_event(&WindowEvent::Focused(false))`. On resume,
+recreate native resources, update the retained context's viewport, and request redraw.
+
+The integration example drops its entire `State` on suspend, including its context
+and counters. For retained application state, use the ownership split in the
+[desktop runner](./app.mdx#lifecycle), or retain model/context separately in your host.
+
+## Native IME
+
+After building each frame with `Context::run`, call `context.sync_ime(&window)`
+to enable IME for the focused TextEdit and position the composition/candidate window.
+Forward `WindowEvent::Ime` events through `on_window_event` as with other input.
+The built-in runner and integration example already perform this synchronization.

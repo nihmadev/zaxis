@@ -1,0 +1,57 @@
+---
+title: Button
+icon: MousePointer2
+description: Activation, builders, identity, sizing, and disabled behavior.
+---
+
+```rust
+if ui.button("Run").clicked() {
+    runs += 1;
+}
+```
+
+## Builders
+
+```rust
+use zaxis::{vec2, Border, Button, Color, CornerRadius, Padding};
+
+let response = ui.add(Button::new("Apply")
+    .id_source("apply")
+    .enabled(dirty)
+    .min_size(vec2(96.0, 38.0))
+    .padding(Padding::symmetric(14.0, 8.0))
+    .rounding(CornerRadius::all(4.0))
+    .border(Border::new(1.0, Color::gray(100))));
+```
+
+| Method | Default / behavior |
+| --- | --- |
+| `new(text)` | Caption as `Into<String>`; hidden `##suffix` contributes to ID |
+| `id_source(impl Hash)` | Override caption-based identity within the UI scope |
+| `enabled(bool)` | `true` |
+| `min_size(Vec2)` | `(0, 0)` preferred minimum |
+| `padding(Padding)` | `Style::button_padding` |
+| `rounding(CornerRadius)` | Radius 5 on all corners; independent of `Style::rounding` |
+| `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
+| `selected(bool)` | `false`; selected buttons keep the pressed fill |
+| `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
+| `hover_style(HoverStyle)` | Theme hover preset; supports fill, shadow, gradient and custom combinations |
+
+The desired size is text size plus padding, enlarged to `min_size` and at least
+24 × 24. Allocated width is limited by available layout width, even when that width
+is smaller than the preferred minimum. Captions do not wrap; their paint is clipped
+inside button padding.
+
+## Activation
+
+Press and release the primary pointer over the same button, or focus it and release
+Enter/Space. `clicked()` is true during the following UI pass. `changed()` remains
+false because a button has no bound value.
+
+Disabled buttons block pointer fallthrough, cannot receive keyboard focus, and do
+not activate. Their fill uses `Style::button_fill` and their caption uses
+`Style::muted_text`. Hover uses the [hover preset](../style.mdx#hover); pressing
+uses `Style::button_pressed`. Keyboard focus uses `Style::focus_border` instead of
+the builder border. Mouse focus does not add this ring.
+
+Use [IDs and retained state](../ids.mdx) for dynamic captions and repeated buttons.

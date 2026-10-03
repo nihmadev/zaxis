@@ -1,0 +1,65 @@
+---
+title: First application
+icon: Terminal
+description: A complete application with retained model values and immediate UI construction.
+---
+
+Add the dependency from [Installation](./installation.mdx), then create `src/main.rs`:
+
+```rust title="src/main.rs"
+use zaxis::{App, Context, Frame, Window};
+
+#[derive(Default)]
+struct Counter {
+    runs: u64,
+    enabled: bool,
+    gain: f32,
+}
+
+impl App for Counter {
+    fn update(&mut self, context: &mut Context, frame: &mut Frame<'_>) {
+        Window::new("Tools").show(context, |ui| {
+            if ui.button("Run").clicked() {
+                self.runs += 1;
+            }
+            ui.label(format!("Runs: {}", self.runs));
+            ui.checkbox(&mut self.enabled, "Enable processing");
+            ui.slider(&mut self.gain, 0.0..=1.0);
+            if ui.button("Quit").clicked() {
+                frame.close();
+            }
+        });
+    }
+}
+
+fn main() -> Result<(), zaxis::RunError> {
+    zaxis::run(Counter::default())
+}
+```
+
+```sh
+cargo run
+```
+
+## State ownership
+
+Keep application values in the `App` implementation. `update` runs on every redraw;
+it is not an initialization callback. Construct widgets each time instead of storing
+them between frames. `Checkbox` and `Slider` borrow their bound values for the UI pass.
+
+The runner surrounds `update` with `Context::run`. Call `Window::show` directly from
+`update`; do not nest another `Context::run` inside it.
+
+## Interaction
+
+- Drag a panel by its title bar; resize its bottom-right corner.
+- Tab and Shift+Tab move focus through enabled buttons, checkboxes, and sliders.
+- Enter or Space activates a focused button or checkbox on key release.
+- Arrow keys adjust a focused slider. Home and End select its endpoints.
+
+`clicked()` and `changed()` describe the current UI pass. Handle them immediately.
+Widget activation and value changes request a follow-up redraw automatically, so
+controls built earlier in the pass observe the updated model on the next pass.
+
+`run` defaults to Vsync. To change title, native size, or presentation mode, use
+[Desktop runner](./app.mdx). For per-control builders, use [Components](./components/index.mdx).

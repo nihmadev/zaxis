@@ -1,0 +1,316 @@
+---
+title: Performance and caches
+icon: Gauge
+description: What is cached, when revisions change, what counters mean, and how to profile.
+---
+
+## UI passes are not cached
+
+Every host redraw runs the UI callback. Model changes are observed without explicit
+cache invalidation. The cached work is CPU tessellation, frame mesh assembly, GPU
+buffer uploads, and glyph image uploads.
+
+| Stage | Reuse condition |
+| --- | --- |
+| Element mesh | Same paint ID and DPI, with identical paint or a translation preserving glyph raster phases |
+| Text layout | Same text, logical font size, and wrap width; shared by measurement and painting |
+| Shared frame mesh | Same element IDs, layer order, clips, paint geometry, and viewport |
+| GPU geometry | Same producer source and frame revision |
+| GPU texture | Same producer, texture ID, size, and image revision |
+
+An unchanged UI pass keeps vertex/index allocations and frame revision. A plain
+`request_repaint()` does not force tessellation. Changing hover/focus/press visuals
+rebuilds affected elements. Moving a panel changes absolute positions and frame
+geometry; compatible translations reuse element meshes. DPI changes rebuild
+affected geometry and glyphs.
+
+## Frame assembly
+
+Geometry is combined in retained window layer order, preserving paint order within
+each window. Stable elements retain their vertex/index ranges; local changes copy
+only the affected meshes and rebase their indices. An element that outgrows its range
+moves to a larger range. Structural changes, full invalidation, or excessive unused
+space compact the complete frame. Adjacent
+commands merge only when their texture, clip, and effect match and their ranges
+are contiguous.
+The renderer does not sort draws by texture across other commands.
+
+Text measurement and painting share one glyph layout. Layouts unused in the current
+UI pass are discarded, so changing captions cannot accumulate indefinitely. Text
+color converts to linear RGB once per painted text element.
+
+Removal, clip changes, reorder, viewport changes, or changed element meshes advance
+the frame revision. Removed widget mesh entries are discarded at pass completion;
+retained panel geometry and glyph atlas pages survive.
+
+GPU vertex and index buffers persist and grow to the next power of two when needed,
+capped by device limits. They do not shrink for a smaller frame. An unchanged native
+exposure redraw presents again without reuploading geometry or unchanged atlas pages.
+Local changes upload only dirty ranges when the renderer has their exact preceding
+revision. Skipped revisions, a different producer, shrinking data, and newly allocated
+GPU buffers use complete uploads for the affected buffers.
+Updates covering over half a buffer also use one complete transfer to avoid many
+small staging allocations.
+
+## Counters
+
+`context.cache_stats()` returns cumulative `CacheStats`:
+
+| Field | Increment |
+| --- | --- |
+| `ui_passes` | Every `Context::run` |
+| `tessellated_elements` | Each paint element whose description or DPI required a new mesh |
+| `reused_elements` | Each element whose mesh was reused |
+| `geometry_rebuilds` | Each assembled frame change |
+| `geometry_full_rebuilds` | Each complete frame compaction |
+| `geometry_partial_updates` | Each frame updated through retained element ranges |
+| `geometry_bytes_copied` | Vertex/index bytes copied from element meshes into frame buffers |
+
+These count paint elements, not widgets. A button has separate body and caption
+elements; a window also has chrome, title, and grip elements.
+
+`renderer.stats()` returns cumulative `RendererStats`:
+
+| Field | Increment |
+| --- | --- |
+| `presented_frames` | Each successful present |
+| `geometry_uploads` | Each new `(source, revision)` geometry preparation |
+| `geometry_upload_bytes` | Actual vertex/index bytes written to GPU buffers |
+| `texture_uploads` | Each uploaded image payload |
+
+The initial built-in white texture is not counted in `texture_uploads`. An empty new
+geometry revision still increments the geometry counter even if no buffer bytes are
+written. Compare snapshots for per-pass deltas; counters have no public reset method.
+Renderer recreation starts new GPU counters and caches.
+
+## Idle behavior
+
+The runner waits for input, OS redraw, or a requested deadline. It does no continuous
+UI work, uploads, or GPU submissions while idle. Caching does not make a host idle
+if it uses `ControlFlow::Poll`, requests redraw unconditionally, or calls
+`set_style` each UI pass.
+
+Schedule continuing work with [repaint deadlines](./repaint.mdx), and back off
+transient surface failures. CPU measurements depend on the platform and driver;
+the counters describe library activity, not process-wide CPU or GPU usage.
+
+## Verification and profiling
+
+The GPU cache smoke test opens a native window and validates actual rendering:
+
+```sh
+cargo run --example integration -- --smoke-test
+```
+
+It verifies unchanged redraws and explicit repaints reuse caches, checkbox state
+changes affect geometry without another glyph upload, and mode changes preserve
+uploads. It also checks sparse uploads and complete upload fallback after skipped
+revisions. It prints adapter information and GPU counters before exit.
+
+Measure UI and render/present time over 120 changing frames:
+
+```sh
+cargo run --release --example integration -- --smoke-test --profile
+cargo run --release --example integration -- --smoke-test --profile --vsync
+```
+
+Present time in Vsync includes refresh waiting. To profile CPU interaction passes
+without opening a native window:
+
+```sh
+cargo test --release --example settings profile_interaction_cache -- --ignored --nocapture
+```
+
+That ignored test measures slider updates, section switching, and panel dragging over
+200 passes each, including tessellation/reuse deltas and frame buffer sizes.
+
+## Stress benchmark
+
+ComboBox cases cover closed/open cached controls, rapid animation reversal,
+keyboard navigation, scrolling, Unicode filtering and option reordering while
+open. `--sizes` specifies the number of options for these cases. Cached cases
+assert that settled frames reuse geometry and stop requesting redraws; the
+popup must remain virtualized regardless of list length. Filter and live-update
+cases exercise the input dispatcher and observe changes to the bound model.
+
+```sh
+cargo bench --bench performance -- --cpu-only --filter combo --sizes 100,1000,10000 --iterations 1200 --warmup 30
+cargo bench --bench performance -- --gpu-only --filter combo --sizes 100,1000,10000 --iterations 180 --warmup 30 --gpu-wait
+```
+
+The GPU run measures both Vsync and Immediate on the real native renderer.
+Vsync timings include refresh waiting; compare CPU UI time separately from
+render/present and GPU completion. Warmup excludes process/font/GPU startup.
+
+The pixel regression also renders captions, a searchable popup and option rows
+at 100%, 125% and 200% DPI, asserting that glyph pixels fit and center in their
+rows. It writes a 125% preview to `target/combo-fixed.ppm`:
+
+```sh
+cargo test --lib gpu_combo_text_fits_rows_at_multiple_dpi -- --ignored
+```
+
+```sh
+cargo bench --bench performance
+cargo bench --bench performance -- --hard
+cargo bench --bench performance -- --quick
+```
+
+ColorPicker cases cover many closed controls, cached internal/floating editors,
+palette and hue drags, RGB/HEX commits, parent-window dragging with an open editor,
+and dragging the floating editor itself. Each input case asserts the resulting
+color or geometry; cached cases assert zero retessellation and zero GPU uploads.
+The open-editor probes use the same background load as `window_drag` for comparison.
+
+```sh
+cargo bench --bench performance -- --filter cached_ui,window_drag,color_picker --sizes 32,128,512,2048
+```
+
+This custom benchmark harness uses the public Context and Renderer with a real
+native window and GPU surface. The standard run measures 120 frames after 30 warmup
+frames for each case, at 32, 128 and 512 workload objects. GPU cases run in both
+Vsync and Immediate. `--hard` uses 600 measured frames, 120 warmup frames and
+128/512/2048 objects. Each row reports UI p50, total p50/p95/p99, throughput and
+geometry rebuild/upload deltas. The complete report is `target/benchmark.json`.
+
+| Cases | What is exercised and verified |
+| --- | --- |
+| `cold_ui`, `cached_ui`, `explicit_repaint` | Context initialization and first build; stable revisions/tessellation; no redundant GPU uploads |
+| `repaint_deadlines`, `dynamic_widgets` | Earliest repaint deadline; changing widget descriptions and values |
+| `button_click`, `checkbox_click`, `slider_drag` | Buffered press/release, state changes, slider capture beyond control bounds |
+| `model_followup` | A late button mutation updates an earlier label on the automatically requested second UI pass |
+| `hover`, `press_release` | Hover and pressed visuals with retained hit regions |
+| `window_drag`, `window_resize` | Title-bar movement translates children; grip changes retained size |
+| `tab_switch`, `disabled_click`, `release_outside`, `focus_loss` | Selection, inherited disabled groups, cancelled activation and capture |
+| `keyboard_button`, `keyboard_checkbox`, `keyboard_slider`, `keyboard_tab` | Enter/Space activation, checkbox toggle, Home/End slider input and focus traversal |
+| `wheel_input`, `ime_input` | Input accumulation and per-frame cleanup; these do not imply scrolling or text-edit widgets |
+| `scroll_settings`, `scroll_middle` | Sustained fractional wheel motion or deterministic middle-button integration across long settings with checkboxes and sliders |
+| `scroll_virtual_rows`, `scroll_nested` | Visible-only rows from 50 times the object count; nested routing and bounded executed row count |
+| `scroll_cached` | Unchanged scrolling viewport retains geometry revision and performs no retessellation |
+| `theme_change`, `dpi_change`, `object_lifecycle` | Style invalidation, 1×/2× native DPI, alternating removal and reappearance of objects |
+| `text_dynamic`, `text_wrapped`, `vector_shapes` | Changing text, wrapping and glyph cache; rounded/asymmetric rectangles, circles, lines and borders |
+| `blur_0`, `blur_8`, `blur_24`, `blur_64` | Equivalent scenes with disabled or different Gaussian sigmas |
+| `blur_radius_change`, `blur_stack`, `control_blur` | Sigma changes reuse tessellation; overlapping tinted filters; independent control filters |
+| `protocol_cached`, `protocol_geometry`, `protocol_texture` | Versioned external DrawData; cached draws; geometry-only and 256×256 RGBA texture-only uploads |
+
+The load scene uses scoped IDs, vertical window layouts, buttons, checkboxes, sliders,
+labels and separators. Interaction cases add a frontmost probe window with nested
+horizontal layouts and enabled groups. Object count describes workload objects;
+chrome, backgrounds and probe controls add paint elements. Dense scenes can overflow
+and be clipped: JSON records vertex/index counts, command counts, visible command
+clips, blur effects, mesh bytes, atlas bytes and each row's logical viewport/DPI.
+These byte counts describe draw data, not total process or GPU memory usage.
+
+### Timing boundaries
+
+`input` times event injection (and Context creation in `cold_ui`). `ui` times
+Context evaluation, text work, tessellation and frame assembly. `response` times
+injection through model evaluation for interaction cases; it excludes rendering.
+`model_followup` includes both UI passes in the UI duration and one presentation of
+the settled model. Assertions run after timing ends and failures abort the run.
+
+`render_present` includes surface acquisition, validation, buffer/texture uploads,
+command encoding, submission and present. It is a CPU wall-clock measurement,
+including driver or refresh waits, rather than GPU-only execution time.
+`total` includes injection, UI and rendering. `cadence` measures intervals between
+successful frame completions in the event loop, including event-loop overhead;
+it has one fewer sample than `total`. Throughput includes the final GPU drain and
+harness overhead. Frame-budget counts use cadence for GPU and total for CPU.
+
+For completion measurements:
+
+```sh
+cargo bench --bench performance -- --gpu-only --gpu-wait
+```
+
+This waits for each submitted frame's GPU work before ending the total timer and
+also reports `gpu_wait`. It serializes CPU/GPU work, so compare it with other
+`--gpu-wait` runs. Completion does not establish compositor/display timing.
+Keyboard events use `Context::on_key_event` because winit KeyEvent contains private
+platform data; mouse events use `on_window_event`. Input is deterministic and
+synthetic, so it excludes OS delivery, device latency and physical display latency.
+
+Warmup and setup are excluded from distributions. Surface retries are counted and
+unpresented frames are excluded from timing samples. Minimization, occlusion,
+viewport changes, suspension or device loss fail the run. Keep the window visible.
+Live pointer/keyboard events do not modify scripted benchmark state. The report
+includes adapter/driver/backend, surface-supported present modes, initialization
+time, native DPI, OS/architecture and timer overhead. Immediate can fall back;
+the requested enum does not prove the driver's actual presentation behavior.
+
+On an interrupted or failed run, the JSON keeps completed rows and records
+`completed: false`, the failure message and `failed_case` metadata. A successful measurement run has
+`completed: true`; performance budgets are applied to its rows separately.
+
+### Targeted runs and budgets
+
+```sh
+cargo bench --bench performance -- --cpu-only --sizes 128,512,2048
+cargo bench --bench performance -- --gpu-only --filter blur --iterations 300
+cargo bench --bench performance -- --filter checkbox --output target/checkbox.json
+cargo bench --bench performance -- --cpu-only --filter text_dynamic,text_wrapped
+cargo bench --bench performance -- --cpu-only --filter cached_ui --max-p95-ms 1
+cargo bench --bench performance -- --resolution 1920x1080 --list
+```
+
+`--max-p95-ms` exits with an error if a selected row's total frame p95 exceeds the
+budget, after writing the report. Use specific cases/suites for useful budgets;
+Vsync intentionally includes refresh waiting. `--quick` verifies paths with a small
+sample count; its p95/p99 are smoke measurements. Use longer runs on a quiet machine
+with the same resolution, DPI, power settings, adapter and wait mode for comparisons.
+`--filter` accepts comma-separated substrings, matching any of them.
+
+Independent blur on hundreds of controls intentionally stresses GPU resources.
+An out-of-memory failure is recorded as a capacity result under the current
+machine conditions. Run smaller sizes or filter other
+cases to collect their timings. The harness does not lower the requested load.
+
+Profile scrolling over a longer run:
+
+```sh
+cargo bench --bench performance -- --hard --filter scroll_ --output target/scroll-benchmark.json
+```
+
+Scroll input follows a repeating down/up trajectory, including row boundaries.
+Middle-button samples use a deterministic 16 ms clock so CPU and GPU cases build
+the same content. These measurements cover pass cost and native presentation;
+they do not validate physical touchpad input or the built-in runner wake cadence.
+
+Pure translations reuse cached contours. Text translations reuse glyph UVs only
+when physical raster phases are unchanged. Cached mesh bounds omit hidden paint
+from frame geometry, with a physical-pixel margin when culling fractional text
+translations. Closures still run to measure content and process model changes;
+use fixed-height row virtualization to bound UI work as well.
+
+### Images and memory
+
+`--sizes` selects square asset dimensions for `image_` cases (64, 256, 1024 and
+4096 pixels), rather than widget count. Each JSON row includes format, alpha and
+dimensions. Cold cases prepare encoded assets outside timing but invalidate each
+measured load; file I/O may benefit from the OS page cache.
+
+```sh
+cargo bench --bench performance -- --quick --cpu-only --filter image_ --sizes 64
+cargo bench --bench performance -- --cpu-only --filter image_ --sizes 64,256,1024,4096 --iterations 60 --warmup 5 --output target/images-cpu-report.json
+cargo bench --bench performance -- --gpu-only --filter image_empty,image_warm,image_first_show,image_update_pixels,image_recovery --sizes 64,256,1024,4096 --iterations 60 --warmup 5 --gpu-wait --gpu-timestamps --output target/images-gpu-report.json
+cargo bench --bench performance -- --cpu-only --filter image_scroll_gallery,image_eviction --sizes 1024 --iterations 1000 --warmup 10 --output target/images-memory-stress.json
+cargo bench --bench performance -- --gpu-only --filter image_scroll_gallery --sizes 1024 --iterations 1000 --warmup 10 --output target/images-gpu-memory-stress.json
+```
+
+Read stages separately: queue delay, worker service, publication and first-ready
+latency have different boundaries. SVG resize includes a 120 ms settle deadline.
+`--gpu-timestamps` enables supported adapter timestamp queries with completion
+and readback. Render timestamps cover the render pass. Diagnostic explicit-copy
+transfer timestamps cover an additional staging/copy path, not production
+`queue.write_texture`; that diagnostic is outside the timed first-show transaction
+but contributes to wall throughput. GPU allocation and production GPU transfer
+time are explicitly unavailable. CPU creation/write APIs and `--gpu-wait` are
+reported separately, without calling them GPU time.
+
+Process working set and Windows private commit snapshots include allocator,
+driver, font and in-flight allocations. CPU image cache accounting and GPU texel
+estimates are separate; neither is an OS memory cap or measured VRAM. The scroll
+fixture crosses hundreds of sources and uses an 8 MiB managed GPU budget with
+64 bindings to exercise eviction. Compare the tail after cache fill, not just the
+initial/final difference. Recovery checks a replacement renderer before measurement;
+its measured iterations clear/recreate managed texture residency.

@@ -1,0 +1,136 @@
+---
+title: Window
+icon: PanelsTopLeft
+description: Panels, initial geometry, minimum sizes, clipping, and layer ordering.
+---
+
+`zaxis::Window` is a panel rendered inside the native window. Use
+`zaxis::winit::window::Window` for the OS window.
+
+For an application that fills the native client area, use `Root` instead:
+
+```rust
+zaxis::Root::new().padding(zaxis::Padding::all(24.0)).show(context, |ui| {
+    ui.label("Application content");
+});
+```
+
+Build one root per pass. It follows viewport and DPI changes automatically,
+has no internal title bar or resize grip, and stays below floating panels and
+popups. Its padding defaults to `Style::window_padding`; `blur(f32)` overrides
+the theme's application backdrop blur.
+
+Disable native decorations with
+`options.window_attributes.with_decorations(false)` and use `Frame::window()`
+for native dragging, resizing, minimizing and maximizing. A custom close button
+calls `Frame::close()`. See `examples/settings.rs` for a complete example.
+
+On macOS the desktop runner always enables system decorations, including native
+close, minimize and zoom controls and resizing, even if `with_decorations(false)`
+was requested. Custom hosts using `Context` and `Renderer` directly must keep
+native decorations enabled themselves when using this policy.
+
+Use `RunOptions::with_rounded_corners(true)` after configuring window attributes
+to enable native rounded corners and the system shadow for undecorated windows
+on Windows 11. `false` requests square corners and disables that shadow. Other
+platforms retain their existing window attributes. Maximized and snapped windows
+follow the system's square-corner policy; this does not change widget rounding.
+
+`TitleBar` supplies Windows-style caption controls with vector icons and native
+drag/resize handled directly by the desktop runner on mouse press:
+
+```rust
+Root::new().padding(Padding {
+    top: zaxis::TitleBar::HEIGHT + 12.0,
+    ..Padding::all(24.0)
+}).show(context, |ui| { ui.label("Content"); });
+let caption = zaxis::TitleBar::new("My app")
+    .maximized(frame.window().is_maximized()).show(context);
+if caption.close { frame.close(); }
+if caption.minimize { frame.window().set_minimized(true); }
+if caption.maximize {
+    frame.window().set_maximized(!frame.window().is_maximized());
+}
+```
+
+Build it after the root content. Its unpadded drag strip fills the top 46 logical
+pixels, excluding three adjacent 46-pixel-wide buttons at the right edge.
+On macOS `TitleBar::show` draws nothing and returns an empty response;
+`TitleBar::HEIGHT` is zero, so the same layout does not reserve a second title bar.
+
+```rust
+use zaxis::{vec2, Id, Padding, Window};
+
+Window::new("Inspector")
+    .id(Id::new("inspector"))
+    .default_position(vec2(24.0, 24.0))
+    .default_size(vec2(440.0, 320.0))
+    .min_size(vec2(260.0, 180.0))
+    .padding(Padding::all(16.0))
+    .show(context, |ui| {
+        ui.label("Selection");
+        ui.button("Inspect");
+    });
+```
+
+## Builders
+
+| Method | Default / behavior |
+| --- | --- |
+| `new(title: impl Into<String>)` | Title supplies the default ID; `##suffix` is hidden |
+| `id(Id)` | Override complete panel identity |
+| `default_position(Vec2)` | Initial top-left; default `(40, 40)` |
+| `offset(Vec2)` | Per-pass translation of the whole panel, including blur, clipping and hits |
+| `default_size(Vec2)` | Initial size; default `(380, 240)` |
+| `min_size(Vec2)` | Default `(160, 100)`; enforced lower bound described below |
+| `draggable(bool)` | `true`; capture title-bar drag |
+| `resizable(bool)` | `true`; show bottom-right grip |
+| `padding(Padding)` | `Style::window_padding` |
+| `rounding(CornerRadius)` | `Style::rounding` |
+| `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
+| `blur(f32)` | Override theme backdrop sigma; zero disables blur |
+| `show(context, build) -> R` | Build vertical content and return the closure's result |
+
+All dimensions use logical pixels. The effective minimum is at least 64 pixels
+wide and `max(64, effective_title_height + 32)` high. The effective title height
+is `max(24, Style::title_height)`.
+
+## Retained geometry
+
+Position and size builders apply when the ID first appears. Subsequent passes use
+the retained rectangle, including after the panel is hidden and reopened. Changing
+`min_size` updates the current minimum; changing the initial size does not reset it.
+
+Dragging clamps the top-left to the viewport while retaining at least a small reachable
+area: the maximum top-left is `viewport_size - (48, 32)`, clamped to zero. The complete
+panel is not constrained to fit the viewport. Resizing enforces the minimum without
+adding an upper size limit.
+
+Use an explicit ID for changing titles. Changing the ID creates a separate retained
+panel state. There is no public force-position, force-size, close button, or title-bar
+visibility API.
+
+`offset` adds a visual translation to the retained rectangle without changing the
+saved drag position. It can leave the viewport for an exit transition. Returning
+the offset to zero restores the retained position. See [Animation](../animation.mdx).
+
+## Ordering and clipping
+
+New panels start at the front. Clicking a panel raises it. Rendering and hit testing
+use this retained layer order. Controls in a covered panel cannot receive pointer input.
+
+Content bounds exclude the title bar, padding, and resize-grip reserve. Shapes and
+hit regions use the rectangular content clip. Disabling resizing removes the grip and
+its reserve. Panels do not grow to their content or provide scrolling.
+
+To hide a panel, omit its `show` call based on application state.
+
+## Backdrop blur
+
+`Window::new("Inspector").blur(12.0)` blurs previously drawn content behind the
+panel before drawing its fills, title, and children. Corners and clipping are
+preserved; text stays sharp. Fills use `Style::blur_opacity` while blur is enabled.
+Without an override the panel inherits `Style::blur_radius`. A flat clear color
+has no detail to blur; paint scene geometry with `Context::paint_background`
+before building panels, or put another panel behind it. This effect samples the
+application frame, not the desktop behind the native OS window.

@@ -1,0 +1,88 @@
+---
+title: NumberInput & DragValue
+description: Typed numeric entry and horizontal dragging, using the shared TextEdit editor.
+---
+
+`NumberInput` edits a draft string. `DragValue` displays a number that you can drag
+horizontally; click without moving, press Enter or F2 to edit it with `TextEdit`.
+Both support every Rust primitive integer (including `i128` and `u128`), `f32` and
+`f64`. Integer values and steps never pass through floating point.
+
+```rust
+use zaxis::{DragValue, NumberInput, Slider};
+
+let mut offset = -12.5_f64;
+ui.add(DragValue::new(&mut offset)
+    .range(-100.0..=100.0).step(0.1).precision(2).suffix(" px"));
+
+let mut count = 9_007_199_254_740_993_u64;
+ui.add(NumberInput::new(&mut count).step(1).width(240.0));
+
+// Compact numeric value beside an existing slider.
+let mut gain = 0.65_f32;
+ui.horizontal_aligned(zaxis::Align::Center, |ui| {
+    ui.add(Slider::new(&mut gain, 0.0..=1.0).width(260.0));
+    ui.add(NumberInput::new(&mut gain)
+        .range(0.0..=1.0).step(0.01).precision(2).width(100.0));
+});
+```
+
+You can also use `ui.number_input(&mut value)` and `ui.drag_value(&mut value)`.
+Use `.id_source(...)` or `ui.push_id(...)` for stable identity in dynamic lists.
+
+| Builder | Behavior |
+| --- | --- |
+| `.range(min..=max)` | Finite ascending bounds; equal endpoints are allowed. Defaults to the type's finite limits. |
+| `.step(value)` | Positive finite step of the same type. Defaults to 1. Integers require integer steps. |
+| `.precision(0..=16)` | Display decimals for floats; does not round the stored value. Ignored for integers. |
+| `.formatter(\|value\| format!("{value:.2}"))` | Typed, display-only formatter. Editing uses the full parseable value. |
+| `.prefix("$ ")`, `.suffix(" kg")` | Noneditable decorations, also visible during editing. |
+| `.enabled(bool)`, `.disabled(bool)` | Disabled fields preserve the number and discard pending drafts. Inherited disabled scopes apply. |
+| `.width(pixels)`, `.style(NumberStyle)` | Per-control appearance overrides. |
+| `.sensitivity(steps_per_pixel)` | Horizontal drag sensitivity; default 0.1 steps per logical pixel. |
+
+The compact field is 28 logical pixels high, with 8-pixel horizontal padding,
+5-pixel corner radius, 14-pixel text and a quiet neutral surface. Configure
+`Style::number` globally, or use `.style(...)` to override `NumberStyle` on either
+widget. It also contains `shift_multiplier` (0.1) and `ctrl_multiplier` (10).
+Shift takes precedence when both modifiers are held.
+
+## Editing and confirmation
+
+The draft is independent of the bound number. Intermediate strings such as `-`,
+`.` and `-.` remain editable. Selection, clipboard, Unicode, IME composition and
+undo/redo come from the existing `TextEdit` implementation.
+
+- **Enter** commits valid input and clamps it to the range. An invalid draft stays
+  visible with an error outline; it does not become zero. `submitted()` is true
+  only for a successful confirmation.
+- **Escape** restores the value at the start of this editing session, including
+  arrow adjustments. A successful Enter starts a new cancellation baseline.
+- **Focus loss**, including Tab and native window focus loss, commits a valid
+  draft. An invalid draft is discarded and the last confirmed number is kept.
+- **Up/Down** adjust with the typed step while editing. Invalid drafts are kept;
+  stepping cannot silently replace them. Left/Right navigate text.
+- In DragValue's display mode **all arrows** adjust, PageUp/PageDown use ten
+  steps, Home/End select the bounds. Pointer capture continues outside the field.
+  Horizontal motion has a 3-pixel threshold to distinguish clicking from dragging.
+  Escape during a captured drag restores its initial value.
+
+Shift reduces and Ctrl increases steps and drag speed. Integer gestures accumulate
+fractional movement and round the resulting delta to the nearest integer. A step
+of 10 with Shift adjusts by 1; a step of 1 accumulates sub-unit movement. Floating gestures
+calculate from the gesture's original value, avoiding repeated addition error.
+Clamped endpoints respond immediately when the direction reverses.
+
+Typed input is not snapped to the step or rounded to display precision. Parsing
+rejects integer overflow, NaN and infinity; gestures saturate at the type limits
+and clamp to the configured range. An application-supplied nonfinite float is
+left untouched while idle or disabled: it can be replaced by valid text; a drag
+starts from the lower bound for NaN, or the corresponding bound for infinity.
+External changes to the bound number replace a stale draft.
+
+`Response.changed()` reports an actual change to the bound number, including
+Escape restoring a number after arrow adjustments. Editing the draft, submitting
+the same number and saturated steps do not mark it changed.
+
+Run `cargo run --example numbers` for a slider, numeric entry, negative fractional
+drag value and an exact large integer in one window.

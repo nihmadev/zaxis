@@ -1,0 +1,54 @@
+---
+title: Checkbox
+icon: SquareCheck
+description: Boolean binding, indicator sizing, label wrapping, and toggle responses.
+---
+
+```rust
+if ui.checkbox(&mut enabled, "Enable notifications").changed() {
+    // `enabled` already contains the new value.
+}
+```
+
+The rounded square and its label are both clickable. Checked state adds a checkmark.
+Activation toggles the supplied `&mut bool`; application code owns the value.
+
+## Builders
+
+```rust
+use zaxis::{Checkbox, CornerRadius};
+
+ui.add(Checkbox::new(&mut sound, "Play sound")
+    .id_source("sound")
+    .enabled(notifications)
+    .size(22.0)
+    .rounding(CornerRadius::all(3.0)));
+```
+
+| Method | Default / behavior |
+| --- | --- |
+| `new(&mut bool, text)` | Bind value and caption; hidden `##suffix` contributes to ID |
+| `id_source(impl Hash)` | Override caption identity in the current scope |
+| `enabled(bool)` | `true`; disabling preserves the value |
+| `size(f32)` | Indicator side is `1.25 × font_size`, clamped to 10–128 and available width |
+| `rounding(CornerRadius)` | Radius 4 on all corners |
+| `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
+| `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
+| `hover_style(HoverStyle)` | Theme hover preset for the square and caption; see [Hover](../style.mdx#hover) |
+
+The explicit side length uses the same clamp as the default. A nonempty label receives
+a gap of `min(max(Style::spacing, 0), 8)` and wraps by character within the remaining
+width. An empty visible label reserves no gap or caption geometry.
+
+## Responses
+
+A pointer release over the checkbox or Enter/Space release while focused toggles it.
+That pass reports both `clicked()` and `changed()`. Releasing the pointer outside
+cancels the toggle. Disabled checkboxes cannot toggle or focus.
+
+An external assignment to the boolean changes rendered geometry but does not set
+`changed()`: that getter records a change made by the widget during this pass.
+Request a native redraw when changing model state outside the UI.
+
+The indicator uses button fill colors, text color for the checkmark, and muted text
+when disabled. `Style::rounding` does not change its default radius.

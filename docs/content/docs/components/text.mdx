@@ -1,0 +1,91 @@
+---
+title: Text and fonts
+icon: Type
+description: Shaped labels, bidirectional layout, font fallback, color emoji, and glyph caching.
+---
+
+```rust
+ui.label("Status: ready");
+```
+
+## Builders
+
+```rust
+use zaxis::{Color, Text};
+
+ui.add(Text::new("Build output\nCompleted")
+    .size(18.0)
+    .color(Color::gray(210))
+    .wrap(true));
+```
+
+| Method | Default / behavior |
+| --- | --- |
+| `new(impl Into<String>)` | Own the text string |
+| `size(f32)` | `Style::font_size`; effective size clamped to 1–256 logical pixels |
+| `color(Color)` | `Style::text_color` |
+| `muted()` | Use `Style::muted_text`; an explicit `color` takes precedence |
+| `wrap(bool)` | `true`; wrap at the available layout width |
+
+Text is passive: no pointer capture or keyboard focus. Its `Response` contains its
+measured rectangle and hover state. `##` is displayed literally.
+
+`ui.muted("No selection")` is the short form of `ui.add(Text::new("No selection").muted())`.
+Text without an explicit color also uses muted text inside a disabled group.
+
+## Layout behavior
+
+The engine uses cosmic-text advanced shaping, including ligatures, complex scripts,
+bidirectional layout, and font fallback. Newlines create new lines. Wrapping uses
+word boundaries with glyph-level fallback for words wider than the available width.
+Painting is clipped by the enclosing UI.
+
+`wrap(false)` measures without a width limit. Content can extend beyond its allocation
+bounds, but painting still uses the enclosing content clip. The engine reserves at
+least one line even for an empty string. Line height is `1.25 × font_size`.
+
+## Replace the font
+
+`Context::new()` loads the bundled unmodified Lato font. A custom host can construct
+the context with an `ab_glyph::FontArc`:
+
+```toml title="Cargo.toml"
+[dependencies]
+ab_glyph = "0.2.32"
+```
+
+```rust
+use ab_glyph::FontArc;
+use zaxis::Context;
+
+fn load_context() -> Result<Context, Box<dyn std::error::Error>> {
+    let bytes = std::fs::read("assets/YourFont.ttf")?;
+    let font = FontArc::try_from_vec(bytes)?;
+    Ok(Context::with_font(font))
+}
+```
+
+Set the new context's viewport before rendering. The built-in runner constructs its
+own default context and has no `RunOptions` font field. Font injection is a
+[custom-host](../integration.mdx) configuration.
+
+The selected font is the context's primary family. A shared font database discovers
+system fonts and provides script fallback; bundled Noto Color Emoji supplies color
+emoji without requiring an installed emoji font through the default `bundled-emoji`
+feature and the `zaxis-emoji` crate. Disable that feature to use system fonts for emoji.
+Coverage of other scripts depends
+on the fonts available on the host. There is no public runtime font setter.
+
+## Rasterization and atlas
+
+Glyphs rasterize at logical font size multiplied by DPI. Cache keys include the font,
+glyph, size, and subpixel position. Glyphs rasterize through Swash; color emoji retain
+their own RGB colors and use the requested text alpha.
+
+Atlas pages normally use 1024 × 1024 RGBA8 pixels, with transparent white background
+and coverage in alpha. Oversized glyphs allocate a larger power-of-two page. Pages
+are retained for the context lifetime; there is no glyph eviction. New glyphs advance
+the page's texture revision and trigger a full page upload on the next render.
+
+For editing and native IME composition, use [TextEdit](./text-edit.mdx).
+See [Limitations](../limitations.mdx) for the remaining boundaries.

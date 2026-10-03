@@ -1,0 +1,97 @@
+---
+title: Troubleshooting
+icon: Wrench
+description: Symptoms, causes, and direct fixes for identity, rendering, repaint, and input failures.
+---
+
+## Duplicate widget/paint ID panic
+
+Two same-kind controls have the same caption and scope, or two windows share an ID.
+Add unique `##suffix` strings, `id_source`, or a stable `Ui::push_id` scope. For
+changing captions, use explicit identity. See [IDs](./ids.mdx).
+
+## Window position resets after changing its title
+
+The title forms the default window ID. Set `.id(Id::new("stable-panel-key"))` before
+`show`. Changing `default_position` does not force an existing window to move;
+it supplies only initial geometry. See [Window](./components/window.mdx#retained-geometry).
+
+## UI does not update after a worker changes state
+
+Request native `window.request_redraw()` after publishing the new model value.
+`context.request_repaint()` alone does not wake a custom host. For workers that
+survive native-window recreation, refresh the redraw handle or use a host user event.
+See [Repaint scheduling](./repaint.mdx#background-workers).
+
+## Earlier controls show the previous value
+
+Mutating after a control has already been built affects the next pass. Standard
+`Ui::add` helpers request this follow-up on click/value change. For custom model
+mutations unrelated to a widget response, call `request_repaint`. Custom hosts must
+honor `needs_repaint()` after the pass.
+
+## High CPU usage while idle
+
+Remove unconditional redraws and `ControlFlow::Poll`. Check whether `set_style` or
+`request_repaint` is called every UI pass. Use `Wait` when idle and `WaitUntil` for
+future deadlines. Delay `RenderStatus::Retry` attempts. See [Performance](./performance.mdx#idle-behavior).
+
+## Fast clicks are missed
+
+Forward each event to `Context::on_window_event` as it arrives. Do not reduce input
+to the final held state or rebuild the context each frame. Hit regions come from the
+last completed UI pass; a control must have been built before it can receive input.
+See [Input](./input.mdx#pointer).
+
+## Content disappears at the panel bottom
+
+The content is clipped; there is no automatic scrolling. Increase panel height or
+split content into application-controlled sections. Resizable windows reserve space
+near the grip. See [Layout](./layout.mdx#clipping).
+
+## Slider changes without pointer input
+
+Enabled sliders normalize their values each pass. Set valid values and a suitable
+step, or disable the control to preserve an unnormalized value. Steps are relative
+to the range minimum. See [Slider](./components/slider.mdx#normalization).
+
+## Pointer positions do not match drawing at high DPI
+
+Pass native physical size and actual scale factor to `set_viewport`. Keep UI
+coordinates logical; the event bridge divides physical pointer positions by scale.
+Refresh from `window.inner_size()` and `window.scale_factor()` after resize/DPI events.
+Do not multiply widget dimensions by DPI yourself.
+
+## Invalid UI draw data
+
+Read the specific `RenderError::InvalidDrawData` message:
+
+| Message concerns | Fix |
+| --- | --- |
+| Viewport and scale | Supply finite positive logical size and scale |
+| Mesh indices | Use global indices below the vertex count |
+| Nonfinite vertices | Remove NaN/infinite position, UV, or color fields |
+| Draw range / clip / texture | Use valid index-vector ranges, finite clips, and supplied texture IDs |
+| Texture size / RGBA count | Nonzero supported dimensions; exactly width × height × 4 bytes |
+| GPU buffer / texture limits | Reduce the frame, payload, or physical surface size |
+
+For custom producers, increment `revision` after changing geometry or commands and
+increment each image revision after changing its pixels. See [Drawing protocol](./protocol.mdx).
+
+## GPU initialization or surface failure
+
+Capture the full `RunError`/`RenderError`. For a custom host, log `adapter_info()`
+after successful initialization. A native display and compatible GPU backend are
+required; GPU smoke tests cannot be replaced by a headless HTML preview.
+
+Handle `Retry` with backoff and `Dormant` by waiting for relevant events. Recreate
+the renderer on `DeviceLost`; lost/outdated surfaces are recovered inside `render`.
+See [Renderer](./renderer.mdx#surface-outcomes).
+
+## Missing glyphs or incorrect script layout
+
+The engine supports complex shaping and bidirectional layout. Bundled Noto Color Emoji
+provides emoji; other script coverage depends on installed fallback fonts. Install a
+font covering the script, restart the application so the shared font database is
+rebuilt, or load a primary font through `Context::with_font` in a custom host.
+See [Text and fonts](./components/text.mdx#replace-the-font).

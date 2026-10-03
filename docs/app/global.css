@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@theme {
+  --font-sans: 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+}
+
+:root {
+  --color-fd-primary: hsl(202, 65%, 33%);
+  --color-fd-primary-foreground: hsl(0, 0%, 100%);
+}
+
+.dark {
+  --color-fd-primary: hsl(202, 59%, 72%);
+  --color-fd-primary-foreground: hsl(0, 0%, 10%);
+}
+
+body { font-feature-settings: 'ss01'; }
+.site-title { display: flex; align-items: center; gap: 0.65rem; font-family: var(--font-mono); }
+.site-version { color: var(--color-fd-muted-foreground); font-size: 0.7rem; font-weight: 400; }
+.prose { --tw-prose-links: var(--color-fd-primary); }
+.prose h2 { scroll-margin-top: 5rem; }
+.prose table { font-size: 0.875rem; }
+.prose code { font-size: 0.85em; }

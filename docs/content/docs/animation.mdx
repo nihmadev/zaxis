@@ -1,0 +1,439 @@
+---
+title: Animation
+icon: Activity
+description: Retained time-based transitions, keyframes, and application-defined motion.
+---
+
+## Transitions in immediate mode
+
+Call the same channel each visible pass. Its first appearance uses the target
+immediately; subsequent target changes animate from its currently sampled value.
+`transition_from` supplies an initial value when the first appearance should move.
+
+```rust
+use std::time::Duration;
+use zaxis::{Color, Easing, TweenOptions};
+
+let target = if enabled { Color::WHITE } else { Color::gray(100) };
+let color = ui.transition("indicator-color", target,
+    TweenOptions::new(Duration::from_millis(160)).easing(Easing::QuadOut)).value;
+```
+
+`Ui` scopes these IDs like widgets. `Context` takes an explicit `Id`; use
+`widget_id.with("color")`, `widget_id.with("angle")`, etc. for separate properties.
+Use `ui.animation_id(source)` to obtain a channel ID for pause/cancel controls.
+Repeated calls with the same target never restart, even after completion or
+cancellation. A new target restarts a paused/cancelled transition from its frozen
+value. Changed options apply on the next target change. Avoid NaN value targets:
+transition identity follows the type's `PartialEq` implementation.
+
+## Explicit tracks
+
+`animate(id, factory)` creates a track once. Completed and cancelled channels keep
+their value and status, but release the track. The factory runs again only after
+the channel disappeared for a complete UI pass or an explicit restart.
+
+```rust
+use std::time::Duration;
+use zaxis::{Easing, Repeat, Tween};
+
+let motion = ui.animate("pulse", ||
+    Tween::new(0.5_f32, 1.0, Duration::from_millis(300))
+        .delay(Duration::from_millis(100))
+        .easing(Easing::SineInOut)
+        .repeat(Repeat::Count(3))
+        .auto_reverse(true));
+if motion.just_completed {
+    // One completion event for the entire track, rather than for each cycle.
+}
+```
+
+| Rule | Behavior |
+| --- | --- |
+| Start | Clock starts at the creating/restarting UI pass; the first sample is elapsed zero |
+| Delay | Initial value remains visible; one future deadline, before the first cycle only |
+| Duration | Time of a forward leg; elapsed time, never a frame counter |
+| Repeat | `Once`, `Count(n)` total cycles including the first, or `Forever`; count zero panics |
+| Auto-reverse | Each cycle has forward and backward legs; finishes at the exact initial value |
+| Cycle boundary | Repeated forward-only tracks reset to their start; reverse tracks return continuously |
+| Zero duration | Completes at the end of delay, even with `Forever`; reduced motion skips the delay |
+| Completion | At or beyond total duration; exact endpoint clone, `Completed`, no next deadline |
+| Pause | Samples at this pass's time, freezes value and elapsed time including remaining delay |
+| Resume | Continues frozen elapsed time; paused wall time is excluded; completed/cancelled tracks stay stopped |
+| Cancel | Samples and freezes the current value, discards the track; no completion event |
+| Restart | Replaces the track, resets elapsed time, pause/cancel state and pending completion; may jump to its new start |
+| Finish | Applies `Animation::finish()` exactly, even when paused, and emits completion once |
+
+Use `pause_animation`, `resume_animation`, `cancel_animation`, `finish_animation`,
+`restart_animation` and `sample_animation` on `Context`. Controls are idempotent;
+their boolean return indicates whether the channel exists. Apply them during a
+UI pass; outside a pass they use the latest `frame_time`. Restart must be followed
+by an animate/sample call on the same pass to mark the channel visible.
+`Animated` exposes `value`, `status`, `running()`, `completed()` and
+`just_completed`. The completion flag is consumed by the first read, including
+multiple reads within a pass. Cancelling is distinct from completing.
+
+## Keyframes and curves
+
+```rust
+use std::time::Duration;
+use zaxis::{Easing, Keyframe, Keyframes};
+
+let motion = ui.animate("sequence", || Keyframes::new([
+    Keyframe::new(Duration::ZERO, 0.0_f32),
+    Keyframe::new(Duration::from_millis(100), 8.0).easing(Easing::QuadOut),
+    Keyframe::new(Duration::from_millis(280), 0.0).easing(Easing::QuintOut),
+]));
+```
+
+The easing on each point controls the segment arriving at that point. Exact
+point times return the original value. At least two strictly increasing points
+starting at zero are required; invalid input panics at construction. Keyframes
+support delay, repeat and auto-reverse with the same cycle rules as tweens.
+
+Built-in curves are `Linear`, `QuadIn/Out/InOut`, `CubicIn/Out/InOut`,
+`QuintIn/Out/InOut` and `SineIn/Out/InOut`. `Easing::custom` takes a reusable
+`Fn(f32) -> f32 + Send + Sync + 'static`, which can capture curve data. Input is
+clamped to [0, 1], output must be finite and may overshoot. Endpoints stay exact.
+
+## Interpolation and external motion
+
+`Interpolate` supports `f32`, `f64`, `Vec2`, `Color`, `Border`, `CornerRadius`,
+`Shadow`, `Rect`, `Padding`, `Gradient`, arrays and pairs of supported types.
+RGB interpolates in **linear-light sRGB**, alpha linearly in **straight-alpha**
+space. Results are encoded to sRGB and rounded to bytes. For example, black to
+white at 50% is `Color::gray(188)`. Gradient direction is discrete and changes
+at its endpoint. Numeric interpolation allows custom-curve overshoot.
+
+Application value types implement `Interpolate: Clone + PartialEq + 'static`.
+Application effects implement `Animation<T>` with two methods:
+
+```rust
+use std::time::Duration;
+use zaxis::{Animation, AnimationSample};
+
+#[derive(Clone)]
+struct Dial { angle: f32 }
+struct Wobble { target: f32 }
+impl Animation<Dial> for Wobble {
+    fn sample(&self, elapsed: Duration) -> AnimationSample<Dial> {
+        if elapsed >= Duration::from_secs(1) {
+            return AnimationSample::completed(self.finish());
+        }
+        let t = elapsed.as_secs_f32();
+        AnimationSample::running(Dial {
+            angle: self.target * (1.0 - (-8.0 * t).exp() * (14.0 * t).cos()),
+        })
+    }
+    fn finish(&self) -> Dial { Dial { angle: self.target } }
+}
+```
+
+`sample` is a pure function of elapsed time and returns value, completion and
+scheduling information. It must handle arbitrary elapsed times and large gaps.
+`finish` supplies the exact state for explicit finish and reduced motion.
+`AnimationSample::after(value, delay)` lets procedural timers sleep until their
+next meaningful change. `Procedural::new(final_value, closure)` is a closure
+adapter. `Animation<T>` only requires `T: Clone + 'static` in the context; a custom
+track need not implement interpolation or equality. No unsafe, closed effect
+enum, plugin registration, or worker thread is involved.
+
+The [custom_animation example](./examples.mdx) defines an external `Pose`, its
+`Interpolate` and `SpringValue` implementations and a custom easing curve. It
+uses the built-in analytic spring, including physical velocity on retarget,
+pause, resume, cancellation and completion events. `Wobble` above is an arbitrary
+external time function; it does not model spring velocity.
+
+## Style and built-in components
+
+`Style::motion` contains `reduced_motion`, `hover`, `expand`, `page` and
+`frame_interval`. Defaults follow Rayfield's motion: hover/colors/reveal/chevron
+use 160 ms Quad Out, directional pages use 280 ms Quint Out. The sampling interval
+defaults to 16 ms for Immediate and timer-driven hosts. The built-in Vsync runner
+requests each next presented frame during continuous motion, without a second
+timer throttle. Duration and
+easing can be overridden per API call. Built-in component presets should use
+`Repeat::Once` without auto-reverse, so their final value represents their state.
+
+Button, Checkbox, Slider and ColorPicker share resolved hover transitions for
+fill, gradient, border, shadow and text. TextEdit animates its background; its
+cursor uses a sleeping procedural timer through the same engine. Slider values,
+pointer capture, text selection and window drag/resize remain immediate.
+ColorPicker's inline editor reveals under a matching clip and disables interaction
+as soon as closing starts. Its real line chevron turns through half a rotation.
+
+Pair `tab_bar` with `ui.tab_pages(source, selected_index, size, build)` for page
+slides. This fixed-size container enters from the right for higher indices and
+from the left for lower indices. It completes the current slide and retains only
+the latest pending selection. During a slide, both visible pages can be built and
+their controls are disabled. Keep external side effects out of page build callbacks.
+Hidden pages are not built. Paint and hit regions use the same translated layout;
+the container clip remains fixed.
+
+Set `style.motion.reduced_motion = true` to immediately finish decorative motion,
+including delayed or paused tracks. Infinite decorative tracks use their declared
+final state. Essential timers can opt out with
+`animate_with(..., AnimationOptions { decorative: false }, ...)`. Cursor blinking
+uses that option. Reduced motion never discards the final UI state.
+
+## Host scheduling and lifecycle
+
+Only channels sampled during the current visible UI pass request deadlines.
+Ui helpers check their clip; built-in controls also check their own rectangle.
+For custom drawings, call animation APIs only in the visible region that needs
+them. Paused, completed, cancelled and disappeared channels have no deadlines.
+Manual `request_repaint_after` timers remain independent. An early native redraw
+does not postpone a delayed track's start. No animation call invalidates the whole
+context: changed paint descriptions rebuild affected elements, and completed
+geometry is reused normally.
+
+Runner uses `WaitUntil` for deadlines and `Wait` in idle. Occluded, minimized,
+zero-size and suspended windows do not wake for animation. On restoration,
+elapsed time catches up directly; time does not automatically pause. Hidden tabs
+stop building their channels and remove them; reappearing transitions snap to
+their current target. Explicit `animate` starts a new visible lifetime.
+
+Custom hosts use `Context::run_at(now, build)`, `frame_time()` and
+`needs_repaint_at(now)` with the same monotonic `Instant` clock. Vsync hosts can
+also use `wants_animation_frame()` after presenting; it excludes sleeping timers
+and stopped/hidden channels. One time is fixed
+for all animation/timer computations in a pass. Backwards timestamps clamp to
+the previous pass. Pass future deadlines to your event loop, and suppress wakeups
+while the viewport is hidden. Normal `Context::run` samples `Instant::now()` once.
+Do not mix a simulated clock with real-time `needs_repaint()`.
+
+## Physical spring
+
+```rust
+use zaxis::{vec2, SpringOptions, SpringState};
+let motion = ui.spring_transition("panel-position", vec2(120.0, 0.0),
+    ui.style().motion.spring);
+let position = motion.value.value;
+let velocity = motion.value.velocity; // logical pixels per second
+
+// Only the first appearance uses this initial state.
+let motion = ui.spring_transition_from("preview", SpringState {
+    value: 0.0_f32, velocity: 12.0,
+}, 100.0, SpringOptions::frequency(3.0, 1.0));
+```
+
+`Context` takes explicit IDs for the same methods. `Spring::new(from, target)`
+and `Spring::with_options(...).velocity(initial_velocity)` are ordinary open
+`Animation<SpringState<T>>` tracks; use all existing Context controls with them.
+`SpringValue` adds only zero, addition, subtraction, scalar multiplication and
+norm. Built-in implementations support `f32`, `f64`, and `Vec2`; application
+types can implement it independently of `Interpolate`.
+
+The differential equation is `mass * acceleration + damping * velocity +
+stiffness * displacement = 0`. For frequency `f` in Hz and damping ratio `r`,
+`omega = 2*pi*f`, `stiffness = mass*omega^2`, `damping = 2*mass*omega*r`.
+`frequency` uses mass one. Ratios below one oscillate, one is critically damped,
+and above one are overdamped. Default: 3 Hz, critical damping, no bounce.
+The analytic solution has constant sampling cost at 30/60/144 Hz or after hours
+of suspension. No missed-frame integration loop runs.
+
+Mass and thresholds must be positive, stiffness/damping nonnegative, all
+parameters finite; invalid parameters or overflowing coefficients panic at
+construction/retarget. Stiffness zero snaps to the exact target and zero velocity.
+Zero damping keeps oscillating unless initially within both rest thresholds;
+finish/cancel or stop building it to end that track. Thresholds default to 0.001
+distance units and 0.001 units/second. Once **both** are satisfied, the channel
+returns the exact target, zero velocity, one completion event and no deadline.
+
+Retarget first samples position **and velocity at the pass time**. The new spring
+starts at that state. Equal targets never restart; option changes apply on the
+next target change. First appearance without an initial state snaps silently.
+Pause freezes position, velocity and elapsed time; resume excludes paused wall
+time. Cancel freezes the sampled state and discards its track, with no completion.
+A new target resumes from that frozen state; restart replaces the state and may
+jump. Explicit finish also emits completion once. All controls use one pass clock.
+
+## Enter, Exit, and measured disclosure
+
+```rust
+use zaxis::{vec2, Presence};
+Presence::fade().offset(vec2(0.0, ui.style().motion.slide_distance))
+    .scaling(0.98).show(ui, "tool-panel", visible, |ui| {
+        ui.label("Tool output");
+        ui.button("Copy");
+    });
+ui.reveal("details", open, |ui| {
+    ui.label(&details); // actual height, including wrapping
+});
+```
+
+`ui.presence(source, visible, closure)` is the fade shortcut. Standalone presets
+are `Presence::fade()`, `::slide(offset)` and `::scale(scale)`; combine them with
+`fading`, `offset`, `scaling`, `pivot`, and `motion`. Initially hidden content is
+never built and never runs Exit. Enter starts from the hidden pose. Exit keeps
+calling the current pass's closure until opacity/pose reaches its hidden endpoint;
+then it stops building. No borrowed closure or application subtree is retained.
+Changing visibility during either transition reverses from its sampled pose.
+
+`exit_layout(true)` (default) preserves the measured allocation during Exit;
+false releases it immediately while painting the outgoing contents as an overlay.
+Both choices disable outgoing input immediately, clear focus/capture at pass end,
+and ignore already queued widget activation. `interactive_enter(true)` is the
+default: the transformed hit regions follow the displayed content. Disable it
+to wait until Enter completes. Reusing the source in an entirely different area
+requires an appropriate stable parent `push_id`.
+
+Scale uses a relative pivot in measured bounds (center by default). Layout and
+text measurement stay at logical size. Cached base meshes/glyph UVs are transformed
+without measuring/rasterizing every frame; the small scale preset uses the existing
+GPU texture filtering. Parent clipping stays fixed, child clips follow geometry.
+Opacity multiplies every primitive's alpha, including text, borders, shadows,
+gradients and the blur mask. It never edits shared Style. Blur remains opt-in.
+Popup portals keep their viewport clip and are transformed with their anchor.
+`Ui::visual` exposes the same axis-aligned mapping and subtree opacity directly.
+Widget `Response.rect` remains a logical layout bound; after the helper returns,
+`Ui::displayed_rect(&response)` or `Context::visual_rect(id, rect)` obtains its
+visual bound. Input coordinates are mapped back for sliders and text selection.
+
+Reveal measures arbitrary content **once** per pass and animates its actual height
+under a clip. Resizes and rapid toggles retarget from the current displayed height.
+Closing content loses input immediately; at zero height it is neither built nor
+allocated. Parent neighbors and ScrollArea content size use the animated height.
+`reveal_with` overrides `Style.motion.expand`. The internal ColorPicker uses this
+same measured placement/clip path. Presence and reveal accept finite forward
+tweens only (no repeat or auto-reverse). When an entire area disappears for a
+pass, its state/channels/deadlines are pruned. Reappearance starts fresh: hidden
+stays hidden; visible Presence enters; a newly opened Reveal starts from zero.
+
+## Opt-in reorder and selection marker
+
+```rust
+use zaxis::{Id, Reorder, Layout};
+let mut bounds = Vec::new();
+Reorder::new("results").show(ui, model.iter().map(|item| item.id), |rows| {
+    for item in visible_items {
+        let response = rows.item(item.id, |ui| ui.button(&item.label));
+        bounds.push((item.id, rows.ui().displayed_rect(&response)));
+    }
+});
+ui.selection_indicator("selected", selected_id, &bounds, Layout::Vertical);
+```
+
+Each row executes once and obtains its final measured allocation before its
+visual offset is applied. Later rows use final layout, not animated positions.
+Stable model IDs, never labels or current indexes, own the retained motion.
+Reordering during movement samples the displayed position before retargeting.
+New rows snap to their final allocation; deleted model IDs are cleaned at pass
+end; reinsertion after deletion starts fresh. Changed row sizes shift subsequent
+targets. Duplicate model/build IDs panic rather than silently share state.
+
+Always supply **full model membership**, including rows outside the virtual
+range. Build only visible rows and reserve skipped layout using your existing
+virtual list. Membership preserves hidden row identity; hidden tracks are sampled
+without requesting frames. A row omitted from building for a pass snaps to the
+current layout when it returns, avoiding movement from an obsolete viewport
+position. Scroll offsets are normalized out: ordinary viewport movement never
+retargets every row. The container itself disappearing releases its motion state.
+There is no drag-and-drop or owned list model.
+
+Paint and hits use one visual offset. The final model order is paint order;
+later rows win overlaps in both drawing and hit testing. No duplicate interactive
+instances are created. Reorder is explicit; streaming text, editor state and
+ordinary layout changes outside this container stay immediate.
+
+SelectionIndicator takes stable selected ID plus **current actual bounds**; use
+`displayed_rect` for reordered/transformed controls. Selected model value and
+keyboard focus change immediately. Only the decorative marker retargets, including
+width/height changes, rapid switches and scrolling. Missing selection bounds
+remove its channel immediately. For per-use settings use `SelectionIndicator::new`
+with `orientation`, `motion`, `color` and `thickness`, then `show`.
+
+## Busy indicators and change highlight
+
+```rust
+use zaxis::{Loader, Progress, ProgressState};
+ui.add(Loader::new().active(working).size(24.0).stroke(2.0));
+ui.add(Progress::new(match actual_progress {
+    Some(value) => ProgressState::Determinate(value),
+    None => ProgressState::Indeterminate { active: working },
+}));
+ui.pulse("busy-label", working, |ui| { ui.label("Agent is working"); });
+ui.highlight("file-change", revision, rect, current_base_fill, accent);
+```
+
+Loader uses the current [Lucide loader geometry](https://lucide.dev/icons/loader):
+eight strokes with round caps in a 24x24 viewbox. Full Lucide ISC and original
+Feather MIT notices are bundled in `assets/LUCIDE-LICENSE`. No SVG parser, browser,
+network request or image runtime is needed. Cached geometry rotates around its
+own center with a linear phase and constant speed. Numeric angle wraps modulo
+one turn, but the displayed pose is continuous. Builders set size, color, stroke,
+period and active state; defaults come from motion and theme. It is decorative
+and registers no hit region. Rotation never changes allocation.
+
+`ProgressState::Determinate` applies the application's value immediately;
+`Complete` fills the track and stops animation. Indeterminate has no percentage.
+Inactive/reduced-motion indeterminate shows a fixed segment as a busy symbol.
+Pulse quietly varies opacity between 0.65 and one; text never moves. Override
+with `pulse_with(..., Pulse::new(period).minimum(...), ...)`. `Rotation` and
+`Pulse` also implement the public Animation trait for direct composition.
+
+All convenience cycles require an external active flag. Inactive or omitted
+cycles release their channels, visible clipping suppresses deadlines, and reduced
+motion draws a static symbol. Loader/Progress restart at phase zero after a
+clipped/hidden/inactive lifetime. Pulse keeps time while built but clipped, without
+waking the host; omission or inactive resets it. Window occlusion pauses host
+redraw, not monotonic time; restoration samples the current phase directly.
+Returning from reduced motion starts convenience cycles fresh. Direct `animate`
+tracks retain the standard completed-channel rule and need explicit restart.
+
+Highlight compares an explicit revision: first appearance establishes a baseline,
+each later change triggers once. It smoothly attacks from the current accent
+amount to one (hover timing), then returns to zero (highlight timing). A repeat
+event restarts that attack from the displayed amount without a jump. Base colors
+are supplied **fresh each pass**, so theme/hover changes never restore an old fill.
+`highlight_with` overrides release timing per use. Reduced motion keeps a subtle
+static accent after an event until the area is removed, with no animation deadline.
+
+## Composition
+
+```rust
+use std::time::Duration;
+use zaxis::{Sequence, Parallel, Tween, Delay, Stagger, Id};
+let track = Sequence::new(0.0_f32)
+    .then(Tween::new(0.0, 1.0, Duration::from_millis(120)))
+    .delay(1.0, Duration::from_millis(250))
+    .then(Tween::new(1.0, 0.0, Duration::from_millis(180)));
+let group = Parallel::new().with(track).with(Delay::new(0.0, Duration::from_secs(1)));
+let mut stagger = Stagger::new(Duration::from_millis(25))
+    .max_delay(Duration::from_millis(240));
+stagger.insert(Id::new("task-a"), Duration::ZERO,
+    Tween::new(0.0_f32, 1.0, Duration::from_millis(120)));
+```
+
+These are ordinary Animation implementations, sampled by the existing Context
+Slot. Pause/resume/cancel/finish/restart and single-consumer completion events
+apply to the entire composition. No additional scheduler or script language.
+Sequence consumes residual elapsed time and skips completed known-duration stages
+after long gaps. Exact stage boundaries return exact finished values. Zero stages
+are skipped; empty Sequence finishes at its explicit initial value. A child that
+finishes before an explicit bound holds its endpoint until that bound, sleeping.
+Delay returns `Wake::After(remaining)` and never spins continuous frames.
+
+`Animation::duration()` defaults to None, preserving external implementations.
+Tween/Keyframes/Delay/compositions supply known lengths. An unbounded or unspecified
+Sequence child blocks subsequent stages; if it reports completion while its length
+is unknown, an intermediate stage holds without continuous frames. Use
+`then_for(duration, custom_track)` to define an exact stage boundary, including
+for a spring or infinite child. Explicit finish always applies the final child's
+finish value. Parallel returns children in insertion order and completes **after
+all children**. Empty Parallel completes immediately; an infinite child prevents
+normal completion. Stopped children do not add wakeups to the running group.
+
+Stagger returns `(Id, value)` pairs. Insert with composition elapsed time; existing
+IDs keep their original track/schedule. Reorder changes output order only. Delete
+only on model deletion, never viewport omission; reinserting a removed ID schedules
+a new child. Each insertion adds `step * current child count`, capped at 240 ms by
+default (configurable), to its insertion time. Pause elapsed time before passing
+new insertion times. Stage storage belongs to this open composition; callers can
+update it before moving it into Context, or use a custom Animation wrapper for
+live model changes. Ordinary Context restart resets the composition clock.
+
+The [animation gallery](./examples.mdx) continuously previews all built-in tracks
+and effects in the unchanged grey theme. Existing hover/expand/page durations remain untouched: new presence and
+reorder defaults are 240/200 ms, displacement 8 px. All motion is opt-in; typing,
+selection, cursor input, dragging/resizing and streaming tokens remain immediate.

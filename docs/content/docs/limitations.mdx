@@ -1,0 +1,33 @@
+---
+title: Limitations
+icon: CircleSlash
+description: Supported scope and boundaries of the 0.0.1 Blinking development release.
+---
+
+| Area | Current boundary |
+| --- | --- |
+| Native windows | Built-in runner owns one native window and one context; multiwindow hosting is application work |
+| Backends | winit and wgpu are always dependencies; no optional backend feature flags |
+| Layout | Rows, columns, Grid and Table; virtualization uses fixed-height rows, without variable-height virtualization |
+| Controls | TextEdit, ComboBox/Popup, numeric controls, ColorPicker, ScrollArea, Grid, Table and Image are available; no tree view or menu bar |
+| Text | Complex shaping, bidirectional layout, ligatures and color emoji are available; TextEdit remains a single-line editor |
+| Fonts | System font discovery and fallback with bundled color emoji; no public runtime font setter or font injection option on the built-in runner |
+| Accessibility | No OS accessibility integration |
+| Window state | Geometry retained by ID, with initial-position/size builders; no public reset, forced reposition, or forced resize method |
+| Custom interaction | Internal hit registration is private; external widgets compose built-in interactive controls |
+| Renderer integration | Renderer owns its surface, device, and queue; no public render-into-existing-pass API |
+| Antialiasing | Automatic 4× MSAA when supported, otherwise 1×; no public override |
+| Texture upload | Complete image payloads, full uploads on revision change; no public dirty-region API |
+| Memory | Window/scroll states and glyph atlas pages remain for the context lifetime; GPU buffers grow without shrinking |
+| Persistence | Application stores and loads its own model; library does not serialize UI or application state |
+| Images | Local files, bytes and RGBA pixels; no built-in network fetching, animated playback, or external SVG resource loading |
+
+zaxis `Window` panels are not native OS windows. Opening several panels does not
+create several event loops or GPU surfaces.
+
+TextEdit supports grapheme-aware editing, clipboard operations, undo/redo, and
+native IME preedit/commit. Shaped text and bidi rendering do not provide a full
+multiline editor or an OS accessibility integration.
+
+The repository targets desktop tools. The GitHub Pages documentation runs in a
+browser; it does not mean the GUI library has a supplied browser runner.

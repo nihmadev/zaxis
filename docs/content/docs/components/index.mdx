@@ -1,0 +1,65 @@
+---
+title: Components
+icon: Blocks
+description: Constructors, convenience methods, bound values, and shared response behavior.
+---
+
+Import components from `zaxis` or `zaxis::components`. `zaxis::widgets` remains a
+compatibility re-export of the component module.
+
+| Component | Short form | Use |
+| --- | --- | --- |
+| [Window](./window.mdx) | `Window::new(title).show(context, build)` | Retained panel with drag and resize |
+| [ScrollArea](./scroll-area.mdx) | `ScrollArea::vertical().show(ui, build)` | Measured viewport, nested scrolling and virtual rows |
+| [Grid](./grid.mdx) | `ui.grid(id, columns, build)` | Shared column widths and arbitrary cell layouts |
+| [Table](./table.mdx) | `Table::new(id).columns(columns).show(ui, build)` | Pinned headers, resize, selection, sort requests and virtual rows |
+| [Popup](./popup.mdx) | `Popup::new(id, anchor).show(ui, &mut open, build)` | Overlay layer, viewport placement and dismissal |
+| [ComboBox](./combo-box.mdx) | `ui.combo_box(&mut Option<T>, &options)` | Stable selection and optional filtering |
+| [Text](./text.mdx) | `ui.label(text)` | Read-only text |
+| [TextEdit](./text-edit.mdx) | `ui.text_edit(&mut String)` | Single-line Unicode editing and IME |
+| [Button](./button.mdx) | `ui.button(text)` | Activation |
+| [Checkbox](./checkbox.mdx) | `ui.checkbox(&mut bool, text)` | Boolean value |
+| [NumberInput / DragValue](./number-input.mdx) | `ui.number_input(&mut value)` / `ui.drag_value(&mut value)` | Typed numeric value |
+| [Slider](./slider.mdx) | `ui.slider(&mut f32, range)` | Numeric value |
+| [ColorPicker](./color-picker.mdx) | `ui.color_picker(&mut Color, text)` | HSV, RGB, and HEX color selection |
+| [Separator](./separator.mdx) | `ui.separator()` | Passive dividing line |
+
+Builders are consumed when shown or added. Use `ui.add(Component::new(...).builder(...))`
+for options unavailable in the short form. `Window`, `ScrollArea`, `Grid` and `Table` are containers with `show`, not
+implementations of `Widget`.
+
+```rust
+use zaxis::{Button, Slider};
+
+ui.button_enabled(can_run, "Run");
+ui.add(Slider::new(&mut gain, 0.0..=1.0).step(0.05).width(240.0));
+```
+
+For dependent controls, keep short forms inside an enabled group:
+
+```rust
+ui.add_enabled_ui(notifications, |ui| {
+    ui.checkbox(&mut sound, "Play sound");
+    ui.add_enabled(sound, Slider::new(&mut volume, 0.0..=100.0)
+        .text("Volume").precision(0).suffix("%"));
+});
+ui.tab_bar(&mut section, [(0, "General"), (1, "Appearance")]);
+ui.selectable_value(&mut accent_blue, true, "Blue");
+ui.selectable_value(&mut accent_blue, false, "Green");
+ui.muted("Changes are stored in memory.");
+```
+
+Enabled state composes with each widget's own `enabled` setting. A nested group
+cannot re-enable a disabled parent. Layout and bound values are preserved; disabled
+controls cannot activate, focus, or capture the pointer. Custom widgets can query
+`Ui::is_enabled()` to follow the same contract.
+
+`selectable` returns activation only; `selectable_value` and `tab_bar` also report
+`changed()` when selection changes. Tabs use values as IDs, so values must be unique
+within a bar. They use ordinary button Tab/Enter/Space navigation.
+
+`Ui::add` returns `Response` and requests follow-up repaint on a click, value change, text submission or text focus loss.
+Use `clicked()` for activation and `changed()` for bound-value updates. Exact response
+semantics and keyboard controls are in [Input and responses](../input.mdx).
+
+To add a new passive component using the public API, use [Custom components](../development.mdx#custom-components).

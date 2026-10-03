@@ -1,0 +1,69 @@
+[package]
+name = "zaxis"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.90"
+description = "An event-driven immediate mode GUI for desktop tools"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nihmadev/zaxis"
+homepage = "https://nihmadev.github.io/zaxis/"
+documentation = "https://docs.rs/zaxis"
+keywords = ["gui", "ui", "wgpu", "desktop", "immediate-mode"]
+categories = ["gui", "graphics"]
+include = [
+    "/src/**", "/examples/**", "/tests/**", "/benches/**", "/assets/**",
+    "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE", "/CHANGELOG.md",
+    "/CONTRIBUTING.md", "/SECURITY.md", "/RELEASING.md", "/rustfmt.toml",
+]
+
+[workspace]
+members = ["crates/zaxis-emoji"]
+resolver = "2"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+winit = "0.30.13"
+wgpu = "30.0.1"
+glam = "0.33.12"
+ab_glyph = "0.2.32"
+bytemuck = { version = "1.25.2", features = ["derive"] }
+pollster = "1.0.1"
+unicode-segmentation = { version = "1.13", default-features = false }
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
+cosmic-text = "0.17.0"
+unicode-script = "0.5.8"
+zaxis-emoji = { version = "0.0.1", path = "crates/zaxis-emoji", optional = true }
+image = { version = "=0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
+resvg = { version = "=0.48.1", default-features = false, features = ["text"] }
+
+[features]
+default = ["bundled-emoji", "image-gif", "image-tiff"]
+bundled-emoji = ["dep:zaxis-emoji"]
+image-gif = ["image/gif"]
+image-tiff = ["image/tiff"]
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = { version = "=0.35.2", default-features = false, features = ["system"] }
+
+[[bench]]
+name = "performance"
+path = "benches/performance.rs"
+harness = false
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
+
+[[example]]
+name = "settings"
+path = "examples/settings.rs"
+
+[[example]]
+name = "integration"
+path = "examples/integration.rs"

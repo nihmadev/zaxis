@@ -1,0 +1,55 @@
+---
+title: ColorPicker
+icon: Palette
+description: An HSV palette, hue strip, and RGB/HEX inputs in an inline or floating editor.
+---
+
+```rust
+use zaxis::{Color, ColorPicker, ColorPickerType};
+
+let mut color = Color::hex(0x4E85BE);
+ui.add(ColorPicker::new(&mut color, "Preview color")
+    .picker_type(ColorPickerType::Floating)
+    .width(300.0));
+```
+
+`ui.color_picker(&mut color, "Color")` uses `ColorPickerType::Internal`.
+Click the caption or swatch, or activate the focused row with Enter/Space, to
+open or close the editor. `Internal` allocates 220 logical pixels when expanded;
+`Floating` keeps the row at 24 pixels and opens a separate draggable zaxis panel.
+The floating panel closes with its title-bar cross or Escape. It is a panel inside
+the native application window.
+
+| Builder | Default / requirement |
+| --- | --- |
+| `new(&mut Color, text)` | Binds an sRGB color; editing preserves alpha |
+| `picker_type(ColorPickerType)` | `Internal`; alternatively `Floating` |
+| `width(f32)` | 300 logical pixels; finite and positive; row limited by available width |
+| `default_open(bool)` | `false`; initial state only |
+| `id_source(impl Hash)` | Optional explicit identity; otherwise call site and occurrence |
+| `enabled(bool)` / `disabled(bool)` | Enabled by default |
+| `hover_style(HoverStyle)` | Theme hover preset for the row, close button and fields; preserves the swatch color |
+
+Expansion state, hue, and an in-progress field edit are retained by widget ID.
+Changing the type preserves expansion and color. Disabled internal editors retain
+their layout; disabled floating editors hide their panel. Bound values are untouched.
+
+The palette controls saturation horizontally and brightness vertically. The hue
+strip selects the hue. Both capture pointer motion outside their bounds and clamp
+at the edges. Tab focuses the controls; arrows adjust by 1%, PageUp/PageDown by 10%,
+and Home/End select endpoints. On the palette, Up/Down change brightness and
+Left/Right change saturation.
+
+RGB fields accept integers, clamped to `0..=255`. HEX accepts six hexadecimal
+digits, optionally prefixed by `#`. Enter or focus loss commits valid input;
+invalid input restores the existing color. Escape cancels a field edit.
+Fields select their value on focus, support Ctrl+A, Backspace/Delete, arrows,
+Home, and End. Custom input hosts can deliver committed text with
+`Context::on_text_event`; native keyboard and IME commits are routed automatically.
+
+`changed()` reports a net change to the bound color. `clicked()` reports activation
+of the color row. `pressed` and `has_focus` also include the editor controls.
+Palette and hue geometry use cached rounded gradients and need no external image assets.
+
+The Settings example's Appearance page includes an **Internal Color Picker**
+checkbox to switch between the two modes, with live preview and Apply/Cancel support.
