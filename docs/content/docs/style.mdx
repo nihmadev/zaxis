@@ -1,187 +1,208 @@
 ---
-title: Style
-icon: Palette
-description: All theme fields, defaults, per-component overrides, and color representation.
+title: Style and Theme
+description: Semantic tokens, typed overrides, local inheritance and safe painters.
 ---
 
-`Style::motion` configures hover, reveal and page durations/easing, sampling
-cadence and global reduced motion. See [Animation](./animation.mdx).
-
-When blur sigma grows from zero to one, backdrop fill opacity blends gradually
-into `blur_opacity`, avoiding a sudden opaque-to-glass change.
-
-Clone the current style, edit fields, and apply it before constructing controls:
+`Style` is the effective value consumed by existing layout and paint. `Theme` is
+an optional source of palette, metrics, typography, density and explicit overrides.
+A new Context still uses neutral grey `Style::default()`; existing examples do not
+opt into another palette automatically.
 
 ```rust
-use zaxis::{Color, Padding};
-
-let mut style = context.style().clone();
-style.background = Color::gray(24);
-style.window_padding = Padding::all(16.0);
-style.font_size = 15.0;
-context.set_style(style);
+use zaxis::{Color, Density, Theme};
+context.set_theme(Theme::light().accent(Color::rgb(35, 85, 155)).density(Density::Compact));
+let effective = context.style();
 ```
 
-`Context::set_style` requests repaint. Apply a static style once, or only when the
-desired theme changes. Calling it unconditionally from every `App::update` keeps
-requesting another pass, even when the style value is identical.
+Built-ins: `Theme::dark()`, `light()`, `high_contrast()`. Density is independent of
+palette. Compact scales geometry, spacing and padding by 0.8; comfortable uses base
+metrics. Font sizes do not change with density.
 
-## Defaults
+## Tokens and actual consumers
 
-`Style` is `Clone`, `Debug`, and `PartialEq`; all fields are public. Gray values below
-mean `Color::gray(value)` with alpha 255. All measurements are logical pixels.
+Palette exposes background; surface, raised and control surfaces; foreground,
+muted and disabled text; accent/on-accent; selected/on-selected; focus; border;
+success/warning/error with contrasting foregrounds. `accent(...)` chooses black
+or white for on-accent by measured contrast. Selection is a separate surface token.
+Metrics exposes spacing, padding, control height, corner radius, border width,
+elevation (Shadow), background backdrop blur, opacity and blur opacity.
+Global blur applies to Root, Window and popup backgrounds. Controls and list rows
+remain opaque and sharp; a control blur requires an explicit builder or surface override.
+Typography supplies small/body/heading/title sizes. Use
+`Text::typography(TypographyRole::Heading)`; ordinary text keeps Style::font_size.
+The existing text engine chooses its primary font at Context::with_font and uses
+its current Unicode fallbacks. Theme provides no family/weight switch or runtime
+font manager.
 
-| Field | Default | Used for |
+The initial audit found these separate dependencies. Theme now resolves values
+into the same fields used by the existing public components:
+
+| Component | Previously separate defaults | Effective consumers |
 | --- | --- | --- |
-| `background` | Gray 32 | Native surface clear color |
-| `window_fill` | Gray 47 | Panel body |
-| `title_fill` | Gray 57 | Panel title bar |
-| `text_color` | Gray 230 | Labels, enabled captions, checkmarks, normal slider accent |
-| `muted_text` | Gray 159 | Disabled captions, slider accent, resize grip |
-| `border` | Width 1, gray 78 | Panel/control borders; separator color |
-| `button_fill` | Gray 66 | Button/checkbox body and slider track |
-| `button_hovered` | Gray 80 | Hovered controls |
-| `hover_style` | Theme fill and soft shadow | Shared hover appearance |
-| `button_pressed` | Gray 54 | Pressed controls |
-| `focus_border` | Width 1.5, gray 178 | Keyboard focus |
-| `rounding` | Radius 7 | Default panel corners |
-| `window_padding` | 18 on each side | Content insets |
-| `button_padding` | Horizontal 16, vertical 9 | Button content insets |
-| `font_size` | 16 | Labels and control captions |
-| `title_height` | 36 | Panel title-bar height, effective minimum 24 |
-| `blur_radius` | 0 | Default backdrop sigma for windows, buttons, checkboxes, slider tracks and thumbs |
-| `blur_opacity` | 0.72 | Fill alpha multiplier when blur is enabled |
-| `scroll` | `ScrollStyle::default()` | [Scroll padding, bars, hints and item gaps](./components/scroll-area.mdx#style-and-repaint) |
-| `combo_box` | `ComboBoxStyle::default()` | [Compact trigger, option rows, popup palette and transitions](./components/combo-box.mdx#appearance-and-layering) |
-| `number` | `NumberStyle::default()` | [Numeric field geometry, surfaces, drag sensitivity and keyboard modifiers](./components/number-input.mdx) |
-| `grid` | `GridStyle::default()` | [Card surfaces, cell padding, row/column gaps and component spacing](./components/grid.mdx#style-and-builders) |
-| `table` | `TableStyle::default()` | [Header/row surfaces, density, selection, separators and scroll chrome](./components/table.mdx#style-and-output) |
-| `spacing` | 12 | Layout allocation gap, effective minimum zero |
+| Button | button colors; fixed radius 5/minimum 24 | legacy colors/padding/font, button.surface, minimum geometry |
+| Checkbox | button colors, radius 4, text-colored check | accent/on-accent, checkbox.body/indicator, side/gap/stroke |
+| Slider | height 28, track 6, thumb 8; accent from text | accent/status colors, slider.track/fill/thumb, metrics |
+| TextEdit | own fill/selection/placeholder/cursor | legacy editor fields, text_edit.surface, geometry, caret, selection foreground |
+| NumberInput/DragValue | NumberStyle's grey fills | resolved number fields, number.surface; editing still uses TextEdit |
+| Window/Root | shared panel/title metrics | window.body/title, padding/title metrics, shadow/blur |
+| TitleBar | literal greys/red and fixed font | title_bar.surface/controls, semantic error, caption metrics |
+| Popup | padding 2/gap 4/radius 4 | popup.surface/geometry; children inherit creating Ui |
+| ComboBox | separate trigger/popup/text/selection palette | resolved combo_box, trigger/option; scrollbar inherits Ui |
+| ColorPicker | fixed row/editor geometry, button-like fields | color_picker.body/field and metrics; RGB/HSV colors stay accurate |
+| ScrollArea | separate grey thumbs/hints | resolved scroll and scroll.thumb states |
+| Grid/Table | separate fills/stripes/selection/cell metrics | resolved grid/table, grid surface, table row/header surfaces |
+| Text/Separator | text/border color; fixed separator thickness | text/ separator typed overrides |
+| Loader/Progress | motion size, text-colored progress | loader, progress.track/fill, accent, existing scheduler |
+| Tabs/SelectionIndicator | selected Button, text-colored indicator | Button selected layer, independent accent indicator |
+| SplitPane | existing handle palette/panel surfaces | resolved split colors/spacing; explicit SplitSurface remains |
+| CollapsingHeader/TreeView | shared compact disclosure row | collapsing.header/tree.row ControlStyle, density geometry, typography, motion; optional guides |
 
-## Overrides
+Shapes, renderer clipping, glyph keys, tessellation cache and draw protocol remain
+the backend. Colors change affected paint descriptions; metrics rerun immediate
+layout and choose corresponding size/wrap text keys. Style revisions are not global
+mesh or glyph cache keys.
 
-Component builders override their relevant style defaults. Focus border takes
-precedence over button/checkbox border overrides during keyboard navigation.
-Clicking a control focuses it without adding a focus border. Selection uses the
-pressed fill rather than a focus border. Button and checkbox default
-rounding is fixed at 5 and 4 respectively; `Style::rounding` changes panel corners.
-Sliders have their own fixed geometry and optional accent override.
+## Explicit overrides and precedence
 
-## Hover
-
-`Style::hover_style` applies to buttons, checkboxes, slider thumbs and color picker
-controls, including tabs and selectable buttons. Each has a `.hover_style(...)`
-override. The default uses `button_hovered` and a soft shadow; use
-`HoverStyle::NONE` to keep the normal appearance. Pressed and disabled states take
-priority over hover. Effects do not change layout or hit regions.
+None inherits. Some(TRANSPARENT), Some(Border::NONE), zero radius, opacity, shadow
+or blur are explicit values. No comparison with defaults guesses override presence.
 
 ```rust
-use zaxis::{Button, Color, Gradient, HoverStyle, Shadow};
-
-ui.add(Button::new("Save").hover_style(HoverStyle::shadow(Shadow::default())));
-ui.add(Button::new("Preview").hover_style(
-    HoverStyle::gradient(Gradient::new(Color::rgb(58, 91, 145), Color::rgb(99, 65, 137)))
-        .with_shadow(Shadow::default())
-));
+use zaxis::{Border, Button, ButtonStyle, ControlStyle, SurfaceStyle, Theme};
+let mut theme = Theme::dark();
+theme.overrides.button.surface.idle.border = Some(Border::NONE);
+theme.overrides.number.height = Some(40.0);
+context.set_theme(theme.clone().density(zaxis::Density::Compact));
+// Explicit border and numeric height survive accent/density changes.
+ui.add(Button::new("Save").style(ButtonStyle {
+    surface: ControlStyle {
+        idle: SurfaceStyle::fill(zaxis::Color::rgb(70, 95, 125)),
+        ..Default::default()
+    },
+    ..Default::default()
+}));
 ```
 
-Presets can combine a solid or gradient fill, shadow, optional border, and text
-color. `Shadow` exposes color, offset, blur radius and spread. Gradients support
-horizontal, vertical and diagonal directions and preserve asymmetric corners.
-Shadow radii/spread are clamped to 0–64 logical pixels; nonfinite values become
-zero. Shadows stay inside the UI clip and use cached vector geometry.
-The color picker keeps its actual color swatch intact while styling its row.
+Order: tokens → theme component overrides → outer/inner Ui overrides → instance
+style/builders → state layers. Existing NumberStyle, GridStyle, TableStyle,
+ComboBoxStyle, ScrollStyle, SplitStyle and their builders remain. A complete
+specialized `.style(...)` replaces that component's defaults. Their
+`*StyleOverride` variants expose individual optional fields in theme/scoped
+patches. Nested surface/state patches merge property by property.
 
-`Hover` wraps a widget with a shared preset or your own foreground drawing:
+`Style::collapsing` and `Style::tree` are optional-field typed styles. Their
+`StyleOverrides` fields merge individual properties, including local with_style /
+with_theme and instance `.style(...)`. Shared DisclosureStyle exposes height,
+padding, chevron size/stroke, icon size/gap, font size, motion and ControlStyle.
+`CollapsingStyle` adds content padding/spacing and optional height animation;
+`TreeStyle` adds indent, guide Border and scroll style. Explicit transparency,
+zero and Border::NONE remain overrides. Fixed tree row height must stay positive.
+
+ControlState has independent enabled, hovered, pressed, selected, focus and
+semantic-status flags. Layers: idle, selected, semantic status, then disabled
+**or** pressed **or** hover, then focus. Disabled never runs hover rules. Focus
+border is an immediate layer over selected/pointer surfaces;
+`focus.border = Some(Border::NONE)` explicitly removes it.
+SurfaceStyle provides solid fill (`SurfaceStyle::fill`), gradients, foreground,
+border, radius, shadow, opacity and optional blur in each state. Missing state
+properties retain the base/selected appearance.
+
+Scalar instance geometry builders (size, width, height, padding, font size,
+rounding) stay invariant during interaction. Button/Checkbox `.border(...)` is
+invariant except for focus; `.blur(...)` fixes the instance blur. Slider
+`.color(...)` fixes its filled track/thumb accent. TextEdit `.text_color(...)` is
+invariant. Typed surface.idle properties set the base and may be changed by state
+rules. Layout/hit bounds do not follow animated surface radius/shadow/border.
+
+HoverStyle and Hover use this same resolver. Per-widget hover preset beats wrapper;
+wrapper beats theme defaults. Explicit presets override their listed properties
+on a typed hover patch. HoverStyle::NONE suppresses preset effects while retaining
+explicit typed state rules. Hover::on_hover remains an enabled/unpressed overlay.
+
+## Local subtrees and popups
 
 ```rust
-use zaxis::{vec2, Button, Color, Hover, HoverStyle, Shape};
-
-ui.add(Hover::new(Button::new("Custom"))
-    .style(HoverStyle::NONE)
-    .on_hover(|ui, response| {
-        ui.paint(Shape::Line {
-            start: response.rect.min + vec2(10.0, 5.0),
-            end: response.rect.min + vec2(10.0, response.rect.size().y - 5.0),
-            width: 3.0,
-            color: Color::rgb(107, 192, 159),
-        });
-    }));
+use zaxis::{Color, StyleOverrides, Theme};
+ui.with_theme(&Theme::light(), |ui| {
+    ui.button("Local light button");
+    ui.with_style(&StyleOverrides {
+        text_color: Some(Color::rgb(70, 40, 100)), ..Default::default()
+    }, |ui| { ui.vertical(|ui| { ui.label("Nested override"); }); });
+});
+ui.button("Original theme again");
 ```
 
-The wrapper preserves the control's identity and interactions. A widget's explicit
-preset takes precedence over the wrapper. `on_hover` runs only in the enabled,
-unpressed hover state. Custom widgets can read `Ui::hover_style()` and
-`Response::state()` (`Idle`, `Hovered`, `Pressed`, `Disabled`); `has_focus` and
-`focus_visible` expose focus separately.
+Scopes restore after normal return, early closure return and unwinding. Styles
+live on Ui, never in temporarily modified global Context. Horizontal/vertical,
+sized/fill, Grid/Table cells, ScrollArea rows, Presence, pages, SplitPane panels
+and nested children inherit. Popup inherits its creating subtree despite drawing
+above other windows; floating ColorPicker carries the originating style too.
+with_theme supplies a new subtree base; with_style merges into the current value.
+Local background never changes Context's native clear color. A scope does not
+paint a backing panel automatically; supply a container/shape where needed.
 
-There is one style per context. `Ui::style()` provides immutable access;
-`Ui::context()` exposes the context for changes. Changing style mid-pass affects
-controls constructed afterwards; request a follow-up pass if earlier controls also
-need the new style. Read colors before calling `ui.add` to avoid overlapping borrows:
+## Safe control painting
+
+Button, Checkbox, Slider expose `.painter(PaintMode, callback)`. Replace skips
+standard part painting including its blur; Before/After explicitly compose.
+Checkbox calls for body/indicator; Slider calls for track/thumb, with standard
+fill included in its track part. ControlPaint supplies real bounds, resolved
+surface, all state flags and a value snapshot.
 
 ```rust
-use zaxis::Text;
-
-let muted = ui.style().muted_text;
-ui.add(Text::new("No selection").color(muted));
+use zaxis::{Button, PaintMode, Shape};
+ui.add(Button::new("Custom").painter(PaintMode::Replace, |p, info| {
+    p.paint(Shape::rect(info.bounds, info.style.fill.unwrap().start)
+        .corner_radius(info.style.rounding.unwrap())
+        .border(info.style.border.unwrap()));
+}));
 ```
 
-## Color
+Painter::paint/text/clip_rect expose safe commands without Ui, mutable model,
+layout or hit registration. The component owns capture, focus, Id and mutation.
+Use size builders for a different allocation. Commands use normal caching and
+clipping. Callbacks may borrow and are never retained in Context; closure addresses
+are never keys. They run per UI pass, so do not mutate the model through captured
+interior mutability.
 
-`Color(pub [u8; 4])` stores straight-alpha sRGB RGBA8:
+## Scheduling and retained state
 
-| Constructor / constant | Value |
-| --- | --- |
-| `Color::rgb(r, g, b)` | Opaque RGB |
-| `Color::rgba(r, g, b, a)` | Explicit alpha |
-| `Color::hex(0xRRGGBB)` | Opaque RGB from a 24-bit integer; usable in `const` |
-| `Color::from_hex("#RRGGBB")` | `Option<Color>` parsed from a HEX string |
-| `Color::gray(value)` | Equal opaque RGB channels |
-| `Color::TRANSPARENT` | `(0, 0, 0, 0)` |
-| `Color::WHITE` | `(255, 255, 255, 255)` |
-| `Color::BLACK` | `(0, 0, 0, 255)` |
+Identical set_style/set_theme do not request another redraw. Theme equality is
+checked before resolution. Local equality preserves stable animation channels.
+Default theme application snaps and preserves focus, capture, popup, scroll,
+editor selection/undo, panel geometry and bound application values.
+set_theme_animated(theme, TweenOptions::new(duration)) explicitly uses the existing
+scheduler. Forward finite tweens only; reduced motion snaps. All metrics and
+geometry use the target immediately. Colors interpolate in linear-light sRGB.
+Optional surface colors interpolate when both endpoints explicitly contain them;
+a change in inheritance of that property applies immediately. Completed palette
+transitions stop repaint.
 
-```rust
-use zaxis::Color;
+## Contrast and limits
 
-const ACCENT: Color = Color::hex(0x4E85BE);
-let accent = Color::from_hex("#4E85BE").unwrap();
-let translucent = Color::from_hex("#4E85BE80").unwrap();
-assert_eq!(accent, ACCENT);
-assert_eq!(translucent, Color::rgba(78, 133, 190, 128));
-```
+Tests check ordinary/muted text on background/surface/raised/control/hover/pressed
+at 4.5:1; on-accent/on-selected and semantic foregrounds at 4.5:1; focus on
+surface/control/hover/selected at 3:1. Dark Theme uses brighter muted text than
+legacy Style to pass the hover-surface threshold. Disabled text is intentionally
+dim and excluded from the normal text criterion. Picker markers intentionally
+use black/white against arbitrary actual RGB/HSV colors.
+Custom alpha, gradients, opacity and blur may reduce contrast. Composite over the
+actual backdrop and test worst-case endpoints with contrast_ratio. Choosing
+on-accent alone cannot guarantee accent/focus contrast against all backgrounds.
+Local themes need appropriate backing surfaces; shadows stay inside active clips.
 
-`Color::hex` always sets alpha to 255 and panics for integers above `0xFFFFFF`.
-For strings, use `Color::from_hex`: it accepts `RGB`, `RGBA`, `RRGGBB`, or
-`RRGGBBAA`, with an optional `#` and case-insensitive digits. Short forms repeat
-each digit (`#ABC` becomes `#AABBCC`); alpha comes last and defaults to 255.
-Invalid lengths, non-hex digits, whitespace, and `0x` prefixes return `None`.
-Use `unwrap` for known literals or handle `None` when reading user input.
+## Migration
 
-The shape/text system converts RGB to linear floats before writing vertices. The
-renderer blends on an sRGB attachment. Custom `Vertex` colors must already be linear;
-see [Drawing protocol](./protocol.mdx#vertex).
+Style::default, existing public fields, Context::style/set_style, Ui::style,
+struct updates (`..Style::default()`) and old builders remain. set_style installs
+exactly its supplied Style and clears the Theme source; it does not rederive
+component palettes. Use Theme for changes that should propagate across defaults.
+Editing resolved legacy fields is not a token edit. Explicit typed component
+patches take priority over their legacy fallback fields.
+Source incompatibility: exhaustive Style/specialized-style literals need the new
+fields; prefer `..Default::default()`. Button's default generic parameter preserves
+ordinary Button type annotations; a painted button carries its callback type.
+Checkbox/Slider retain their borrowed lifetimes. Compatibility exports remain.
 
-## Backdrop blur
-
-Apply `context.set_style(context.style().clone().blur(12.0))` to enable backdrop
-blur for panels and controls. Their fills become translucent; captions, checkmarks,
-slider labels, and borders remain sharp. Each `Window`, `Button`, `Checkbox`, and
-`Slider` has a `.blur(radius)` override; `.blur(0.0)` disables the effect locally.
-Radii use logical pixels, are clamped to 0–64, and nonfinite values disable blur.
-Controls inside a blurred panel inherit its filtered backdrop through translucent
-fills, avoiding another blur pass for each control. Explicit `.blur(radius)`
-overrides and controls in a panel with `.blur(0.0)` filter independently.
-The Settings example exposes live blur controls in Appearance, with Apply,
-Cancel, and Restore defaults using the same draft model as the other settings.
-
-## TextEdit styling
-
-TextEdit uses its own quiet surface and compact geometry: `text_edit_fill`,
-`text_edit_hovered`, `text_edit_placeholder`, `text_edit_selection`,
-`text_edit_padding`, `text_edit_rounding`, `text_edit_width`, `text_edit_height`,
-and `text_edit_font_size`. Focus uses `focus_border`; disabled text uses
-`muted_text`. `text_edit_cursor_width` controls the caret and preedit underline.
-`text_edit_blink_interval` sets the blink deadline interval; zero disables blinking.
-Most geometry and colors also have per-field builders. See [TextEdit](./components/text-edit.mdx).
+Run `cargo run --example themes` to compare actual controls, density, overrides,
+paint hook, selection, focus and overlays.
