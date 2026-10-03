@@ -103,7 +103,7 @@ impl Scrolling {
         self.previous_order
             .retain(|id| self.states[id].last_frame == frame);
     }
-    pub(super) fn owner(&self, window: Id) -> Option<usize> {
+    pub(crate) fn owner(&self, window: Id) -> Option<usize> {
         self.stack
             .last()
             .copied()

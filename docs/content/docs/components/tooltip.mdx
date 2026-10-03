@@ -1,0 +1,38 @@
+---
+title: Tooltip
+description: Passive, measured text hints that follow hovered widgets.
+---
+
+Attach a hint to a control's response:
+
+```rust
+let response = ui.button("Apply");
+ui.tooltip(response, "Save the current settings.");
+```
+
+Wrap any widget, including labels and disabled controls, to keep its hint in
+the same layout capture:
+
+```rust
+use zaxis::{Button, Tooltip};
+
+let response = ui.add(
+    Tooltip::new("Restore the default settings.")
+        .wrap(Button::new("Reset")),
+);
+```
+
+Hints are enabled by default and appear after 350 ms of hovering. They disappear
+when the pointer leaves, a mouse button is held, the target disappears or the
+application loses focus. They never capture input or change keyboard focus.
+
+`Style::tooltip` contains `enabled`, `delay`, `max_width`, `padding`, `rounding`,
+and optional `fill`, `text_color`, `border` overrides. Colors otherwise follow
+the current UI style. `Tooltip::style` replaces these defaults for one hint;
+`Tooltip::enabled` explicitly overrides its enabled state.
+
+The box is measured independently of the target width, wraps at words and uses
+the shared Unicode shaper for long words. It follows final layout and scroll
+placement, escapes parent clipping, and fits the viewport below or above the
+target. On short viewports it can grow wider to keep all lines visible. Text
+larger than the entire viewport should be shown in a scrollable panel instead.

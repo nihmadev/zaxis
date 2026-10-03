@@ -67,6 +67,33 @@ fn resolve(measured: &[Measure], direction: Layout, available: f32, spacing: f32
 }
 
 impl Ui<'_> {
+    /// Attach passive routing geometry to an already measured widget.
+    pub(in crate::components) fn attach_tooltip_anchor(
+        &mut self,
+        target: Id,
+        hit: crate::context::HitRegion,
+    ) -> bool {
+        let Some(flow) = &mut self.flow else {
+            return false;
+        };
+        let Some(placement) = flow
+            .items
+            .iter_mut()
+            .rev()
+            .filter_map(|item| item.placement.as_mut())
+            .find(|p| {
+                p.hits.iter().any(|(h, _)| h.id == target)
+                    || p.paints.iter().any(|paint| paint.id == target)
+            })
+        else {
+            return false;
+        };
+        placement
+            .hits
+            .push((hit, self.context.scrolling.owner(hit.window)));
+        true
+    }
+
     pub(crate) fn begin_layout(&mut self, align: Align) {
         let previous = self
             .context
@@ -235,6 +262,8 @@ impl Ui<'_> {
             enabled: self.enabled,
             backdrop_blur: self.backdrop_blur,
             hover_style: self.hover_style,
+            local_style: self.local_style.clone(),
+            local_style_revision: self.local_style_revision,
             flow: None,
         };
         child.layout.preferred_width = self.layout.preferred_width;
