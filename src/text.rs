@@ -7,12 +7,12 @@ use std::{
 
 use ab_glyph::{point, Font, FontArc, Glyph};
 use cosmic_text::{
-    fontdb, Attrs, Buffer, CacheKey, Fallback, Family, FontSystem, LayoutGlyph, Metrics,
-    PlatformFallback, Shaping, SwashCache, SwashContent, Wrap,
+    fontdb, CacheKey, Fallback, FontSystem, LayoutGlyph, PlatformFallback, SwashCache, SwashContent,
 };
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{protocol::TextureImage, shapes::Mesh, Color, Id, Rect, TextureId, Vec2};
+
+mod layout;
 
 const ATLAS_SIZE: u32 = 1024;
 
@@ -30,6 +30,7 @@ struct TextLayout {
     baseline: f32,
     carets: Vec<(usize, f32)>,
     size: Vec2,
+    width_independent: bool,
 }
 
 struct CachedLayout {
@@ -125,6 +126,7 @@ pub(crate) struct TextSystem {
     glyphs: HashMap<CacheKey, Option<CachedGlyph>>,
     pages: Vec<AtlasPage>,
     layouts: HashMap<Id, CachedLayout>,
+    layout_keys: HashMap<Id, Id>,
     frame: u64,
     ids: crate::images::TextureIds,
 }
@@ -159,6 +161,7 @@ impl TextSystem {
             glyphs: HashMap::new(),
             pages: Vec::new(),
             layouts: HashMap::new(),
+            layout_keys: HashMap::new(),
             frame: 0,
             ids,
         }
@@ -173,131 +176,8 @@ impl TextSystem {
         // indefinitely. Measurement and painting share the same immutable layout.
         self.layouts
             .retain(|_, cached| cached.last_frame == self.frame);
-    }
-
-    pub fn measure(&mut self, text: &str, size: f32, wrap_width: f32) -> Vec2 {
-        self.layout(text, size, wrap_width).size
-    }
-
-    /// Insertion positions from the same kerning and fallback metrics used for painting.
-    pub fn carets(&mut self, text: &str, size: f32) -> Vec<(usize, f32)> {
-        self.layout(text, size, f32::INFINITY).carets.clone()
-    }
-
-    fn layout(&mut self, text: &str, size: f32, wrap_width: f32) -> Arc<TextLayout> {
-        let key = Id::new((text, size.to_bits(), wrap_width.to_bits()));
-        if let Some(cached) = self.layouts.get_mut(&key) {
-            // Verify the key contents as well: a hash collision must never reuse
-            // another string's glyph positions.
-            if cached.text == text
-                && cached.size == size.to_bits()
-                && cached.wrap == wrap_width.to_bits()
-            {
-                cached.last_frame = self.frame;
-                return Arc::clone(&cached.layout);
-            }
-        }
-        let layout = Arc::new(self.build_layout(text, size, wrap_width));
-        self.layouts.insert(
-            key,
-            CachedLayout {
-                text: text.to_owned(),
-                size: size.to_bits(),
-                wrap: wrap_width.to_bits(),
-                layout: Arc::clone(&layout),
-                last_frame: self.frame,
-            },
-        );
-        layout
-    }
-
-    fn build_layout(&self, text: &str, size: f32, wrap_width: f32) -> TextLayout {
-        let line_height = size * 1.25;
-        let mut fonts = font_system().lock().unwrap();
-        let mut buffer = Buffer::new(&mut fonts, Metrics::new(size, line_height));
-        buffer.set_wrap(
-            &mut fonts,
-            if wrap_width.is_finite() {
-                Wrap::Glyph
-            } else {
-                Wrap::None
-            },
-        );
-        buffer.set_size(
-            &mut fonts,
-            wrap_width.is_finite().then_some(wrap_width.max(0.0)),
-            None,
-        );
-        buffer.set_text(
-            &mut fonts,
-            text,
-            &Attrs::new().family(Family::Name(&self.family)),
-            Shaping::Advanced,
-            None,
-        );
-        buffer.shape_until_scroll(&mut fonts, false);
-        let mut glyphs = Vec::new();
-        let mut carets = Vec::new();
-        let mut width = 0.0_f32;
-        let mut height = line_height;
-        let mut baseline = 0.0;
-        let mut line_start = 0;
-        let mut previous_line = 0;
-        for run in buffer.layout_runs() {
-            if glyphs.is_empty() {
-                baseline = run.line_y;
-            }
-            while previous_line < run.line_i {
-                line_start += buffer.lines[previous_line].text().len()
-                    + buffer.lines[previous_line].ending().as_str().len();
-                previous_line += 1;
-            }
-            width = width.max(run.line_w);
-            height = height.max(run.line_top + run.line_height);
-            // A shaped cluster may contain a ligature or several glyphs. Give each
-            // grapheme boundary a caret, but never an endpoint inside a grapheme.
-            for (byte, _) in run
-                .text
-                .grapheme_indices(true)
-                .chain([(run.text.len(), "")])
-            {
-                let matching: Vec<_> = run
-                    .glyphs
-                    .iter()
-                    .filter(|g| {
-                        g.start <= byte && (byte < g.end || byte == run.text.len() && byte == g.end)
-                    })
-                    .collect();
-                let x = matching
-                    .first()
-                    .map_or(if run.rtl { 0.0 } else { run.line_w }, |glyph| {
-                        let left = matching.iter().map(|g| g.x).fold(f32::INFINITY, f32::min);
-                        let right = matching
-                            .iter()
-                            .map(|g| g.x + g.w)
-                            .fold(f32::NEG_INFINITY, f32::max);
-                        let cluster = &run.text[glyph.start..glyph.end];
-                        let count = cluster.graphemes(true).count().max(1);
-                        let before = run.text[glyph.start..byte].graphemes(true).count();
-                        let fraction = before as f32 / count as f32;
-                        if glyph.level.is_rtl() {
-                            right - (right - left) * fraction
-                        } else {
-                            left + (right - left) * fraction
-                        }
-                    });
-                carets.push((line_start + byte, x));
-            }
-            glyphs.extend(run.glyphs.iter().cloned().map(|g| (g, run.line_y)));
-        }
-        carets.sort_by_key(|p| p.0);
-        carets.dedup_by_key(|p| p.0);
-        TextLayout {
-            glyphs,
-            baseline,
-            carets,
-            size: Vec2::new(width, height),
-        }
+        self.layout_keys
+            .retain(|_, key| self.layouts.contains_key(key));
     }
 
     /// Optical alignment uses a stable cap/descender band, independent of line gap.
@@ -465,153 +345,5 @@ impl TextSystem {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn text() -> TextSystem {
-        TextSystem::new(
-            FontArc::try_from_slice(include_bytes!("../assets/Lato-Regular.ttf")).unwrap(),
-        )
-    }
-
-    #[test]
-    fn measured_layout_is_shared_by_paint_and_live_frames_only() {
-        let mut text = text();
-        text.begin_frame();
-        let caption = "AV kerning\nUnicode λ and wrapped words";
-        let size = text.measure(caption, 16.0, 90.0);
-        let layout = text.layout(caption, 16.0, 90.0);
-        assert_eq!(layout.size, size);
-        assert!(Arc::ptr_eq(&layout, &text.layout(caption, 16.0, 90.0)));
-        let color = Color::rgba(150, 80, 200, 120);
-        let mut mesh = Mesh::default();
-        text.paint(&mut mesh, caption, Vec2::ZERO, 16.0, 90.0, color, 1.5);
-        assert!(Arc::ptr_eq(&layout, &text.layout(caption, 16.0, 90.0)));
-        assert!(!mesh.vertices.is_empty());
-        assert!(mesh.vertices.iter().all(|v| v.color == color.linear()));
-        assert!(!Arc::ptr_eq(&layout, &text.layout(caption, 16.0, 180.0)));
-        assert!(!Arc::ptr_eq(&layout, &text.layout(caption, 20.0, 90.0)));
-        text.end_frame();
-        text.begin_frame();
-        assert!(Arc::ptr_eq(&layout, &text.layout(caption, 16.0, 90.0)));
-        text.end_frame();
-        assert_eq!(text.layouts.len(), 1);
-        text.begin_frame();
-        text.measure("replacement", 16.0, 90.0);
-        text.end_frame();
-        assert_eq!(text.layouts.len(), 1);
-        assert!(!Arc::ptr_eq(&layout, &text.layout(caption, 16.0, 90.0)));
-    }
-
-    #[test]
-    fn cache_key_collision_cannot_substitute_another_caption() {
-        let mut text = text();
-        let wanted = text.build_layout("AV", 16.0, f32::INFINITY);
-        text.layouts.insert(
-            Id::new(("AV", 16.0_f32.to_bits(), f32::INFINITY.to_bits())),
-            CachedLayout {
-                text: "wrong".into(),
-                size: 16.0_f32.to_bits(),
-                wrap: f32::INFINITY.to_bits(),
-                layout: Arc::new(text.build_layout("wrong", 16.0, f32::INFINITY)),
-                last_frame: 0,
-            },
-        );
-        let layout = text.layout("AV", 16.0, f32::INFINITY);
-        assert_eq!(layout.carets, wanted.carets);
-        assert_eq!(layout.glyphs.len(), wanted.glyphs.len());
-        assert_eq!(layout.size, wanted.size);
-    }
-
-    #[test]
-    #[cfg(feature = "bundled-emoji")]
-    fn unicode_clusters_use_real_glyphs_and_color_emoji_at_multiple_scales() {
-        let mut text = text();
-        for sample in ["е\u{301}", "👩‍💻", "🇷🇺", "👍🏽"] {
-            let layout = text.layout(sample, 16.0, f32::INFINITY);
-            assert!(
-                layout.glyphs.iter().all(|(g, _)| g.glyph_id != 0),
-                "{sample}"
-            );
-            if sample == "е\u{301}" {
-                // A combining accent can be a separate positioned glyph in a
-                // valid font; the grapheme still has only its two caret edges.
-                assert!((1..=2).contains(&layout.glyphs.len()));
-            } else {
-                assert_eq!(layout.glyphs.len(), 1, "{sample} must shape as one glyph");
-            }
-            assert_eq!(layout.carets.len(), 2, "{sample} has one grapheme");
-            assert_eq!(layout.carets[0], (0, 0.0));
-            assert!((layout.carets[1].1 - layout.size.x).abs() < 0.001);
-            for scale in [1.0, 1.5, 2.0] {
-                let mut mesh = Mesh::default();
-                text.paint(
-                    &mut mesh,
-                    sample,
-                    Vec2::ZERO,
-                    16.0,
-                    f32::INFINITY,
-                    Color::WHITE,
-                    scale,
-                );
-                assert!(!mesh.vertices.is_empty());
-                if sample != "е\u{301}" {
-                    assert!(text.glyphs.values().flatten().any(|g| g.colored));
-                    assert!(text.pages.iter().any(|page| page
-                        .image
-                        .pixels
-                        .as_chunks::<4>()
-                        .0
-                        .iter()
-                        .any(|p| p[3] != 0 && (p[0] != p[1] || p[1] != p[2]))));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn caret_positions_follow_shaped_clusters_without_skipping_adjacent_letters() {
-        let mut text = text();
-        let layout = text.layout("AV ffi е\u{301}👩‍💻", 16.0, f32::INFINITY);
-        assert!(layout.carets.windows(2).all(|pair| pair[0].1 <= pair[1].1));
-        assert!(layout.carets[1].1 > 0.0);
-        let v = layout.glyphs.iter().find(|(g, _)| g.start == 1).unwrap();
-        assert!((layout.carets[1].1 - v.0.x).abs() < 0.001);
-        assert!(layout.carets.iter().all(|(i, _)| "AV ffi е\u{301}👩‍💻"
-            .grapheme_indices(true)
-            .any(|(start, _)| start == *i)
-            || *i == "AV ffi е\u{301}👩‍💻".len()));
-    }
-
-    #[test]
-    fn centered_field_baseline_matches_the_fonts_cap_and_descender_band() {
-        let mut text = text();
-        for size in [13.0, 14.0, 20.0] {
-            let layout = text.layout("Привет", size, f32::INFINITY);
-            let em_scale = size * text.font.height_unscaled() / text.font.units_per_em().unwrap();
-            let h = text
-                .font
-                .outline_glyph(Glyph {
-                    id: text.font.glyph_id('H'),
-                    scale: em_scale.into(),
-                    position: point(0.0, 0.0),
-                })
-                .unwrap()
-                .px_bounds();
-            let g = text
-                .font
-                .outline_glyph(Glyph {
-                    id: text.font.glyph_id('g'),
-                    scale: em_scale.into(),
-                    position: point(0.0, 0.0),
-                })
-                .unwrap()
-                .px_bounds();
-            let offset = text.centered_line_offset("Привет", size);
-            let top = offset + layout.baseline + h.min.y;
-            let bottom = offset + layout.baseline + g.max.y;
-            assert!((top + bottom - layout.size.y).abs() < 0.001);
-            assert!((offset - text.centered_line_offset("Placeholder", size)).abs() < 0.001);
-        }
-    }
-}
+#[path = "../tests/text/layout.rs"]
+mod tests;
