@@ -1,5 +1,18 @@
 # zaxis
 
+Typed themes resolve into the existing immediate mode `Style`:
+
+```rust
+context.set_theme(zaxis::Theme::light().density(zaxis::Density::Compact)
+    .accent(zaxis::Color::rgb(35, 85, 155)));
+```
+
+`ui.with_theme(&theme, |ui| ...)` and `ui.with_style(&overrides, |ui| ...)` style
+local subtrees and their popups. Explicit component overrides survive accent and
+density changes; legacy `set_style` installs its exact value. Run
+`cargo run --example themes`. See [Style and Theme](docs/content/docs/style.mdx)
+for states, painters and migration.
+
 An event-driven immediate mode GUI for desktop tools, written in Rust.
 Uses winit and wgpu, with retained interaction state and cached CPU/GPU geometry.
 
@@ -79,6 +92,7 @@ layout, input, repaint scheduling, custom hosts, renderer, and drawing protocol.
 | Use controls | [Components](https://nihmadev.github.io/zaxis/components/) |
 | Scroll long content and virtual lists | [ScrollArea](https://nihmadev.github.io/zaxis/components/scroll-area/) |
 | Compose forms and data tables | [Grid](https://nihmadev.github.io/zaxis/components/grid/), [Table](https://nihmadev.github.io/zaxis/components/table/) |
+| Fold arbitrary content and browse large hierarchies | [CollapsingHeader](docs/content/docs/components/collapsing-header.mdx), [TreeView](docs/content/docs/components/tree-view.mdx) |
 | Add transitions or a custom spring | [Animation](https://nihmadev.github.io/zaxis/animation/) |
 | Integrate an event loop | [Custom host](https://nihmadev.github.io/zaxis/integration/) |
 | Find a public type or method | [API index](https://nihmadev.github.io/zaxis/api/) |
@@ -97,6 +111,8 @@ cargo run --example scroll_area
 cargo run --example grid_table
 cargo run --example text_edit
 cargo run --example combo_box
+cargo run --example collapsing_headers
+cargo run --example tree
 cargo run --example integration
 cargo run --example animations
 cargo run --example custom_animation
@@ -105,6 +121,13 @@ cargo run --example custom_animation
 The demo/settings/integration examples use immediate presentation; append
 `-- --vsync` for synchronization. `grid_table` uses Immediate presentation.
 Animation examples use the default Vsync runner.
+
+`CollapsingHeader::new(id_source, caption).show(ui, body)` folds arbitrary measured
+content and supports independent right actions. `TreeView::new(id_source).show(ui,
+&model)` uses application-owned `TreeModel`, stable node Ids, keyboard navigation,
+lazy request events and fixed-height virtualization. Both support controlled state
+and local themes. Tree revision explicitly invalidates its expanded-row cache;
+`reveal_node` opens a parent path and focuses/scrolls on an explicit request.
 
 Built-in hover and reveal use 160 ms Quad Out; `Ui::tab_pages` uses directional
 280 ms Quint Out slides. `Style::motion` controls duration, easing and reduced

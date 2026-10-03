@@ -13,6 +13,8 @@ compatibility re-export of the component module.
 | [ScrollArea](./scroll-area.mdx) | `ScrollArea::vertical().show(ui, build)` | Measured viewport, nested scrolling and virtual rows |
 | [Grid](./grid.mdx) | `ui.grid(id, columns, build)` | Shared column widths and arbitrary cell layouts |
 | [Table](./table.mdx) | `Table::new(id).columns(columns).show(ui, build)` | Pinned headers, resize, selection, sort requests and virtual rows |
+| [CollapsingHeader](./collapsing-header.mdx) | `ui.collapsing(id, caption, body)` | Measured disclosure and independent header actions |
+| [TreeView](./tree-view.mdx) | `ui.tree(id, &model)` | Stable hierarchical model, keyboard navigation and virtual rows |
 | [Popup](./popup.mdx) | `Popup::new(id, anchor).show(ui, &mut open, build)` | Overlay layer, viewport placement and dismissal |
 | [ComboBox](./combo-box.mdx) | `ui.combo_box(&mut Option<T>, &options)` | Stable selection and optional filtering |
 | [Text](./text.mdx) | `ui.label(text)` | Read-only text |

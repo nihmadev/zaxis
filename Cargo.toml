@@ -56,6 +56,10 @@ name = "performance"
 path = "benches/performance.rs"
 harness = false
 
+[[bench]]
+name = "context_menu"
+harness = false
+
 [[example]]
 name = "demo"
 path = "examples/demo.rs"
