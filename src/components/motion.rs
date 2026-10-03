@@ -188,6 +188,8 @@ impl Ui<'_> {
             enabled: self.enabled && interactive,
             backdrop_blur: self.backdrop_blur,
             hover_style: self.hover_style,
+            local_style: self.local_style.clone(),
+            local_style_revision: self.local_style_revision,
         };
         page.begin_layout(crate::Align::Start);
         build(&mut page, index);

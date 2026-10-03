@@ -1,6 +1,6 @@
 use super::{Column, GridRow, Id, Rect, TableStyle, Ui};
 use crate::{
-    context::{HitAction, HitRegion, Paint},
+    context::{HitAction, HitRegion},
     Grid, GridStyle, Padding, Shape, Vec2,
 };
 use std::{collections::HashSet, hash::Hash};
@@ -56,19 +56,37 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
         let old_scope = self.ui.scope;
         self.ui.scope = self.setup.id.with("cells");
         self.ui.context.begin_placement(self.ui.window);
-        let output = Grid::new(row)
-            .columns(self.setup.columns.iter().cloned())
-            .style(GridStyle {
-                padding: Padding::all(0.0),
-                cell_padding: self.setup.style.cell_padding,
-                spacing: Vec2::ZERO,
-                row_min_height: self.setup.style.row_min_height,
-                component_spacing: self.setup.style.component_spacing,
-                fill: crate::Color::TRANSPARENT,
-                rounding: 0.0,
-            })
-            .resolved(self.setup.widths.to_vec(), self.height)
-            .show(self.ui, |grid| grid.row(row, build));
+        let style = self.setup.style;
+        let selected = self.setup.selected == Some(row);
+        let mut foreground = style.text_color;
+        if selected {
+            if let Some(v) = style.row.selected.foreground {
+                foreground = v;
+            }
+        }
+        if let Some(v) = style.row.idle.foreground {
+            foreground = v;
+        }
+        let patch = crate::StyleOverrides {
+            text_color: Some(foreground),
+            ..Default::default()
+        };
+        let output = self.ui.with_style(&patch, |ui| {
+            Grid::new(row)
+                .columns(self.setup.columns.iter().cloned())
+                .style(GridStyle {
+                    surface: Default::default(),
+                    padding: Padding::all(0.0),
+                    cell_padding: self.setup.style.cell_padding,
+                    spacing: Vec2::ZERO,
+                    row_min_height: self.setup.style.row_min_height,
+                    component_spacing: self.setup.style.component_spacing,
+                    fill: crate::Color::TRANSPARENT,
+                    rounding: 0.0,
+                })
+                .resolved(self.setup.widths.to_vec(), self.height)
+                .show(ui, |grid| grid.row(row, build))
+        });
         let placement = self.ui.context.end_placement();
         self.ui.scope = old_scope;
         let rect = output.rect;
@@ -88,11 +106,36 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
         } else {
             style.fill
         };
+        let effective = self.ui.style().clone();
+        let mut base = crate::components::appearance::Appearance::new(
+            fill,
+            crate::Border::NONE,
+            style.text_color,
+        );
+        base.opacity = effective.opacity;
+        let appearance = self.ui.animate_control(
+            response,
+            crate::HoverStyle::NONE,
+            false,
+            style.row,
+            crate::ControlState::from_response(response, self.setup.selected == Some(row)),
+            base,
+            style.hovered_fill,
+        );
+        let mut paint = Vec::new();
+        appearance.paint_shadow(rect, appearance.rounding, &mut paint);
+        appearance.paint_body(
+            rect,
+            appearance.rounding,
+            &effective,
+            appearance.blur,
+            &mut paint,
+        );
         self.ui.context.paint(
             id.with("fill"),
             self.ui.window,
             self.ui.clip.intersect(rect),
-            vec![Paint::Shape(Shape::rect(rect, fill).into())],
+            paint,
         );
         if self.setup.selectable && self.ui.enabled {
             self.ui.context.register_hit(HitRegion {

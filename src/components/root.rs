@@ -1,8 +1,8 @@
 use super::Ui;
 use crate::{
-    context::{HitAction, HitRegion, Paint},
+    context::{HitAction, HitRegion},
     layout::LayoutCursor,
-    Border, Context, Id, Layout, Padding, Shape,
+    Border, Context, Id, Layout, Padding,
 };
 
 /// The application's client area, without an internal title bar or resize grip.
@@ -33,26 +33,27 @@ impl Root {
     pub fn show<R>(self, context: &mut Context, build: impl FnOnce(&mut Ui<'_>) -> R) -> R {
         let id = Id::new("zaxis-root");
         let rect = context.viewport();
-        let style = context.style().clone();
+        let mut style = context.style().clone();
         context.root_state(id);
-        let blur = self.blur.unwrap_or(style.blur_radius);
+        let mut body =
+            super::appearance::Appearance::new(style.window_fill, Border::NONE, style.text_color);
+        body.opacity = style.opacity;
+        body.blur = style.blur_radius;
+        body.apply(style.window.body);
+        if style.window.body.foreground.is_some() {
+            style.text_color = body.text_color;
+        }
+        let blur = self.blur.unwrap_or(body.blur);
         context.paint_blur(
             id.with("blur"),
             id,
             rect,
             crate::Blur::new(rect).radius(blur),
         );
-        context.paint(
-            id.with("background"),
-            id,
-            rect,
-            vec![Paint::Shape(Shape::Rect {
-                rect,
-                fill: style.backdrop_fill(style.window_fill, blur),
-                rounding: 0.0.into(),
-                border: Border::NONE,
-            })],
-        );
+        body.rounding = 0.0.into();
+        let mut paint = Vec::new();
+        body.paint_body(rect, body.rounding, &style, blur, &mut paint);
+        context.paint(id.with("background"), id, rect, paint);
         context.register_hit(HitRegion {
             id,
             window: id,
@@ -60,7 +61,11 @@ impl Root {
             clip: rect,
             action: HitAction::Block,
         });
-        let bounds = self.padding.unwrap_or(style.window_padding).inset(rect);
+        let bounds = self
+            .padding
+            .or(style.window.padding)
+            .unwrap_or(style.window_padding)
+            .inset(rect);
         let mut ui = Ui {
             context,
             window: id,
@@ -71,6 +76,13 @@ impl Root {
             enabled: true,
             backdrop_blur: blur,
             hover_style: None,
+            local_style: style
+                .window
+                .body
+                .foreground
+                .is_some()
+                .then(|| std::sync::Arc::new(style.clone())),
+            local_style_revision: 0,
             flow: None,
         };
         ui.begin_layout(crate::Align::Start);

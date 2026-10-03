@@ -105,6 +105,8 @@ impl Ui<'_> {
                 enabled: ui.enabled,
                 backdrop_blur: ui.backdrop_blur,
                 hover_style: ui.hover_style,
+                local_style: ui.local_style.clone(),
+                local_style_revision: ui.local_style_revision,
                 flow: None,
             };
             if matches!(width, SizeRule::Exact(_) | SizeRule::Max(_))

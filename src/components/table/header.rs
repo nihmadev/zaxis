@@ -82,6 +82,34 @@ pub(super) fn paint(
                 SortDirection::Ascending => " ↑",
                 SortDirection::Descending => " ↓",
             });
+        let effective = ui.style().clone();
+        let mut base = crate::components::appearance::Appearance::new(
+            crate::Color::TRANSPARENT,
+            crate::Border::NONE,
+            style.text_color,
+        );
+        base.opacity = effective.opacity;
+        let selected = state.sort.is_some_and(|sort| sort.column == column.id);
+        let appearance = ui.animate_control(
+            response,
+            crate::HoverStyle::NONE,
+            false,
+            style.header,
+            crate::ControlState::from_response(response, selected),
+            base,
+            style.hovered_fill,
+        );
+        let mut paint = Vec::new();
+        appearance.paint_shadow(bounds, appearance.rounding, &mut paint);
+        appearance.paint_body(
+            bounds,
+            appearance.rounding,
+            &effective,
+            appearance.blur,
+            &mut paint,
+        );
+        ui.context
+            .paint(id.with("surface"), ui.window, clip.intersect(bounds), paint);
         let text = format!("{}{suffix}", column.title);
         let size = super::super::font_size(style.font_size);
         let measured = ui.context.measure_text(&text, size, f32::INFINITY);
@@ -100,7 +128,7 @@ pub(super) fn paint(
                 position,
                 size,
                 wrap_width: f32::INFINITY,
-                color: style.text_color,
+                color: appearance.text_color,
             }],
         );
         if column.sortable && ui.enabled {

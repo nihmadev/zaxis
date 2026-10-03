@@ -295,6 +295,8 @@ impl Table {
             enabled: ui.enabled,
             backdrop_blur: ui.backdrop_blur,
             hover_style: ui.hover_style,
+            local_style: ui.local_style.clone(),
+            local_style_revision: ui.local_style_revision,
         };
         let mut scroll = ScrollArea::both()
             .id_source("body")

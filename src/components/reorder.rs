@@ -98,7 +98,7 @@ impl SelectionIndicator {
             ui.window,
             ui.clip,
             vec![crate::context::Paint::Shape(
-                crate::Shape::rect(value, self.color.unwrap_or(ui.style().text_color)).into(),
+                crate::Shape::rect(value, self.color.unwrap_or(ui.style().accent)).into(),
             )],
         );
         Some(value)

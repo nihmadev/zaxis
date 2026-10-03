@@ -205,16 +205,17 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
                 Section::General => {
                     ui.add(Text::new("Session & saving").size(19.0));
                     ui.muted("Choose how a desktop tool should remember your work.");
-                    ui.checkbox(
+                    let response = ui.checkbox(
                         &mut model.draft.restore_session,
                         "Restore the previous session",
                     );
+                    ui.tooltip(response, "Reopen the workspace and documents from your last session.");
                     ui.checkbox(
                         &mut model.draft.confirm_exit,
                         "Confirm before exiting with unsaved work",
                     );
                     ui.checkbox(&mut model.draft.autosave, "Save automatically");
-                    ui.add_enabled(
+                    let response = ui.add_enabled(
                         model.draft.autosave,
                         Slider::new(&mut model.draft.autosave_minutes, 1.0..=30.0)
                             .text("Save interval")
@@ -223,6 +224,7 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
                             .step(1.0)
                             .width(360.0),
                     );
+                    ui.tooltip(response, "Time between automatic saves. Enable automatic saving to change this interval.");
                     ui.muted("The interval is editable while automatic saving is enabled.");
                 }
                 Section::Appearance => {
@@ -251,7 +253,8 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
                                     .step(1.0)
                                     .width(280.0),
                             );
-                            ui.checkbox(&mut model.draft.blur_enabled, "Blur window and controls");
+                            let response = ui.checkbox(&mut model.draft.blur_enabled, "Blur window and controls");
+                            ui.tooltip(response, "Soften the backdrop behind surfaces that use blur. Text and controls stay sharp.");
                             ui.add_enabled(
                                 model.draft.blur_enabled,
                                 Slider::new(&mut model.draft.blur_radius, 0.0..=32.0)
@@ -276,7 +279,8 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
                 Section::Notifications => {
                     ui.add(Text::new("Alerts & sound").size(19.0));
                     ui.muted("Dependent controls retain their values while disabled.");
-                    ui.checkbox(&mut model.draft.notifications, "Enable notifications");
+                    let response = ui.checkbox(&mut model.draft.notifications, "Enable notifications");
+                    ui.tooltip(response, "Show alerts when background tasks finish or need your attention.");
                     ui.add_enabled_ui(model.draft.notifications, |ui| {
                         ui.checkbox(&mut model.draft.sound, "Play a notification sound");
                         ui.add_enabled(
@@ -299,7 +303,9 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
             ui.add_space(8.0);
             ui.separator();
             ui.horizontal_aligned(zaxis::Align::Center, |ui| {
-                if ui.button("Restore defaults").clicked() {
+                let response = ui.add(zaxis::Tooltip::new("Restore the default values. Apply to commit the changes.")
+                    .wrap(zaxis::Button::new("Restore defaults")));
+                if response.clicked() {
                     model.reset();
                 }
                 ui.spacer();

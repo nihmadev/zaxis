@@ -1,12 +1,14 @@
 use super::{ScrollArea, Ui};
 use crate::{
     context::{HitAction, HitRegion, Paint},
-    Border, Color, CornerRadius, Id, Padding, Rect, Shape, Vec2,
+    Border, Color, CornerRadius, Id, Padding, Rect, Vec2,
 };
 
 /// Scroll chrome in logical pixels, based on the quiet two-column Rayfield layout.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollStyle {
+    pub thumb: crate::ControlStyle,
+
     pub padding: Padding,
     pub spacing: f32,
     pub bar_width: f32,
@@ -20,6 +22,8 @@ pub struct ScrollStyle {
 impl Default for ScrollStyle {
     fn default() -> Self {
         Self {
+            thumb: Default::default(),
+
             padding: Padding::all(2.0),
             spacing: 8.0,
             bar_width: 2.0,
@@ -82,22 +86,47 @@ impl ScrollArea {
                 let thumb_id = id.with(("thumb", axis));
                 let mut hit = thumb;
                 hit.min[cross] -= style.bar_margin.max(0.0) * 0.5;
-                let hovered = ui.context.hovered(thumb_id, ui.window, hit, ui.clip);
-                ui.context.paint(
-                    thumb_id,
-                    ui.window,
-                    ui.clip,
-                    vec![Paint::Shape(Shape::Rect {
-                        rect: thumb,
-                        rounding: CornerRadius::all(style.bar_width * 0.5),
-                        fill: if hovered || ui.context.active(thumb_id) {
-                            style.thumb_hovered
-                        } else {
-                            style.thumb_color
-                        },
-                        border: Border::NONE,
-                    })],
+                let response = ui.response(thumb_id, hit, ui.enabled);
+                let effective = ui.style().clone();
+                let mut normal = super::super::appearance::Appearance::new(
+                    style.thumb_color,
+                    Border::NONE,
+                    effective.text_color,
                 );
+                normal.rounding = CornerRadius::all(style.bar_width * 0.5);
+                normal.opacity = effective.opacity;
+                if response.pressed {
+                    normal.fill = crate::Gradient::new(style.thumb_hovered, style.thumb_hovered);
+                }
+                let appearance = ui.animate_control(
+                    response,
+                    crate::HoverStyle::fill(style.thumb_hovered),
+                    false,
+                    style.thumb,
+                    crate::ControlState::from_response(response, false),
+                    normal,
+                    style.thumb_hovered,
+                );
+                let mut paint = Vec::new();
+                appearance.paint_shadow(thumb, appearance.rounding, &mut paint);
+                appearance.paint_body(
+                    thumb,
+                    appearance.rounding,
+                    &effective,
+                    appearance.blur,
+                    &mut paint,
+                );
+                if appearance.blur > 0.0 {
+                    ui.context.paint_blur(
+                        thumb_id.with("blur"),
+                        ui.window,
+                        ui.clip,
+                        crate::Blur::new(thumb)
+                            .radius(appearance.blur)
+                            .corner_radius(appearance.rounding),
+                    );
+                }
+                ui.context.paint(thumb_id, ui.window, ui.clip, paint);
                 if ui.enabled {
                     ui.context.register_hit(HitRegion {
                         id: thumb_id,

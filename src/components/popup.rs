@@ -2,9 +2,9 @@ use std::hash::Hash;
 
 use super::Ui;
 use crate::{
-    context::{popup::PopupState, HitAction, HitRegion, Paint},
+    context::{popup::PopupState, HitAction, HitRegion},
     layout::LayoutCursor,
-    Border, Color, CornerRadius, Id, Layout, Padding, Rect, Shape, Vec2,
+    Border, Color, CornerRadius, Id, Layout, Padding, Rect, Vec2,
 };
 
 /// Anchored overlay above every window, independent of the parent's clip.
@@ -14,11 +14,12 @@ pub struct Popup {
     source: Id,
     anchor: Rect,
     size: Vec2,
-    gap: f32,
-    padding: Padding,
-    rounding: CornerRadius,
+    gap: Option<f32>,
+    padding: Option<Padding>,
+    rounding: Option<CornerRadius>,
     fill: Option<Color>,
     border: Option<Border>,
+    style: super::theme::PopupStyle,
     return_focus: Option<Id>,
     pub(super) key_target: Option<Id>,
     pub(super) progress: f32,
@@ -37,16 +38,21 @@ impl Popup {
             source: Id::new(source),
             anchor,
             size: Vec2::new(anchor.size().x, 120.0),
-            gap: 4.0,
-            padding: Padding::all(2.0),
-            rounding: CornerRadius::all(4.0),
+            gap: None,
+            padding: None,
+            rounding: None,
             fill: None,
             border: None,
+            style: Default::default(),
             return_focus: None,
             key_target: None,
             progress: 1.0,
             animated: false,
         }
+    }
+    pub fn style(mut self, style: super::theme::PopupStyle) -> Self {
+        self.style = style;
+        self
     }
     pub fn size(mut self, size: Vec2) -> Self {
         assert!(size.is_finite() && size.min_element() >= 0.0);
@@ -55,15 +61,15 @@ impl Popup {
     }
     pub fn gap(mut self, gap: f32) -> Self {
         assert!(gap.is_finite() && gap >= 0.0);
-        self.gap = gap;
+        self.gap = Some(gap);
         self
     }
     pub fn padding(mut self, padding: Padding) -> Self {
-        self.padding = padding;
+        self.padding = Some(padding);
         self
     }
     pub fn rounding(mut self, rounding: CornerRadius) -> Self {
-        self.rounding = rounding;
+        self.rounding = Some(rounding);
         self
     }
     pub fn fill(mut self, fill: Color) -> Self {
@@ -103,9 +109,17 @@ impl Popup {
         if !*open && (!self.animated || self.progress <= 0.0) {
             return None;
         }
+        let style = ui.style().clone();
+        let mut component = style.popup;
+        component.merge(self.style);
+        let padding = self
+            .padding
+            .or(component.padding)
+            .unwrap_or(Padding::all(2.0));
+        let gap = self.gap.or(component.gap).unwrap_or(4.0);
         let viewport = ui.context.viewport();
         let anchor_clip = ui.clip_rect().intersect(viewport);
-        let (full, upward) = place(self.anchor, self.size, viewport, self.gap);
+        let (full, upward) = place(self.anchor, self.size, viewport, gap);
         if full.is_empty() {
             *open = false;
             if ui.context.popup.as_ref().is_some_and(|p| p.id == id) {
@@ -162,29 +176,54 @@ impl Popup {
                 });
             }
         }
-        let style = ui.style().clone();
-        ui.context.paint(
-            id.with("body"),
+        let mut body =
+            super::appearance::Appearance::new(style.window_fill, style.border, style.text_color);
+        body.rounding = CornerRadius::all(4.0);
+        body.blur = style.blur_radius;
+        body.shadow = style.elevation;
+        body.opacity = style.opacity;
+        body.apply(component.surface);
+        if let Some(v) = self.fill {
+            body.fill = crate::Gradient::new(v, v);
+        }
+        if let Some(v) = self.border {
+            body.border = v;
+        }
+        if let Some(v) = self.rounding {
+            body.rounding = v;
+        }
+        let mut paint = Vec::new();
+        body.paint_shadow(rect, body.rounding, &mut paint);
+        body.paint_body(rect, body.rounding, &style, body.blur, &mut paint);
+        ui.context.paint_blur(
+            id.with("blur"),
             id,
             rect.intersect(viewport),
-            vec![Paint::Shape(Shape::Rect {
-                rect,
-                fill: self.fill.unwrap_or(style.window_fill),
-                rounding: self.rounding,
-                border: self.border.unwrap_or(style.border),
-            })],
+            crate::Blur::new(rect)
+                .radius(body.blur)
+                .corner_radius(body.rounding),
         );
+        ui.context
+            .paint(id.with("body"), id, rect.intersect(viewport), paint);
+        let mut child_style = style.clone();
+        child_style.text_color = body.text_color;
         let mut child = Ui {
             flow: None,
             context: ui.context,
             window: id,
             scope: id,
             sequence: 0,
-            clip: self.padding.inset(rect).intersect(viewport),
-            layout: LayoutCursor::new(self.padding.inset(full), Layout::Vertical, 2.0),
+            clip: padding.inset(rect).intersect(viewport),
+            layout: LayoutCursor::new(
+                padding.inset(full),
+                Layout::Vertical,
+                component.spacing.unwrap_or(2.0),
+            ),
             enabled: *open && ui.enabled,
-            backdrop_blur: 0.0,
+            backdrop_blur: body.blur,
             hover_style: ui.hover_style,
+            local_style: Some(std::sync::Arc::new(child_style)),
+            local_style_revision: ui.local_style_revision,
         };
         child.begin_layout(crate::Align::Start);
         let inner = build(&mut child);

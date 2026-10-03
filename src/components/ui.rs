@@ -6,6 +6,7 @@ use super::{HoverStyle, Response, Style, Widget};
 
 mod flow;
 mod scopes;
+mod theme;
 use flow::Flow;
 pub(crate) use flow::FlowState;
 
@@ -21,6 +22,8 @@ pub struct Ui<'a> {
     pub(super) backdrop_blur: f32,
     pub(super) hover_style: Option<HoverStyle>,
     pub(super) flow: Option<Flow>,
+    pub(super) local_style: Option<std::sync::Arc<Style>>,
+    pub(super) local_style_revision: u64,
 }
 
 impl Ui<'_> {
@@ -36,7 +39,9 @@ impl Ui<'_> {
         response
     }
     pub fn style(&self) -> &Style {
-        self.context.style()
+        self.local_style
+            .as_deref()
+            .unwrap_or_else(|| self.context.style())
     }
     /// Current hover preset, including an enclosing `Hover` component's override.
     pub fn hover_style(&self) -> HoverStyle {
@@ -53,9 +58,12 @@ impl Ui<'_> {
     pub fn add_enabled_ui<R>(&mut self, enabled: bool, build: impl FnOnce(&mut Self) -> R) -> R {
         let previous = self.enabled;
         self.enabled &= enabled;
-        let result = build(self);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| build(self)));
         self.enabled = previous;
-        result
+        match result {
+            Ok(v) => v,
+            Err(e) => std::panic::resume_unwind(e),
+        }
     }
     pub fn context(&mut self) -> &mut Context {
         self.context
@@ -90,10 +98,13 @@ impl Ui<'_> {
         let old_sequence = self.sequence;
         self.scope = self.scope.with(source);
         self.sequence = 0;
-        let result = build(self);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| build(self)));
         self.scope = old_scope;
         self.sequence = old_sequence;
-        result
+        match result {
+            Ok(v) => v,
+            Err(e) => std::panic::resume_unwind(e),
+        }
     }
 
     /// Lay out a nested row and allocate its occupied height in the parent layout.
@@ -132,16 +143,16 @@ impl Ui<'_> {
         id
     }
 
-    /// Inherited glass controls reveal the already blurred panel backdrop.
-    /// Explicit overrides and controls in opaque panels still filter independently.
+    /// Global blur belongs to background surfaces. Controls stay opaque unless
+    /// their own builder or typed surface explicitly requests backdrop blur.
     pub(super) fn control_blur(&self, radius: Option<f32>) -> (f32, f32) {
-        let blur = super::blur::normalize_radius(radius.unwrap_or(self.style().blur_radius));
-        let filter = if radius.is_none() && self.backdrop_blur > 0.0 {
-            0.0
-        } else {
-            blur
-        };
-        (blur, filter)
+        let radius = super::blur::normalize_radius(radius.unwrap_or(0.0));
+        (radius, radius)
+    }
+
+    pub(super) fn resolved_blur(&self, radius: f32, _explicit: bool) -> (f32, f32) {
+        let radius = super::blur::normalize_radius(radius);
+        (radius, radius)
     }
 
     pub(super) fn next_id(&mut self, kind: &'static str) -> Id {

@@ -2,6 +2,9 @@ use crate::{Border, Color, CornerRadius, Padding, ScrollStyle};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TableStyle {
+    pub row: crate::ControlStyle,
+    pub header: crate::ControlStyle,
+
     pub rounding: CornerRadius,
     pub border: Border,
     pub padding: Padding,
@@ -26,6 +29,9 @@ pub struct TableStyle {
 impl Default for TableStyle {
     fn default() -> Self {
         Self {
+            row: Default::default(),
+            header: Default::default(),
+
             rounding: CornerRadius::all(8.0),
             border: Border::new(1.0, Color::gray(72)),
             padding: Padding::all(8.0),

@@ -4,12 +4,14 @@ use super::{
     columns::{dimension, resolve},
     Column, ColumnWidth, Ui,
 };
-use crate::{context::placement::Placement, Color, Id, Padding, Rect, Shape, Vec2};
+use crate::{context::placement::Placement, Color, Id, Padding, Rect, Vec2};
 pub use rows::GridRow;
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridStyle {
+    pub surface: crate::SurfaceStyle,
+
     pub padding: Padding,
     pub cell_padding: Padding,
     pub spacing: Vec2,
@@ -21,6 +23,8 @@ pub struct GridStyle {
 impl Default for GridStyle {
     fn default() -> Self {
         Self {
+            surface: Default::default(),
+
             padding: Padding::all(10.0),
             cell_padding: Padding::symmetric(8.0, 4.0),
             spacing: Vec2::new(8.0, 6.0),
@@ -204,15 +208,33 @@ impl Grid {
             grid.height + style.padding.size().y,
         );
         let rect = Rect::from_min_size(origin, size);
-        grid.ui.context.paint(
+        let ui = &mut grid.ui;
+        let effective = ui.style().clone();
+        let mut body = super::appearance::Appearance::new(
+            style.fill,
+            crate::Border::NONE,
+            effective.text_color,
+        );
+        body.rounding = crate::CornerRadius::all(style.rounding);
+        body.blur = 0.0;
+        body.opacity = effective.opacity;
+        body.apply(style.surface);
+        let mut paint = Vec::new();
+        body.paint_shadow(rect, body.rounding, &mut paint);
+        body.paint_body(rect, body.rounding, &effective, body.blur, &mut paint);
+        ui.context.paint_blur(
+            id.with("blur"),
+            ui.window,
+            ui.clip.intersect(rect),
+            crate::Blur::new(rect)
+                .radius(body.blur)
+                .corner_radius(body.rounding),
+        );
+        ui.context.paint(
             id.with("background"),
-            grid.ui.window,
-            grid.ui.clip.intersect(rect),
-            vec![crate::context::Paint::Shape(
-                Shape::rect(rect, style.fill)
-                    .corner_radius(style.rounding)
-                    .into(),
-            )],
+            ui.window,
+            ui.clip.intersect(rect),
+            paint,
         );
         let mut row_rects = Vec::new();
         let mut cells = Vec::new();

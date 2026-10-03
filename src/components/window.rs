@@ -20,6 +20,8 @@ pub struct Window {
     padding: Option<Padding>,
     rounding: Option<CornerRadius>,
     blur: Option<f32>,
+    style: super::theme::WindowStyle,
+    inherited_style: Option<super::Style>,
 }
 
 impl Window {
@@ -37,9 +39,19 @@ impl Window {
             padding: None,
             rounding: None,
             blur: None,
+            style: Default::default(),
+            inherited_style: None,
         }
     }
 
+    pub fn style(mut self, style: super::theme::WindowStyle) -> Self {
+        self.style = style;
+        self
+    }
+    pub(crate) fn effective_style(mut self, style: super::Style) -> Self {
+        self.inherited_style = Some(style);
+        self
+    }
     pub fn id(mut self, id: Id) -> Self {
         self.id = id;
         self
@@ -93,8 +105,16 @@ impl Window {
     }
 
     pub fn show<R>(self, context: &mut Context, build: impl FnOnce(&mut Ui<'_>) -> R) -> R {
-        let style = context.style().clone();
-        let title_height = style.title_height.max(24.0);
+        let inherited = self.inherited_style.is_some();
+        let mut style = self
+            .inherited_style
+            .unwrap_or_else(|| context.style().clone());
+        style.window.merge(self.style);
+        let title_height = style
+            .window
+            .title_height
+            .unwrap_or(style.title_height)
+            .max(24.0);
         let min_size = self.min_size.max(Vec2::new(64.0, title_height + 32.0));
         let rect = context
             .window_state(
@@ -109,8 +129,25 @@ impl Window {
             rect.min,
             Vec2::new(rect.size().x, title_height.min(rect.size().y)),
         );
-        let rounding = self.rounding.unwrap_or(style.rounding);
-        let blur = super::blur::normalize_radius(self.blur.unwrap_or(style.blur_radius));
+        let mut body =
+            super::appearance::Appearance::new(style.window_fill, style.border, style.text_color);
+        body.rounding = style.rounding;
+        body.blur = style.blur_radius;
+        body.shadow = style.elevation;
+        body.opacity = style.opacity;
+        body.apply(style.window.body);
+        if style.window.body.foreground.is_some() {
+            style.text_color = body.text_color;
+        }
+        if let Some(v) = self.rounding {
+            body.rounding = v;
+        }
+        if let Some(v) = self.blur {
+            body.blur = v;
+        }
+        let rounding = body.rounding;
+        let blur = body.blur;
+
         context.paint_blur(
             self.id.with("blur"),
             self.id,
@@ -122,31 +159,26 @@ impl Window {
             bottom_right: 0.0,
             ..rounding
         };
-        context.paint(
-            self.id.with("chrome"),
-            self.id,
-            clip,
-            vec![
-                Paint::Shape(Shape::Rect {
-                    rect,
-                    fill: style.backdrop_fill(style.window_fill, blur),
-                    rounding,
-                    border: Border::NONE,
-                }),
-                Paint::Shape(Shape::Rect {
-                    rect: title_rect,
-                    fill: style.backdrop_fill(style.title_fill, blur),
-                    rounding: title_rounding,
-                    border: Border::NONE,
-                }),
-                Paint::Shape(Shape::Rect {
-                    rect,
-                    fill: Color::TRANSPARENT,
-                    rounding,
-                    border: style.border,
-                }),
-            ],
-        );
+        let mut title =
+            super::appearance::Appearance::new(style.title_fill, Border::NONE, style.text_color);
+        title.rounding = title_rounding;
+        title.opacity = style.opacity;
+        title.blur = blur;
+        title.apply(style.window.title);
+        let mut chrome = Vec::new();
+        body.paint_shadow(rect, rounding, &mut chrome);
+        body.paint_body(rect, rounding, &style, blur, &mut chrome);
+        title.paint_shadow(title_rect, title.rounding, &mut chrome);
+        title.paint_body(title_rect, title.rounding, &style, title.blur, &mut chrome);
+        // Window border remains above its title fill.
+        chrome.push(Paint::Shape(
+            Shape::rect(rect, Color::TRANSPARENT)
+                .corner_radius(rounding)
+                .border(body.border)
+                .into(),
+        ));
+        context.paint(self.id.with("chrome"), self.id, context.viewport(), chrome);
+        let title_font = font_size(style.window.title_font_size.unwrap_or(style.font_size));
         let title_clip = title_rect.shrink(style.border.width).intersect(clip);
         context.paint(
             self.id.with("title"),
@@ -155,10 +187,10 @@ impl Window {
             vec![Paint::Text {
                 text: visible_label(&self.title).to_owned(),
                 position: title_rect.min
-                    + Vec2::new(14.0, (title_height - style.font_size * 1.25) * 0.5),
-                size: font_size(style.font_size),
+                    + Vec2::new(14.0, (title_height - title_font * 1.25) * 0.5),
+                size: title_font,
                 wrap_width: f32::INFINITY,
-                color: style.text_color,
+                color: super::appearance::alpha(title.text_color, title.opacity),
             }],
         );
         context.register_hit(HitRegion {
@@ -177,7 +209,10 @@ impl Window {
                 action: HitAction::Move,
             });
         }
-        let padding = self.padding.unwrap_or(style.window_padding);
+        let padding = self
+            .padding
+            .or(style.window.padding)
+            .unwrap_or(style.window_padding);
         let mut bounds = padding.inset(Rect::from_min_max(
             Vec2::new(rect.min.x, title_rect.max.y),
             rect.max,
@@ -190,6 +225,9 @@ impl Window {
         let mut ui = Ui {
             flow: None,
             hover_style: None,
+            local_style: (inherited || style.window.body.foreground.is_some())
+                .then(|| std::sync::Arc::new(style.clone())),
+            local_style_revision: 0,
             context,
             window: self.id,
             scope: self.id.with("content"),

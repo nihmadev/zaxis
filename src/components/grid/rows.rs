@@ -87,6 +87,8 @@ impl GridRow<'_, '_, '_> {
             enabled: ui.enabled,
             backdrop_blur: ui.backdrop_blur,
             hover_style: ui.hover_style,
+            local_style: ui.local_style.clone(),
+            local_style_revision: ui.local_style_revision,
         };
         child.begin_layout(crate::Align::Start);
         let result = build(&mut child);
