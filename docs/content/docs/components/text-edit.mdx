@@ -117,6 +117,16 @@ The host sleeps with `WaitUntil`; no continuous polling is needed. Unfocused fie
 schedule no timers. Setting the interval to zero shows a steady cursor without
 blink timers. The cursor width is `Style::text_edit_cursor_width`.
 
+## Monospace and tabular fields
+
+`TextEdit::monospace()` (or `family(TextFamily::Monospace)`, or `TextEditStyle::font_family`) edits
+in the code font. Caret, hit testing, selection and the IME rectangle read the same cached layout as
+`Text::monospace`, so one character of the primary font is one cell and a pointer position maps to
+the same column whatever the glyph. `tab_size` counts cells: tabs are tab stops, counted from the
+start of the line, and agree with `Text::tab_size`. Single-line fields draw tabs as spaces.
+`tabular_numbers(true)` gives digits of equal width in a proportional field when the font has
+`tnum`. Fallback glyphs (CJK, emoji) keep their own width; see [Text](./text.mdx#monospace-text).
+
 ## Multi-line mode
 
 `TextEdit::multiline()` (or `ui.text_area(&mut text)`) turns the same engine into a text
@@ -145,7 +155,7 @@ ui.add(TextEdit::new(&mut code).wrap(false).tab_indent(true).tab_size(4).rows(6.
 | (none of the above) | `TextEditStyle::area_min_height` (64 px with the default theme) |
 | `width(f32)` / `fill_width()` | Fills the available width unless the layout gives a preferred one |
 | `tab_indent(bool)` | `false`: Tab moves focus. `true`: Tab inserts a tab character; Shift+Tab always moves focus back |
-| `tab_size(u16)` | 4; width of a tab character in space widths (fixed width, not tab stops) |
+| `tab_size(u16)` | 4; width of a tab character in space widths; tab stops in cells with `monospace()` |
 | `submit_on_ctrl_enter(bool)` | `false`. When `true`, Ctrl/Cmd+Enter sets `Response::submitted()` and inserts nothing; plain Enter always inserts a line break |
 | `max_chars(usize)` | As above |
 

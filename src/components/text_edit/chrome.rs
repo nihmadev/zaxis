@@ -11,7 +11,7 @@ pub(super) struct Look {
     pub style: crate::Style,
     pub component: TextEditStyle,
     pub size: f32,
-    pub weight: crate::FontWeight,
+    pub font: crate::text::TextFont,
     pub padding: Padding,
 }
 
@@ -39,6 +39,13 @@ impl TextEdit<'_> {
         let weight = component
             .font_weight
             .unwrap_or(style.typography.weights.body);
+        let font = crate::text::TextFont::new(
+            weight,
+            self.family
+                .or(component.font_family)
+                .unwrap_or_default(),
+            self.tabular.unwrap_or(false),
+        );
         let padding = self.padding.or_else(|| match self.area {
             Some(_) => Some(component.area_padding.unwrap_or(Padding::symmetric(12.0, 8.0))),
             None => component.padding,
@@ -48,7 +55,7 @@ impl TextEdit<'_> {
             style,
             component,
             size,
-            weight,
+            font,
             padding,
         }
     }

@@ -11,10 +11,10 @@ pub(super) fn positions(
     ctx: &mut Context,
     text: &str,
     size: f32,
-    weight: crate::FontWeight,
+    font: crate::text::TextFont,
 ) -> Vec<(usize, f32)> {
     let points = boundaries(text);
-    ctx.text_carets(&display_line(text), size, weight)
+    ctx.text_carets(&display_line(text), size, font)
         .into_iter()
         .filter(|(byte, _)| points.binary_search(byte).is_ok())
         .collect()
@@ -43,7 +43,7 @@ impl TextEdit<'_> {
         outer: Rect,
         position: Vec2,
         size: f32,
-        weight: crate::FontWeight,
+        font: crate::text::TextFont,
         suffix_width: f32,
         color: Color,
     ) {
@@ -52,22 +52,24 @@ impl TextEdit<'_> {
             ui.window,
             ui.clip.intersect(outer),
             vec![
-                Paint::Text {
-                    text: self.affixes.0.clone(),
-                    position: Vec2::new(outer.min.x, position.y),
+                Paint::text(
+                    self.affixes.0.clone(),
+                    Vec2::new(outer.min.x, position.y),
                     size,
-                    weight,
-                    wrap_width: f32::INFINITY,
+                    font,
+                    f32::INFINITY,
+                    crate::text::DEFAULT_TAB,
                     color,
-                },
-                Paint::Text {
-                    text: self.affixes.1.clone(),
-                    position: Vec2::new(outer.max.x - suffix_width, position.y),
+                ),
+                Paint::text(
+                    self.affixes.1.clone(),
+                    Vec2::new(outer.max.x - suffix_width, position.y),
                     size,
-                    weight,
-                    wrap_width: f32::INFINITY,
+                    font,
+                    f32::INFINITY,
+                    crate::text::DEFAULT_TAB,
                     color,
-                },
+                ),
             ],
         );
     }

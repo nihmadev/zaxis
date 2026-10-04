@@ -15,7 +15,7 @@ use crate::{
 pub(super) struct LineSurface<'a> {
     pub ctx: &'a mut Context,
     pub size: f32,
-    pub weight: crate::FontWeight,
+    pub font: crate::text::TextFont,
 }
 
 impl Surface for LineSurface<'_> {
@@ -26,7 +26,7 @@ impl Surface for LineSurface<'_> {
         None
     }
     fn hit(&mut self, text: &str, point: Vec2) -> (Pos, usize) {
-        let points = positions(self.ctx, text, self.size, self.weight);
+        let points = positions(self.ctx, text, self.size, self.font);
         let nearest = points
             .iter()
             .min_by(|a, b| (a.1 - point.x).abs().total_cmp(&(b.1 - point.x).abs()))
@@ -52,11 +52,11 @@ impl TextEdit<'_> {
             style,
             component,
             size,
-            weight,
+            font,
             padding,
         } = &look;
-        let (size, weight, padding) = (*size, *weight, *padding);
-        let text_height = ui.context.measure_text("", size, weight, f32::INFINITY).y;
+        let (size, font, padding) = (*size, *font, *padding);
+        let text_height = ui.context.measure_text("", size, font, f32::INFINITY).y;
         let rect = ui.allocate_space(Vec2::new(
             self.width
                 .or(component.width)
@@ -71,11 +71,11 @@ impl TextEdit<'_> {
         let outer = padding.inset(rect);
         let prefix_width = ui
             .context
-            .measure_text(&self.affixes.0, size, weight, f32::INFINITY)
+            .measure_text(&self.affixes.0, size, font, f32::INFINITY)
             .x;
         let suffix_width = ui
             .context
-            .measure_text(&self.affixes.1, size, weight, f32::INFINITY)
+            .measure_text(&self.affixes.1, size, font, f32::INFINITY)
             .x;
         let inner = Rect::from_min_max(
             Vec2::new((outer.min.x + prefix_width).min(outer.max.x), outer.min.y),
@@ -106,7 +106,7 @@ impl TextEdit<'_> {
         let mut geo = Geo {
             doc: None,
             size,
-            weight,
+            font,
             origin: Vec2::new(inner.min.x - state.scroll, 0.0),
             page: 1,
         };
@@ -128,7 +128,7 @@ impl TextEdit<'_> {
             cursor = selection.start + caret.map_or(text.len(), |(start, _)| start.min(text.len()));
             (selection.start, selection.start + text.len(), *caret)
         });
-        let points = positions(ui.context, &shown, size, weight);
+        let points = positions(ui.context, &shown, size, font);
         let caret_x = x_at(&points, cursor);
         let total = points.last().map_or(0.0, |p| p.1);
         let visible_width = (inner.size().x - style.text_edit_cursor_width).max(0.0);
@@ -173,20 +173,21 @@ impl TextEdit<'_> {
         let text_position = position
             + Vec2::new(
                 0.0,
-                ui.context.centered_line_offset(&rendered, size, weight),
+                ui.context.centered_line_offset(&rendered, size, font),
             );
-        paint.push(Paint::Text {
-            text: rendered,
-            position: text_position,
+        paint.push(Paint::text(
+            rendered,
+            text_position,
             size,
-            weight,
-            wrap_width: f32::INFINITY,
-            color: if placeholder {
+            font,
+            f32::INFINITY,
+            crate::text::DEFAULT_TAB,
+            if placeholder {
                 self.placeholder_fill(&look)
             } else {
                 color
             },
-        });
+        ));
         let mut selected_paint = None;
         if response.has_focus && composition.is_none() && !selection.is_empty() && !placeholder {
             if let Some(foreground) = component.selection_foreground {
@@ -198,14 +199,15 @@ impl TextEdit<'_> {
                 );
                 selected_paint = Some((
                     clip.intersect(selected_clip),
-                    vec![Paint::Text {
-                        text: display_line(self.text),
-                        position: text_position,
+                    vec![Paint::text(
+                        display_line(self.text),
+                        text_position,
                         size,
-                        weight,
-                        wrap_width: f32::INFINITY,
-                        color: foreground,
-                    }],
+                        font,
+                        f32::INFINITY,
+                        crate::text::DEFAULT_TAB,
+                        foreground,
+                    )],
                 ));
             }
         }
@@ -278,7 +280,7 @@ impl TextEdit<'_> {
             ui.context
                 .paint(id.with("selected-text"), ui.window, clip, paint);
         }
-        self.paint_affixes(ui, id, outer, position, size, weight, suffix_width, color);
+        self.paint_affixes(ui, id, outer, position, size, font, suffix_width, color);
         state.focused = response.has_focus;
         state.blink_interval = style.text_edit_blink_interval;
         state.fingerprint = fingerprint;

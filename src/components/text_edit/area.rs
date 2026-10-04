@@ -63,9 +63,9 @@ impl TextEdit<'_> {
 
     pub(super) fn show_area(mut self, ui: &mut Ui<'_>, id: Id, look: Look) -> Response {
         let opts = self.area.expect("multi-line options");
-        let (size, weight, padding) = (look.size, look.weight, look.padding);
+        let (size, font, padding) = (look.size, look.font, look.padding);
         let style = &look.style;
-        let lh = ui.context.measure_text("", size, weight, f32::INFINITY).y;
+        let lh = ui.context.measure_text("", size, font, f32::INFINITY).y;
         let available = ui.available_width();
         let width = match self.width {
             Some(width) => width,
@@ -76,7 +76,7 @@ impl TextEdit<'_> {
         let caret_width = style.text_edit_cursor_width;
         let env = Env {
             size,
-            weight,
+            font,
             wrap: if opts.wrap {
                 (width - padding.size().x - caret_width).max(1.0)
             } else {
@@ -130,7 +130,7 @@ impl TextEdit<'_> {
         let mut geo = Geo {
             doc: Some(&mut area.doc),
             size,
-            weight,
+            font,
             origin: view.min - current,
             page,
         };

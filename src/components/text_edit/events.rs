@@ -30,7 +30,7 @@ pub(super) struct Geo<'a> {
     /// The paragraph table of a multi-line field.
     pub doc: Option<&'a mut Doc>,
     pub size: f32,
-    pub weight: crate::FontWeight,
+    pub font: crate::text::TextFont,
     /// A pointer position minus this is a position in content coordinates.
     pub origin: Vec2,
     pub page: i32,
@@ -46,7 +46,7 @@ fn surface<R>(geo: &mut Geo<'_>, ctx: &mut Context, f: impl FnOnce(&mut dyn Surf
         None => f(&mut LineSurface {
             ctx,
             size: geo.size,
-            weight: geo.weight,
+            font: geo.font,
         }),
     }
 }

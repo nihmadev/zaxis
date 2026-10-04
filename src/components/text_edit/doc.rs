@@ -7,7 +7,6 @@ use crate::{
     components::edit_buffer::Delta,
     context::Context,
     text::{TextLayout, VisualLine},
-    FontWeight,
 };
 use std::sync::Arc;
 
@@ -15,7 +14,7 @@ use std::sync::Arc;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Env {
     pub size: f32,
-    pub weight: FontWeight,
+    pub font: crate::text::TextFont,
     /// Wrap width, infinite when lines do not wrap.
     pub wrap: f32,
     pub tab: u16,
@@ -149,7 +148,7 @@ impl Doc {
         }
         let rewrap = env.wrap != self.env.wrap
             || env.size != self.env.size
-            || env.weight != self.env.weight
+            || env.font != self.env.font
             || env.tab != self.env.tab;
         self.env = env;
         if rewrap {
@@ -294,7 +293,7 @@ impl Doc {
             return Arc::clone(layout);
         }
         let env = self.env;
-        let layout = ctx.paragraph_layout(self.text_of(text, i), env.size, env.weight, env.wrap, env.tab);
+        let layout = ctx.paragraph_layout(self.text_of(text, i), env.size, env.font, env.wrap, env.tab);
         self.adopt(i, &layout);
         layout
     }
@@ -317,7 +316,7 @@ impl Doc {
         let mut shown = self.text_of(text, i).to_owned();
         shown.insert_str(rel.min(shown.len()), preedit);
         let env = self.env;
-        let layout = ctx.paragraph_layout(&shown, env.size, env.weight, env.wrap, env.tab);
+        let layout = ctx.paragraph_layout(&shown, env.size, env.font, env.wrap, env.tab);
         self.adopt(i, &layout);
         self.paras[i].layout = None;
         self.paras[i].measured = false;
