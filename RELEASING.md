@@ -1,8 +1,8 @@
 # Releasing zaxis
 
 Cargo versions are numeric. Release display names append an adjective:
-**0.0.1 Blinking**, with Git tag **v0.0.1**. Keep the display name in CHANGELOG.md
-and README.md; Cargo.toml contains only `0.0.1`.
+**0.0.3 Genetic**, with Git tag **v0.0.3**. Keep the display name in CHANGELOG.md
+and README.md; Cargo.toml contains only `0.0.3`.
 
 ## First publication
 
@@ -23,8 +23,8 @@ and README.md; Cargo.toml contains only `0.0.1`.
    repository `nihmadev/zaxis`, workflow `publish.yml`, and environment `release`.
    In GitHub, create the `release` environment
    and restrict it to version tags (`v*`). No permanent Cargo token is needed by CI.
-5. Verify both crates.io pages and docs.rs builds, then create `v0.0.1` and a GitHub release
-   titled `0.0.1 Blinking`, using its changelog entry as release notes.
+5. Verify both crates.io pages and docs.rs builds, then create `v0.0.3` and a GitHub release
+   titled `0.0.3 Genetic`, using its changelog entry as release notes.
 
    The workflow detects versions already uploaded manually and skips their registry
    upload, so creating the first GitHub release does not attempt a duplicate publication.

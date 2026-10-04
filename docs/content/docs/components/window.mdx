@@ -20,6 +20,14 @@ has no internal title bar or resize grip, and stays below floating panels and
 popups. Its padding defaults to `Style::window_padding`; `blur(f32)` overrides
 the theme's application backdrop blur.
 
+Panel options: `title_bar(false)` removes the title strip (move it with
+`Ui::drag_window(rect)`; such windows may be smaller than 64 px), `fit_content(true)`
+sizes it to its content, `on_top(true)` keeps a heads-up panel above other panels, and
+`visual(scale, opacity)` scales and fades the whole panel for entrance and exit animations.
+
+With several native windows, each has its own `Context` and its own panels; open them with
+`WindowOptions` through [the runner](../app.mdx#multiple-windows).
+
 Disable native decorations with
 `options.window_attributes.with_decorations(false)` and use `Frame::window()`
 for native dragging, resizing, minimizing and maximizing. A custom close button

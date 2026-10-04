@@ -1,0 +1,24 @@
+---
+title: KeyBox
+icon: Keyboard
+description: A box that captures the next key or mouse button as a binding.
+---
+
+```rust
+let mut aim = KeyBinding::Key(KeyCode::KeyE);
+ui.add(KeyBox::new(&mut aim, "Aim key"));
+// or
+ui.key_box(&mut aim, "Aim key");
+```
+
+Click the box to start listening; it reads `...` and pulses. The next key press binds,
+Escape or a press elsewhere cancels, Backspace or Delete unbinds, and the secondary and
+middle mouse buttons bind as `RMB` and `MMB`. The primary button binds only with
+`allow_left_click(true)`. `changed()` is set on the pass that changes the binding. Only
+one box listens at a time.
+
+`KeyBinding` (`None`, `Key(KeyCode)`, `Mouse(MouseBinding)`) gives `label()` (`A`, `RShift`, `LMB`, ...), `is_none()`,
+`is_down(&InputState)` and `is_pressed(&InputState)`. While a box listens,
+`Context::key_capture_active()` is true; hotkeys that would otherwise fire should ignore
+input meanwhile. Builders: `id_source`, `enabled`, `allow_left_click`, `button_size`,
+`fill`, `active_fill`, `accent`.

@@ -1,22 +1,23 @@
 ---
 title: Limitations
 icon: CircleSlash
-description: Supported scope and boundaries of the 0.0.1 Blinking development release.
+description: Supported scope and boundaries of the 0.0.3 Genetic development release.
 ---
 
 | Area | Current boundary |
 | --- | --- |
-| Native windows | Built-in runner owns one native window and one context; multiwindow hosting is application work |
+| Native windows | Built-in runner opens several native windows (`WindowPlan`, `Windows`), each with its own `Context` and surface over shared glyph, image and appearance resources; no native menus or tray icons; window geometry is not persisted |
 | Backends | winit and wgpu are always dependencies; no optional backend feature flags |
 | Layout | Rows, columns, Grid and Table; virtualization uses fixed-height rows, without variable-height virtualization |
-| Controls | TextEdit (single-line and multi-line text area), ComboBox/Popup, numeric controls, ColorPicker, ScrollArea, Grid, Table and Image are available; menu bar with cascading submenus (`MenuBar`) |
+| Controls | TextEdit (single-line and multi-line text area), ComboBox/Popup, numeric controls, ColorPicker, ScrollArea, Grid, Table and Image are available; menu bar with cascading submenus (`MenuBar`), `Toast`, `KeyBox`, `IconTabs` and `Badge` |
 | Text | Complex shaping, bidirectional layout, ligatures, color emoji and one font weight per string are available; no mixed weights or styles inside a string, italic, optical sizes, extra OpenType features or CSS-like font selectors; no several families, colors or syntax highlighting inside one string; monospace text is one cell per character only for the primary font (fallback CJK and emoji keep their own advance and shift the rest of the line), tabular figures need a font with `tnum`, and code ligatures are off; the multi-line TextEdit has no line numbers, syntax highlighting, rich text, multiple carets, search, folding or completion |
 | Fonts | Bundled Inter in Regular, Medium, SemiBold and Bold (`bundled-weights`), bundled JetBrains Mono for monospace text (`bundled-monospace`; replaceable with `RunOptions::with_monospace_family`), a custom `FontFamily` through `RunOptions::with_font_family` or `Context::with_fonts`, system fallback and bundled color emoji; weights without a file use the nearest one and are never synthesized; variable-font axes are not used (cosmic-text 0.17 shapes them inconsistently); fallback fonts follow the weight only where they have that file; no runtime font setter, glyph eviction, or italic |
+| Toasts | `Toast` stacks in the bottom-right corner of the window that shows it; passive: no focus, pointer input or actions |
 | Accessibility | No OS accessibility integration |
-| Modal dialogs | One input target at a time (the newest open modal); no native child windows, system file dialogs, toasts, dragging or resizing of the modal, or library-side dialog queue; the runner exits on an OS close request without asking the application, so "confirm before exit" covers only the in-window close button; `Floating` `ColorPicker` and `Window` panels inside a modal are shown inline or stay below it; windows narrower than about 200 px can push a two-button action row past the edge |
+| Modal dialogs | One input target at a time (the newest open modal); no system file dialogs, dragging or resizing of the modal, or library-side dialog queue; a modal covers only its own native window, and an OS close request goes to `App::close_requested`, where `CloseRequested::reject` keeps the window open for a "Save changes?" modal; `Floating` `ColorPicker` and `Window` panels inside a modal are shown inline or stay below it; windows narrower than about 200 px can push a two-button action row past the edge |
 | Window state | Geometry retained by ID, with initial-position/size builders; no public reset, forced reposition, or forced resize method |
 | Custom interaction | External widgets get a `Response` for their own rectangle with `Ui::interact` and a `Sense` (hover, click, drag, focus); there is no public hit-region type, text editing or IME for custom widgets, and a focused widget reads raw keys from `InputState` |
-| Drag and drop | In-window drag and drop of in-process typed payloads between components of one `Context`; no OS file drag, clipboard drag, cross-window or cross-process transfer, OLE, native multiwindow, or dragging selected text |
+| Drag and drop | In-window drag and drop of in-process typed payloads between components of one `Context`; no OS file drag, clipboard drag, transfer between native windows (each has its own `Context`) or processes, OLE, or dragging selected text |
 | Renderer integration | Renderer owns its surface, device, and queue; no public render-into-existing-pass API |
 | Antialiasing | Automatic 4× MSAA when supported, otherwise 1×; no public override |
 | Texture upload | Complete image payloads, full uploads on revision change; no public dirty-region API |
@@ -25,7 +26,8 @@ description: Supported scope and boundaries of the 0.0.1 Blinking development re
 | Images | Local files, bytes and RGBA pixels; no built-in network fetching, animated playback, or external SVG resource loading |
 
 zaxis `Window` panels are not native OS windows. Opening several panels does not
-create several event loops or GPU surfaces.
+create several event loops or GPU surfaces. Native windows come from the runner's
+`WindowPlan` / `Windows` API; see [Desktop runner](./app.mdx#multiple-windows).
 
 TextEdit supports grapheme-aware editing, clipboard operations, undo/redo, and
 native IME preedit/commit, in one line or in a multi-line text area. Bidirectional text is

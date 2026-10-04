@@ -1,0 +1,29 @@
+---
+title: Toast
+icon: Bell
+description: Transient notifications stacked in the bottom-right corner.
+---
+
+```rust
+context.toast(Toast::new("Configurations").content("Saved aim.cfg"));
+```
+
+`Context::toast(Toast)` queues a notification; `Context::toast_count()` reports how many
+are alive. The context keeps and paints it, so it can be queued from any callback, for
+example when a button was clicked. Toasts stack in the bottom-right corner of the window
+whose `Context` they were queued on, paint above windows and popups, fade and slide in,
+and fade out when their time is up.
+
+| Builder | Effect |
+| --- | --- |
+| `Toast::new(title)` / `content(text)` | Title and optional body |
+| `duration(Duration)` | How long it stays before fading |
+| `width(f32)` / `corner_radius(f32)` | Geometry |
+| `fill` / `border` / `title_color` / `content_color` | Colors; unset ones come from the current style |
+| `text_sizes(title, content)` | Font sizes |
+
+## Limitations
+
+Toasts are passive: they never take focus, intercept the pointer, or carry actions or a
+close button. They belong to one `Context`, so with several native windows queue the toast
+on the window that should show it.

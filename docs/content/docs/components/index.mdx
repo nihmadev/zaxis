@@ -19,6 +19,11 @@ compatibility re-export of the component module.
 | [Popup](./popup.mdx) | `Popup::new(id, anchor).show(ui, &mut open, build)` | Overlay layer, viewport placement and dismissal |
 | [Modal](./modal.mdx) | `Modal::new(id).show(ui, &mut open, build)` / `Dialog` / `Confirm` | Input-blocking dialogs, confirmations and sheets |
 | [ComboBox](./combo-box.mdx) | `ui.combo_box(&mut Option<T>, &options)` / `ui.combo_box_values(&mut T, pairs)` | Stable selection and optional filtering |
+| [MenuBar](./menu-bar.mdx) | `ui.menu_bar(id, &items)` | Menu bar or compact menu with cascading submenus |
+| [Toast](./toast.mdx) | `context.toast(Toast::new(title).content(text))` | Passive transient notifications |
+| [KeyBox](./key-box.mdx) | `ui.key_box(&mut KeyBinding, label)` | Captures the next key or mouse button |
+| [IconTabs](./icon-tabs.mdx) | `ui.icon_tabs(&mut value, tabs)` | Vertical icon strip bound to a selection |
+| [Badge](./badge.mdx) | `ui.add(Badge::new(text))` | Passive chip for key caps, pills and counts |
 | [Text](./text.mdx) | `ui.label(text)` | Read-only text |
 | [Icons](./icons.mdx) | `ui.image(&icons::USER)` | Bundled Lucide icons, tintable (`bundled-icons` feature) |
 | [TextEdit](./text-edit.mdx) | `ui.text_edit(&mut String)` | Single-line Unicode editing and IME |

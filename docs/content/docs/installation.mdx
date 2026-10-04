@@ -22,12 +22,12 @@ retain a compatible lockfile or update Rust when resolving them.
 
 ## Add the dependency
 
-The first development release is **0.0.1 Blinking**. Its public API may change
+The current development release is **0.0.3 Genetic**. Its public API may change
 between development releases. Once published on crates.io:
 
 ```toml title="Cargo.toml"
 [dependencies]
-zaxis = "=0.0.1"
+zaxis = "=0.0.3"
 ```
 
 Before publication, or to follow repository development:
@@ -84,7 +84,7 @@ To omit only that font while keeping optional codecs:
 
 ```toml title="Cargo.toml"
 [dependencies]
-zaxis = { version = "=0.0.1", default-features = false, features = ["image-gif", "image-tiff"] }
+zaxis = { version = "=0.0.3", default-features = false, features = ["image-gif", "image-tiff"] }
 ```
 
 Emoji then use system font fallback, with coverage depending on installed fonts.

@@ -1,0 +1,16 @@
+---
+title: Badge
+icon: Tag
+description: A small passive chip for key caps, status pills and counts.
+---
+
+```rust
+ui.horizontal(|ui| {
+    ui.add(Badge::new("RShift").fill(Color::gray(40)).font_size(11.0));
+    ui.add(Badge::new("On").fill(Color::rgb(30, 80, 50)).text_color(Color::WHITE));
+});
+```
+
+A badge sizes itself to its text, takes no input and reports no events. Builders:
+`id_source`, `fill`, `border`, `text_color`, `corner_radius`, `padding`, `height`,
+`font_size`, `weight`.

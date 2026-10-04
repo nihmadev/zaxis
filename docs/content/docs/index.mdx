@@ -31,14 +31,16 @@ between input, native redraws, and requested deadlines.
 
 ## Current scope
 
-zaxis **0.0.1 Blinking** is a development release requiring Rust 1.90 or newer.
+zaxis **0.0.3 Genetic** is a development release requiring Rust 1.90 or newer.
 Public APIs may change between development releases. It uses Rust 2021, winit,
 wgpu, and a shaping/rasterization engine based on cosmic-text. Both desktop backends
-are always included. The built-in runner owns one native window and one `Context`;
-multiple zaxis `Window` panels can share it.
+are always included. The built-in runner drives one or several native windows, each with its own `Context`
+and surface but sharing one glyph atlas and image cache; multiple zaxis `Window` panels
+can share a native window.
 
 Components include windows, text, buttons, checkboxes, sliders, TextEdit with IME,
-ComboBox/Popup, numeric controls, color pickers, images, ScrollArea, Grid, and Table.
+ComboBox/Popup, menu bars, toasts, key binding boxes, numeric controls, color pickers, images,
+ScrollArea, Grid, and Table.
 The text engine supports complex shaping, bidirectional layout, system font fallback,
 and bundled color emoji. There is no OS accessibility bridge.
 See [limitations](./limitations.mdx) for the supported boundaries.

@@ -147,9 +147,10 @@ uses `error`, the card uses `window_fill` and `border`, timing uses
 
 ## Limitations
 
-Drag and drop works only inside one native window of one `Context`. There is no
-operating-system file drag, clipboard drag, cross-window or cross-process transfer,
-OLE, or native multi-window hosting; payloads are in-process values. Text selections
+Drag and drop works only inside one native window of one `Context`; with several native
+windows each has its own `Context`, so a payload cannot move between them. There is no
+operating-system file drag, clipboard drag, cross-process transfer or OLE;
+payloads are in-process values. Text selections
 cannot be dragged and `TextEdit` is unchanged. Variable-height virtualization has no
 model-wide target lookup, and spring-loaded expansion of collapsed branches is not
 provided. The source is dimmed only in the closure form; an attached source cannot

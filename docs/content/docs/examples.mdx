@@ -1,7 +1,7 @@
 ---
 title: Examples
 icon: FlaskConical
-description: Commands, behavior, and source locations for the three reference applications.
+description: Commands, behavior, and source locations for the reference applications.
 ---
 
 Run these commands from the repository root.
@@ -19,6 +19,9 @@ Run these commands from the repository root.
 | In-window drag and drop |  `cargo run --release --example drag_and_drop` | [drag_and_drop.rs](https://github.com/nihmadev/zaxis/blob/main/examples/drag_and_drop.rs) |
 | A widget written outside the crate | `cargo run --example custom_widget` | [custom_widget.rs](https://github.com/nihmadev/zaxis/blob/main/examples/custom_widget.rs) |
 | Lucide icon gallery | `cargo run --example icons --features bundled-icons` | [icons.rs](https://github.com/nihmadev/zaxis/blob/main/examples/icons.rs) |
+| Several native windows, shared resources | `cargo run --example multi_window` | [multi_window.rs](https://github.com/nihmadev/zaxis/blob/main/examples/multi_window.rs) |
+| Menu bar with cascading submenus | `cargo run --example menu_bar` | [menu_bar.rs](https://github.com/nihmadev/zaxis/blob/main/examples/menu_bar.rs) |
+| Source, diff and file table in the code font | `cargo run --example code_view` | [code_view.rs](https://github.com/nihmadev/zaxis/blob/main/examples/code_view.rs) |
 | Validated form | `cargo run --example validation` | [validation.rs](https://github.com/nihmadev/zaxis/blob/main/examples/validation.rs) |
 
 All three select `PresentationMode::Immediate` unless passed `--vsync`:

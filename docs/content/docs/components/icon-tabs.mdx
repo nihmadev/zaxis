@@ -1,0 +1,25 @@
+---
+title: IconTabs
+icon: PanelLeft
+description: A vertical strip of icon buttons bound to a selection.
+---
+
+```rust
+ui.add(IconTabs::new(&mut page, [
+    (Page::Aim, &icons::TARGET, "Aim"),
+    (Page::Visuals, &icons::EYE, "Visuals"),
+]));
+// or
+ui.icon_tabs(&mut page, tabs);
+```
+
+Each tab is `(value, icon, label)`. The icon is any `ImageSource`, such as a bundled
+Lucide icon (`bundled-icons`); the label is its tooltip. The selected tab gets a soft
+fill, a hairline outline and the active color; hovering fills it faintly. All of it eases
+on the shared animation scheduler. The `Response` covers the whole strip and reports
+`changed()` on the pass that selects a different tab. The value type needs `PartialEq`,
+`Hash` and `Clone`.
+
+Builders: `id_source`, `tab_size`, `icon_size`, `gap`, `corner_radius`, `idle_color`,
+`active_color`, `fill`, `border`, `opacities(selected, hover, outline)`, `duration`.
+Pair it with `Ui::tab_pages_live` for pages that slide while keeping their input.

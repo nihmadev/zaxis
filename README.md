@@ -16,7 +16,7 @@ for states, painters and migration.
 An event-driven immediate mode GUI for desktop tools, written in Rust.
 Uses winit and wgpu, with retained interaction state and cached CPU/GPU geometry.
 
-**0.0.1 Blinking** is the first development release. Public APIs may change between
+**0.0.3 Genetic** is a development release. Public APIs may change between
 development releases. CI checks Windows, Linux, and macOS; native GPU and
 desktop behavior still needs platform-specific testing.
 
@@ -42,7 +42,7 @@ zaxis is universally better or a replacement for egui.
 | Start a native app | `zaxis::run(app)` with defaults; `run_with_options` for customization | [`eframe::run_native`](https://docs.rs/eframe/0.36.2/eframe/fn.run_native.html) with app name, options, and an app-creation closure |
 | Animate values | Typed transitions, tweens, springs, keyframes, and track composition with automatic repaint deadlines | [`Context` animation helpers](https://docs.rs/egui/0.36.2/egui/struct.Context.html#method.animate_value_with_time) for booleans and scalar values, including easing helpers |
 | Load local images / SVG | Built-in async loading through `ui.image(source)`; no loader registration | [`egui_extras` loaders](https://docs.rs/egui_extras/0.36.2/egui_extras/loaders/fn.install_image_loaders.html) with format features and loader installation |
-| Target applications | Desktop tools; the default runner owns one native window | [Native, web, and game-engine integrations](https://github.com/emilk/egui) |
+| Target applications | Desktop tools; the default runner drives one or several native windows | [Native, web, and game-engine integrations](https://github.com/emilk/egui) |
 
 This compares the everyday API paths with egui/eframe 0.36.2, not rendering speed
 or overall feature coverage. zaxis is an early development release with a smaller
@@ -54,7 +54,7 @@ Requires Rust **1.90** or newer. Once published on crates.io:
 
 ```toml
 [dependencies]
-zaxis = "=0.0.1"
+zaxis = "=0.0.3"
 ```
 
 Before publication, use `zaxis = { git = "https://github.com/nihmadev/zaxis" }`.
@@ -159,7 +159,7 @@ default download size or memory use. It also lets applications omit the font:
 
 ```toml
 [dependencies]
-zaxis = { version = "=0.0.1", default-features = false, features = ["image-gif", "image-tiff"] }
+zaxis = { version = "=0.0.3", default-features = false, features = ["image-gif", "image-tiff"] }
 ```
 
 This keeps the optional image codecs and uses system fonts for emoji. Emoji
