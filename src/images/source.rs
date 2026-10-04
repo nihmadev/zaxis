@@ -86,3 +86,9 @@ impl<const N: usize> From<&'static [u8; N]> for ImageSource {
         Self::bytes(s)
     }
 }
+#[cfg(feature = "bundled-icons")]
+impl From<&'static z_icons::Icon> for ImageSource {
+    fn from(icon: &'static z_icons::Icon) -> Self {
+        Self::bytes(icon.svg())
+    }
+}

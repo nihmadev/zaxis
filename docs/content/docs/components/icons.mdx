@@ -1,0 +1,69 @@
+---
+title: Icons
+icon: Shapes
+description: Bundled Lucide icon set from the z-icons crate, tinting, sizing and licensing.
+---
+
+```toml title="Cargo.toml"
+[dependencies]
+zaxis = { version = "=0.0.1", features = ["bundled-icons"] }
+```
+
+```rust
+use zaxis::{icons, vec2, Image};
+
+ui.image(&icons::USER);
+ui.add(Image::new(&icons::SETTINGS).size(vec2(20.0, 20.0)).tint(Color::gray(200)));
+if ui.add(Image::new(&icons::TRASH).size(vec2(16.0, 16.0)).interactive(true)).clicked() {
+    // ...
+}
+```
+
+The opt-in `bundled-icons` feature re-exports the separate [`z-icons`](https://github.com/nihmadev/zaxis/tree/main/crates/z-icons)
+crate as `zaxis::icons`. It contains the complete [Lucide](https://lucide.dev) set
+(1866 icons) as static SVG data. Icons are ordinary [images](./image.mdx): the `&'static Icon`
+converts into an `ImageSource`, so every `Image` option applies.
+
+## Names
+
+Each icon is a `static` named after its Lucide file in `SCREAMING_SNAKE_CASE`:
+`user` → `icons::USER`, `arrow-left` → `icons::ARROW_LEFT`, `grid-2x2` → `icons::GRID_2X2`.
+Names starting with a digit get a leading underscore. Lucide renames icons between versions
+(for example `trash-2` is now `trash`); the compiler reports a removed name.
+Look names up on [lucide.dev/icons](https://lucide.dev/icons).
+
+`Icon::name()` returns the Lucide name and `Icon::svg()` the UTF-8 SVG bytes.
+
+## Size and color
+
+Icons are drawn on a 24 × 24 viewBox with a 2-unit stroke that scales with the size.
+Strokes are stored white instead of `currentColor`, so `Image::tint` sets the color and
+one raster serves every tint. Layout uses logical pixels; the raster resolution follows DPI
+as for any SVG. Without `.size(...)` an icon is 24 × 24.
+
+## Binary size
+
+Every icon is a separate `static`, so the linker drops those you do not reference.
+There is no list of all icons in the crate for the same reason. Only the SVG sources you
+use are embedded; parsing and rasterization happen at run time through the image cache.
+
+## Custom icons
+
+`Image::new(include_bytes!("icon.svg"))` works the same way. For Lucide-style icons that use
+`currentColor`, replace it with `#fff` to make them tintable.
+
+## Updating
+
+`python crates/z-icons/generate.py <path-to-lucide-checkout>` regenerates `icons/` and
+`src/generated.rs`.
+
+## License
+
+Lucide is ISC licensed; some icons derive from Feather (MIT). Redistribution must include
+[`LICENSE-LUCIDE`](https://github.com/nihmadev/zaxis/blob/main/crates/z-icons/LICENSE-LUCIDE),
+which ships in the crate.
+
+## Example
+
+`cargo run --example icons --features bundled-icons` shows a filterable gallery with size and
+color controls.

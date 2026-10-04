@@ -1,0 +1,16 @@
+[package]
+name = "z-icons"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.90"
+description = "Bundled Lucide icon set (SVG data) for zaxis"
+license = "ISC AND MIT"
+readme = "README.md"
+repository = "https://github.com/nihmadev/zaxis"
+documentation = "https://docs.rs/z-icons"
+keywords = ["icons", "lucide", "svg", "gui"]
+categories = ["gui"]
+include = ["/src/**", "/icons/**", "/Cargo.toml", "/README.md", "/LICENSE-LUCIDE"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
