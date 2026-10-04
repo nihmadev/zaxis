@@ -10,6 +10,9 @@ use crate::{
 use super::{font_size, visible_label, HoverStyle, Numeric, Response, SemanticStatus, Ui, Widget};
 mod paint;
 
+/// Space between a caption above the track and the track.
+const CAPTION_GAP: f32 = 4.0;
+
 /// Semantic accent for a slider; the same type every control uses for validation.
 /// An explicit [`Slider::color`] takes precedence.
 pub type SliderStatus = SemanticStatus;
@@ -30,6 +33,7 @@ pub struct Slider<'a, T: Numeric = f32> {
     status: SemanticStatus,
     source: &'static Location<'static>,
     text: Option<String>,
+    caption_above: bool,
     suffix: String,
     precision: Option<usize>,
     blur: Option<f32>,
@@ -70,6 +74,7 @@ impl<'a, T: Numeric> Slider<'a, T> {
             status: SemanticStatus::Normal,
             source: Location::caller(),
             text: None,
+            caption_above: false,
             suffix: String::new(),
             precision: None,
             blur: None,
@@ -109,6 +114,12 @@ impl<'a, T: Numeric> Slider<'a, T> {
     /// Display a caption and the current value below the track.
     pub fn text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
+        self
+    }
+    /// Put the caption on a line above the track: the text left-aligned and the value with
+    /// its suffix right-aligned, instead of one `caption: value` line below it.
+    pub fn caption_above(mut self, above: bool) -> Self {
+        self.caption_above = above;
         self
     }
     pub fn suffix(mut self, suffix: impl Into<String>) -> Self {
@@ -215,15 +226,28 @@ impl<T: Numeric> Widget for Slider<'_, T> {
             Some(id) => ui.scope.with(("slider", id)),
             None => ui.auto_id(("slider", self.source)),
         };
+        let size = font_size(style.font_size);
+        let weight = ui.style().typography.weights.control;
+        let width = self
+            .width
+            .or(component.width)
+            .unwrap_or(200.0)
+            .min(ui.available_width());
+        let precision = self.precision.unwrap_or(if T::INTEGER { 0 } else { 2 });
+        // The caption fixes the line height; the value is formatted after input.
+        let header = self
+            .text
+            .as_ref()
+            .filter(|_| self.caption_above)
+            .map(|text| {
+                let caption = visible_label(text).to_owned();
+                let line = ui.context.measure_text(&caption, size, weight, width).y;
+                (caption, line)
+            });
+        let header_height = header.as_ref().map_or(0.0, |(_, line)| line + CAPTION_GAP);
         let rect = Rect::from_min_size(
-            ui.layout.cursor,
-            Vec2::new(
-                self.width
-                    .or(component.width)
-                    .unwrap_or(200.0)
-                    .min(ui.available_width()),
-                height,
-            ),
+            ui.layout.cursor + Vec2::new(0.0, header_height),
+            Vec2::new(width, height),
         );
         let mut response = ui.response(id, rect, self.enabled);
         let radius = component
@@ -283,26 +307,25 @@ impl<T: Numeric> Widget for Slider<'_, T> {
             response.changed = !self.value.same(value);
             *self.value = value;
         }
-        let size = font_size(style.font_size);
-        let width = rect.size().x;
-        let label = self.text.as_ref().map(|text| {
-            let caption = visible_label(text);
-            let separator = if caption.is_empty() { "" } else { ": " };
-            let precision = self.precision.unwrap_or(if T::INTEGER { 0 } else { 2 });
-            let text = format!(
-                "{caption}{separator}{}{}",
-                self.value.formatted(Some(precision)),
-                self.suffix
-            );
-            let text_size =
-                ui.context
-                    .measure_text(&text, size, ui.style().typography.weights.control, width);
-            (text, text_size)
-        });
+        let label = self
+            .text
+            .as_ref()
+            .filter(|_| !self.caption_above)
+            .map(|text| {
+                let caption = visible_label(text);
+                let separator = if caption.is_empty() { "" } else { ": " };
+                let text = format!(
+                    "{caption}{separator}{}{}",
+                    self.value.formatted(Some(precision)),
+                    self.suffix
+                );
+                let text_size = ui.context.measure_text(&text, size, weight, width);
+                (text, text_size)
+            });
         let label_height = label
             .as_ref()
             .map_or(0.0, |(_, text_size)| ui.layout.spacing + text_size.y);
-        ui.allocate_space(Vec2::new(width, height + label_height));
+        ui.allocate_space(Vec2::new(width, header_height + height + label_height));
         ui.context.register_hit(HitRegion {
             id,
             window: ui.window,
@@ -321,6 +344,34 @@ impl<T: Numeric> Widget for Slider<'_, T> {
         };
         let x = left + (right - left) * t as f32;
         let foreground = self.paint_parts(ui, response, &style, component, left, right, x, radius);
+        if let Some((caption, _)) = header {
+            let value = format!("{}{}", self.value.formatted(Some(precision)), self.suffix);
+            let value_size = ui.context.measure_text(&value, size, weight, width);
+            let top = rect.min - Vec2::new(0.0, header_height);
+            ui.context.paint(
+                id.with("header"),
+                ui.window,
+                ui.clip,
+                vec![
+                    Paint::Text {
+                        text: caption,
+                        position: top,
+                        size,
+                        weight,
+                        wrap_width: width,
+                        color: foreground,
+                    },
+                    Paint::Text {
+                        text: value,
+                        position: top + Vec2::new((width - value_size.x).max(0.0), 0.0),
+                        size,
+                        weight,
+                        wrap_width: width,
+                        color: foreground,
+                    },
+                ],
+            );
+        }
         if let Some((text, _)) = label {
             ui.context.paint(
                 id.with("label"),
@@ -330,7 +381,7 @@ impl<T: Numeric> Widget for Slider<'_, T> {
                     text,
                     position: rect.min + Vec2::new(0.0, height + ui.layout.spacing),
                     size,
-                    weight: ui.style().typography.weights.control,
+                    weight,
                     wrap_width: width,
                     color: foreground,
                 }],
