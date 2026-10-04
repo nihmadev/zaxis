@@ -31,7 +31,12 @@ fn click(c: &mut Context, p: crate::Vec2) {
     c.move_pointer(p);
     c.primary_button(ElementState::Pressed);
     c.primary_button(ElementState::Released);
-    let _ = (DeviceId::dummy(), MouseButton::Left, WindowEvent::Focused(true), vec2(0.0, 0.0));
+    let _ = (
+        DeviceId::dummy(),
+        MouseButton::Left,
+        WindowEvent::Focused(true),
+        vec2(0.0, 0.0),
+    );
 }
 
 #[test]
@@ -64,11 +69,16 @@ fn probe_newline_cost() {
     c.input.modifiers = winit::keyboard::ModifiersState::CONTROL;
     c.on_key_event(winit::keyboard::KeyCode::End, ElementState::Pressed, false);
     c.input.modifiers = winit::keyboard::ModifiersState::empty();
-    for _ in 0..3 { draw(&mut c, &mut text); }
+    for _ in 0..3 {
+        draw(&mut c, &mut text);
+    }
     for i in 0..30 {
         let before = c.cache_stats().text_layouts_built;
         c.on_text_event(if i % 10 == 9 { "\n" } else { "a" });
         draw(&mut c, &mut text);
-        println!("step {i}: built {}", c.cache_stats().text_layouts_built - before);
+        println!(
+            "step {i}: built {}",
+            c.cache_stats().text_layouts_built - before
+        );
     }
 }

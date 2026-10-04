@@ -101,7 +101,13 @@ fn cache_key_collision_cannot_substitute_another_caption() {
     let font = text.font_key(FontWeight::REGULAR);
     let wanted = text.build_layout("AV", 16.0, font, f32::INFINITY);
     text.layouts.insert(
-        Id::new(("AV", 16.0_f32.to_bits(), f32::INFINITY.to_bits(), font, 8_u16)),
+        Id::new((
+            "AV",
+            16.0_f32.to_bits(),
+            f32::INFINITY.to_bits(),
+            font,
+            8_u16,
+        )),
         CachedLayout {
             text: "wrong".into(),
             size: 16.0_f32.to_bits(),

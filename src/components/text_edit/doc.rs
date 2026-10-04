@@ -272,9 +272,7 @@ impl Doc {
 
     pub fn para_at_y(&mut self, y: f32) -> usize {
         self.fill_tops();
-        self.paras
-            .partition_point(|p| p.top <= y)
-            .saturating_sub(1)
+        self.paras.partition_point(|p| p.top <= y).saturating_sub(1)
     }
 
     pub fn text_of<'t>(&self, text: &'t str, i: usize) -> &'t str {
@@ -293,7 +291,8 @@ impl Doc {
             return Arc::clone(layout);
         }
         let env = self.env;
-        let layout = ctx.paragraph_layout(self.text_of(text, i), env.size, env.font, env.wrap, env.tab);
+        let layout =
+            ctx.paragraph_layout(self.text_of(text, i), env.size, env.font, env.wrap, env.tab);
         self.adopt(i, &layout);
         layout
     }
@@ -356,7 +355,13 @@ impl Doc {
     }
 
     /// Shape paragraphs from `first` until their tops pass `bottom`; returns the last index.
-    pub fn measure_range(&mut self, ctx: &mut Context, text: &str, first: usize, bottom: f32) -> usize {
+    pub fn measure_range(
+        &mut self,
+        ctx: &mut Context,
+        text: &str,
+        first: usize,
+        bottom: f32,
+    ) -> usize {
         let mut y = self.top(first);
         let mut i = first;
         loop {

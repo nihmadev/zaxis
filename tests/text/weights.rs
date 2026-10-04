@@ -244,10 +244,7 @@ fn atlas_grows_with_used_weights_only_and_settles() {
         paint(&mut text, weight, 1.0);
     }
     assert_eq!((text.glyph_count(), text.page_count()), settled);
-    assert_eq!(
-        text.page_revision_sum(),
-        revision
-    );
+    assert_eq!(text.page_revision_sum(), revision);
     // Another DPI rasterizes again, and still within a bounded page count.
     paint(&mut text, FontWeight::BOLD, 1.25);
     assert!(text.page_count() <= 4);

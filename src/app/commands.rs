@@ -86,7 +86,9 @@ impl Windows<'_> {
         ) {
             return OpenOutcome::AlreadyOpen;
         }
-        self.control.status.insert(key.clone(), WindowStatus::Pending);
+        self.control
+            .status
+            .insert(key.clone(), WindowStatus::Pending);
         self.control.commands.push(Command::Open {
             key,
             options: Box::new(options),
@@ -105,7 +107,9 @@ impl Windows<'_> {
     /// Behave as if the user asked to close the window: the application receives
     /// [`App::close_requested`](super::App::close_requested) and may veto it.
     pub fn request_close(&mut self, key: impl Into<WindowKey>) {
-        self.control.commands.push(Command::RequestClose(key.into()));
+        self.control
+            .commands
+            .push(Command::RequestClose(key.into()));
     }
 
     /// Bring the window forward and give it keyboard focus, restoring it if minimized.
@@ -138,7 +142,9 @@ impl Windows<'_> {
     /// when application data changed in another window and this one shows it. Hidden or
     /// minimized windows catch up when they are shown again.
     pub fn request_repaint(&mut self, key: impl Into<WindowKey>) {
-        self.control.commands.push(Command::Repaint(Some(key.into())));
+        self.control
+            .commands
+            .push(Command::Repaint(Some(key.into())));
     }
 
     /// [`request_repaint`](Self::request_repaint) for every window.

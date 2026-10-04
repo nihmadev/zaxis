@@ -153,7 +153,13 @@ impl TextEdit<'_> {
         let cursor = state.buffer.cursor;
         if let Some((text, _)) = &composing {
             let para = doc.para_at(cursor);
-            doc.compose(ui.context, self.text, para, cursor - doc.paras[para].start, text);
+            doc.compose(
+                ui.context,
+                self.text,
+                para,
+                cursor - doc.paras[para].start,
+                text,
+            );
         }
         if out.changed {
             fingerprint = Fingerprint::of(self.text);

@@ -66,7 +66,9 @@ impl WindowOptions {
     }
 
     pub fn with_inner_size(mut self, width: f64, height: f64) -> Self {
-        self.attributes = self.attributes.with_inner_size(LogicalSize::new(width, height));
+        self.attributes = self
+            .attributes
+            .with_inner_size(LogicalSize::new(width, height));
         self
     }
 

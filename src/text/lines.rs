@@ -147,7 +147,8 @@ pub(super) fn build_line(run: &LayoutRun<'_>, glyphs: &[LayoutGlyph]) -> VisualL
         while next < groups.len() && groups[next].end <= b {
             next += 1;
         }
-        let (mut left, mut right, mut rtl, mut found) = (f32::INFINITY, f32::NEG_INFINITY, run.rtl, false);
+        let (mut left, mut right, mut rtl, mut found) =
+            (f32::INFINITY, f32::NEG_INFINITY, run.rtl, false);
         let mut j = next;
         while j < groups.len() && groups[j].start < e {
             let g = &groups[j];
@@ -194,7 +195,10 @@ pub(super) fn carets(lines: &[VisualLine]) -> Vec<(usize, f32)> {
     let mut carets = Vec::new();
     for line in lines {
         carets.extend(line.clusters.iter().map(|c| (c.start, c.leading())));
-        carets.push((line.end, line.clusters.last().map_or(0.0, Cluster::trailing)));
+        carets.push((
+            line.end,
+            line.clusters.last().map_or(0.0, Cluster::trailing),
+        ));
     }
     carets.sort_by_key(|p| p.0);
     carets.dedup_by_key(|p| p.0);

@@ -131,7 +131,8 @@ impl TextEdit<'_> {
                     .record(change, before.clone(), state.buffer.clone(), typing);
                 self.edited(state, geo, out, delta);
             }
-            out.reveal |= keyboard && (out.changed || state.buffer != before || state.preedit.is_some());
+            out.reveal |=
+                keyboard && (out.changed || state.buffer != before || state.preedit.is_some());
         }
     }
 
@@ -169,7 +170,13 @@ impl TextEdit<'_> {
     }
 
     /// Bookkeeping after the text changed through the field itself.
-    fn edited(&mut self, state: &mut TextEditState, geo: &mut Geo<'_>, out: &mut Outcome, delta: Delta) {
+    fn edited(
+        &mut self,
+        state: &mut TextEditState,
+        geo: &mut Geo<'_>,
+        out: &mut Outcome,
+        delta: Delta,
+    ) {
         if let Some(doc) = geo.doc.as_deref_mut() {
             doc.apply(self.text, delta);
         }

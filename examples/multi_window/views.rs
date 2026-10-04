@@ -19,7 +19,12 @@ fn discard(ui: &mut Ui<'_>, frame: &mut Frame<'_>, id: &str, open: &mut bool) {
     }
 }
 
-pub fn main(context: &mut Context, frame: &mut Frame<'_>, data: &mut Data, confirms: &mut Confirms) {
+pub fn main(
+    context: &mut Context,
+    frame: &mut Frame<'_>,
+    data: &mut Data,
+    confirms: &mut Confirms,
+) {
     Root::new().show(context, |ui| {
         ui.horizontal(|ui| {
             if ui.button("Inspector").clicked() {
@@ -41,10 +46,17 @@ pub fn main(context: &mut Context, frame: &mut Frame<'_>, data: &mut Data, confi
         ui.separator();
         ui.text_area(&mut data.doc);
         ui.horizontal(|ui| {
-            if ui.add(Button::new("Save").enabled(data.doc_dirty())).clicked() {
+            if ui
+                .add(Button::new("Save").enabled(data.doc_dirty()))
+                .clicked()
+            {
                 data.saved_doc = data.doc.clone();
             }
-            ui.muted(if data.doc_dirty() { "Unsaved changes" } else { "Saved" });
+            ui.muted(if data.doc_dirty() {
+                "Unsaved changes"
+            } else {
+                "Saved"
+            });
         });
         discard(ui, frame, "discard-document", &mut confirms.main);
     });
@@ -84,7 +96,10 @@ pub fn palette(context: &mut Context, data: &mut Data) {
 pub fn settings(context: &mut Context, frame: &mut Frame<'_>, data: &mut Data) {
     Root::new().show(context, |ui| {
         ui.title("Appearance");
-        if ui.add(Switch::new(&mut data.light, "Light theme")).changed() {
+        if ui
+            .add(Switch::new(&mut data.light, "Light theme"))
+            .changed()
+        {
             // One call re-themes every window, including this one.
             frame.windows().set_theme(if data.light {
                 Theme::light()
@@ -95,11 +110,19 @@ pub fn settings(context: &mut Context, frame: &mut Frame<'_>, data: &mut Data) {
     });
 }
 
-pub fn notes(context: &mut Context, frame: &mut Frame<'_>, data: &mut Data, confirms: &mut Confirms) {
+pub fn notes(
+    context: &mut Context,
+    frame: &mut Frame<'_>,
+    data: &mut Data,
+    confirms: &mut Confirms,
+) {
     Root::new().show(context, |ui| {
         ui.text_area(&mut data.notes);
         ui.horizontal(|ui| {
-            if ui.add(Button::new("Save").enabled(data.notes_dirty())).clicked() {
+            if ui
+                .add(Button::new("Save").enabled(data.notes_dirty()))
+                .clicked()
+            {
                 data.saved_notes = data.notes.clone();
             }
             if ui.button("Close").clicked() {

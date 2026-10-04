@@ -187,7 +187,9 @@ impl SharedResources {
 
     fn broadcast(&self, appearance: Appearance) {
         *self.lock_appearance() = appearance;
-        self.inner.appearance_revision.fetch_add(1, Ordering::Release);
+        self.inner
+            .appearance_revision
+            .fetch_add(1, Ordering::Release);
     }
 }
 

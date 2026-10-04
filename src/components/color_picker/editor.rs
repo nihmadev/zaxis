@@ -63,7 +63,7 @@ impl ColorPicker<'_> {
                     buffer: EditBuffer {
                         cursor: text.len(),
                         anchor: 0,
-                            ..Default::default()
+                        ..Default::default()
                     },
                     text,
                 });

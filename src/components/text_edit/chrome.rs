@@ -41,13 +41,15 @@ impl TextEdit<'_> {
             .unwrap_or(style.typography.weights.body);
         let font = crate::text::TextFont::new(
             weight,
-            self.family
-                .or(component.font_family)
-                .unwrap_or_default(),
+            self.family.or(component.font_family).unwrap_or_default(),
             self.tabular.unwrap_or(false),
         );
         let padding = self.padding.or_else(|| match self.area {
-            Some(_) => Some(component.area_padding.unwrap_or(Padding::symmetric(12.0, 8.0))),
+            Some(_) => Some(
+                component
+                    .area_padding
+                    .unwrap_or(Padding::symmetric(12.0, 8.0)),
+            ),
             None => component.padding,
         });
         let padding = padding.unwrap_or(style.text_edit_padding);

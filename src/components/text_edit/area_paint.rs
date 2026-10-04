@@ -126,7 +126,9 @@ impl TextEdit<'_> {
             });
         }
         shapes.extend(underline);
-        child.context.paint(id.with("selection"), window, clip, shapes);
+        child
+            .context
+            .paint(id.with("selection"), window, clip, shapes);
         child.context.paint(id.with("text"), window, clip, texts);
         if let Some(foreground) = component.selection_foreground.filter(|_| selecting) {
             for (k, rect) in rects.iter().enumerate() {

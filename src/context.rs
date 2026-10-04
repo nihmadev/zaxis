@@ -31,9 +31,9 @@ pub(crate) mod popup;
 mod repaint;
 pub(crate) mod scroll;
 mod scroll_input;
-mod shared;
 #[cfg(test)]
 mod scroll_input_tests;
+mod shared;
 mod split;
 #[cfg(test)]
 #[path = "../tests/split/button.rs"]
@@ -106,9 +106,9 @@ mod tab_bar_tests;
 #[cfg(test)]
 mod table_tests;
 #[cfg(test)]
-mod text_edit_tests;
-#[cfg(test)]
 mod text_area_tests;
+#[cfg(test)]
+mod text_edit_tests;
 
 use crate::{text::TextSystem, DrawData, Style, Vec2};
 use geometry::{Element, ElementKey, MeshSlot};
@@ -124,9 +124,9 @@ pub(crate) use diagnostics::{invalid_value, Diagnostics};
 pub use diagnostics::{DebugOverlay, Diagnostic, DiagnosticKind};
 pub use id::Id;
 pub use input::{EventResponse, InputState};
-pub use shared::SharedResources;
 pub(crate) use interaction::{HitAction, HitRegion, NumberInputEvent, SliderInput, TextEditInput};
 pub(crate) use paint::Paint;
+pub use shared::SharedResources;
 pub(crate) use windows::WindowState;
 
 /// Cache counters for profiling and tests. Each `run` increments UI passes;

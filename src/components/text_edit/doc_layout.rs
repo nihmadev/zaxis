@@ -19,7 +19,10 @@ pub(crate) struct Loc {
 impl Doc {
     pub fn locate(&mut self, ctx: &mut Context, text: &str, pos: Pos) -> Loc {
         let para = self.para_at(pos.byte.min(text.len()));
-        let rel = pos.byte.saturating_sub(self.paras[para].start).min(self.paras[para].len);
+        let rel = pos
+            .byte
+            .saturating_sub(self.paras[para].start)
+            .min(self.paras[para].len);
         self.locate_in(ctx, text, para, rel, pos.upstream)
     }
 
@@ -153,7 +156,11 @@ impl Doc {
                     Rect::from_min_size(Vec2::new(x0, top + l.top), Vec2::new(x1 - x0, l.height))
                 };
                 if a < b {
-                    rects.extend(l.spans(a - start..b - start).into_iter().map(|(x0, x1)| at(x0, x1)));
+                    rects.extend(
+                        l.spans(a - start..b - start)
+                            .into_iter()
+                            .map(|(x0, x1)| at(x0, x1)),
+                    );
                 }
                 if last && range.start <= start + len && range.end > start + len {
                     let edge = l.clusters.last().map_or(0.0, |c| c.trailing());

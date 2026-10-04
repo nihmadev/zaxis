@@ -170,11 +170,8 @@ impl TextEdit<'_> {
         } else {
             shown
         };
-        let text_position = position
-            + Vec2::new(
-                0.0,
-                ui.context.centered_line_offset(&rendered, size, font),
-            );
+        let text_position =
+            position + Vec2::new(0.0, ui.context.centered_line_offset(&rendered, size, font));
         paint.push(Paint::text(
             rendered,
             text_position,

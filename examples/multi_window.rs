@@ -4,8 +4,7 @@
 
 use zaxis::{
     App, CloseRequested, Context, Frame, OpenOutcome, Theme, WindowError, WindowKey, WindowOptions,
-    WindowPlan,
-    WindowStatus,
+    WindowPlan, WindowStatus,
 };
 
 #[path = "multi_window/views.rs"]
@@ -33,7 +32,13 @@ impl Data {
     fn fingerprint(&self) -> u64 {
         use std::hash::{DefaultHasher, Hash, Hasher};
         let mut hasher = DefaultHasher::new();
-        (&self.doc, &self.saved_doc, &self.notes, &self.saved_notes, self.show_inspector)
+        (
+            &self.doc,
+            &self.saved_doc,
+            &self.notes,
+            &self.saved_notes,
+            self.show_inspector,
+        )
             .hash(&mut hasher);
         hasher.finish()
     }
@@ -153,7 +158,11 @@ struct Smoke {
 impl Smoke {
     fn waiting(&mut self, ready: bool) -> bool {
         self.waited += 1;
-        assert!(self.waited < 900, "smoke test stalled in phase {}", self.phase);
+        assert!(
+            self.waited < 900,
+            "smoke test stalled in phase {}",
+            self.phase
+        );
         if ready {
             self.phase += 1;
             self.waited = 0;

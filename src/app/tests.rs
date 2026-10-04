@@ -83,7 +83,10 @@ fn idle_windows_contribute_no_wakeup() {
     let now = Instant::now();
     let (redraw, flow) = schedule::schedule_all(
         now,
-        [("a", timing(true, false, None)), ("b", timing(true, false, None))],
+        [
+            ("a", timing(true, false, None)),
+            ("b", timing(true, false, None)),
+        ],
     );
     assert!(redraw.is_empty());
     assert_eq!(flow, ControlFlow::Wait, "no busy loop, no timer");
@@ -96,13 +99,19 @@ fn deadlines_are_independent_and_the_loop_wakes_for_the_nearest() {
     let late = now + Duration::from_millis(500);
     let (redraw, flow) = schedule::schedule_all(
         now,
-        [("late", timing(true, false, Some(late))), ("soon", timing(true, false, Some(soon)))],
+        [
+            ("late", timing(true, false, Some(late))),
+            ("soon", timing(true, false, Some(soon))),
+        ],
     );
     assert!(redraw.is_empty(), "no window is due yet");
     assert_eq!(flow, ControlFlow::WaitUntil(soon));
     let (redraw, flow) = schedule::schedule_all(
         soon,
-        [("late", timing(true, false, Some(late))), ("soon", timing(true, true, Some(soon)))],
+        [
+            ("late", timing(true, false, Some(late))),
+            ("soon", timing(true, true, Some(soon))),
+        ],
     );
     assert_eq!(redraw, ["soon"], "the other window keeps sleeping");
     assert_eq!(flow, ControlFlow::WaitUntil(late));
@@ -131,8 +140,10 @@ fn a_retrying_window_backs_off_without_delaying_the_others() {
     let retry = now + Duration::from_millis(16);
     let mut failing = timing(true, true, None);
     failing.retry_at = Some(retry);
-    let (redraw, flow) =
-        schedule::schedule_all(now, [("failing", failing), ("healthy", timing(true, true, None))]);
+    let (redraw, flow) = schedule::schedule_all(
+        now,
+        [("failing", failing), ("healthy", timing(true, true, None))],
+    );
     assert_eq!(redraw, ["healthy"]);
     assert_eq!(flow, ControlFlow::WaitUntil(retry));
 }
@@ -140,7 +151,10 @@ fn a_retrying_window_backs_off_without_delaying_the_others() {
 #[test]
 fn earliest_prefers_a_deadline_over_waiting() {
     let at = Instant::now();
-    assert_eq!(schedule::earliest(ControlFlow::Wait, ControlFlow::Wait), ControlFlow::Wait);
+    assert_eq!(
+        schedule::earliest(ControlFlow::Wait, ControlFlow::Wait),
+        ControlFlow::Wait
+    );
     assert_eq!(
         schedule::earliest(ControlFlow::Wait, ControlFlow::WaitUntil(at)),
         ControlFlow::WaitUntil(at)

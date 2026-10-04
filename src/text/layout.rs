@@ -95,9 +95,7 @@ impl TextSystem {
         size: f32,
         font: impl Into<TextFont>,
     ) -> Vec<(usize, f32)> {
-        self.layout(text, size, font, f32::INFINITY)
-            .carets
-            .clone()
+        self.layout(text, size, font, f32::INFINITY).carets.clone()
     }
 
     pub(super) fn layout(

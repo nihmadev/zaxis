@@ -184,7 +184,12 @@ impl Context {
     }
     /// Pointer position in the field's own (untransformed) coordinates, e.g. for drag auto-scroll.
     pub(crate) fn text_edit_pointer(&self, id: Id) -> Option<Vec2> {
-        let transform = self.input_transforms.get(&id).copied().unwrap_or_default().inverse();
+        let transform = self
+            .input_transforms
+            .get(&id)
+            .copied()
+            .unwrap_or_default()
+            .inverse();
         self.input.pointer.map(|p| transform.point(p))
     }
     pub(crate) fn take_text_edit_input(&mut self, id: Id) -> Vec<TextEditInput> {

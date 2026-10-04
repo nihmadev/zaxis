@@ -1,7 +1,7 @@
 use zaxis::{
-    vec2, App, Border, Button, CloseRequested, Card, Checkbox, Color, ColorPicker, ColorPickerType, Confirm,
-    Confirmation, Context, Frame, Padding, PresentationMode, Root, RunOptions, Shape, Slider,
-    Widget,
+    vec2, App, Border, Button, Card, Checkbox, CloseRequested, Color, ColorPicker, ColorPickerType,
+    Confirm, Confirmation, Context, Frame, Padding, PresentationMode, Root, RunOptions, Shape,
+    Slider, Widget,
 };
 
 #[path = "settings/chrome.rs"]

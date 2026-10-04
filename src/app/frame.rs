@@ -46,7 +46,11 @@ impl<'a> Frame<'a> {
     }
 
     /// Ask for a secondary window; sugar for [`Windows::open`].
-    pub fn open_window(&mut self, key: impl Into<WindowKey>, options: WindowOptions) -> OpenOutcome {
+    pub fn open_window(
+        &mut self,
+        key: impl Into<WindowKey>,
+        options: WindowOptions,
+    ) -> OpenOutcome {
         self.windows.open(key, options)
     }
 

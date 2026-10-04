@@ -34,8 +34,7 @@ impl Native {
         let scale_factor = self.window.scale_factor();
         WindowInfo {
             size,
-            logical_size: Vec2::new(size.width as f32, size.height as f32)
-                / scale_factor as f32,
+            logical_size: Vec2::new(size.width as f32, size.height as f32) / scale_factor as f32,
             scale_factor,
             focused: self.window.has_focus(),
             minimized: self.window.is_minimized() == Some(true),
@@ -93,7 +92,9 @@ pub(in crate::app) fn create(
 /// Images larger than the GPU can hold are rejected up front, for every window.
 pub(in crate::app) fn clamp_image_limits(resources: &SharedResources, renderer: &Renderer) {
     let mut limits = resources.image_limits();
-    let max = limits.max_dimension.min(renderer.max_texture_dimension_2d());
+    let max = limits
+        .max_dimension
+        .min(renderer.max_texture_dimension_2d());
     if max != limits.max_dimension {
         limits.max_dimension = max;
         resources.set_image_limits(limits);

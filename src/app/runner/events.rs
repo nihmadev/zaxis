@@ -111,7 +111,11 @@ impl<A: App> Runner<A> {
     }
 
     /// Build and present one frame of one window; other windows are not touched.
-    fn redraw(&mut self, event_loop: &ActiveEventLoop, key: &WindowKey) -> Result<bool, RenderError> {
+    fn redraw(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        key: &WindowKey,
+    ) -> Result<bool, RenderError> {
         self.refresh_infos();
         let Runner {
             app,
@@ -134,7 +138,12 @@ impl<A: App> Runner<A> {
             return Ok(false);
         }
         native.retry_at = None;
-        let info = hub.control.infos.get(key).cloned().unwrap_or_else(|| native.info());
+        let info = hub
+            .control
+            .infos
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| native.info());
         let mut frame = Frame {
             window: &native.window,
             key,

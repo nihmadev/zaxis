@@ -11,7 +11,9 @@ use crate::{
     Context, PresentationMode, RenderError, Renderer,
 };
 use std::sync::Arc;
-use winit::{dpi::LogicalSize, event_loop::ActiveEventLoop, keyboard::ModifiersState, window::Window};
+use winit::{
+    dpi::LogicalSize, event_loop::ActiveEventLoop, keyboard::ModifiersState, window::Window,
+};
 
 /// Requests a callback may queue per settle: a bound against callbacks that keep asking.
 const MAX_ROUNDS: usize = 16;
@@ -113,7 +115,10 @@ impl<A: App> Runner<A> {
     }
 
     /// After a suspension: give every window a native window and renderer again.
-    pub(super) fn recreate_natives(&mut self, event_loop: &ActiveEventLoop) -> Result<(), RunError> {
+    pub(super) fn recreate_natives(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+    ) -> Result<(), RunError> {
         let mut keys: Vec<_> = self.slots.keys().cloned().collect();
         keys.sort_by_key(|key| !self.hub.registry.is_main(key));
         for key in keys {
@@ -122,7 +127,8 @@ impl<A: App> Runner<A> {
                 Ok(native) => {
                     self.hub.registry.attach(&key, native.window.id());
                     let slot = self.slots.get_mut(&key).expect("slot exists");
-                    slot.context.set_viewport(native.window.inner_size(), native.window.scale_factor());
+                    slot.context
+                        .set_viewport(native.window.inner_size(), native.window.scale_factor());
                     slot.context.request_repaint();
                     slot.native = Some(native);
                 }
@@ -203,7 +209,9 @@ impl<A: App> Runner<A> {
                 let closed = self.hub.close(&key);
                 self.finish_close(event_loop, closed);
             }
-            Command::RequestClose(key) => self.request_close(event_loop, &key, CloseSource::Application),
+            Command::RequestClose(key) => {
+                self.request_close(event_loop, &key, CloseSource::Application)
+            }
             Command::Exit => event_loop.exit(),
             Command::Repaint(key) => {
                 for (name, slot) in &mut self.slots {

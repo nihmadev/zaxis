@@ -40,7 +40,9 @@ impl EditHistory {
     pub fn record(&mut self, change: Change, before: EditBuffer, after: EditBuffer, typing: bool) {
         let now = Instant::now();
         let merge = typing
-            && self.typing.is_some_and(|last| now.duration_since(last) <= GROUP)
+            && self
+                .typing
+                .is_some_and(|last| now.duration_since(last) <= GROUP)
             && self.undo.back().is_some_and(|last| {
                 last.change.at + last.change.inserted.len() == change.at
                     && change.removed.is_empty()

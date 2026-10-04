@@ -219,7 +219,8 @@ impl Renderer {
                     .get(&image.id)
                     .filter(|t| t.size == image.size)
                     .is_some_and(|t| {
-                        store.textures
+                        store
+                            .textures
                             .values()
                             .filter(|o| o.allocation == t.allocation)
                             .count()

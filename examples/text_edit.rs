@@ -17,7 +17,9 @@ struct Editor {
 impl Editor {
     fn long_text() -> String {
         (1..=60)
-            .map(|n| format!("Line {n}: the quick brown fox jumps over the lazy dog, again and again."))
+            .map(|n| {
+                format!("Line {n}: the quick brown fox jumps over the lazy dog, again and again.")
+            })
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -72,7 +74,8 @@ impl App for Editor {
                     );
                     if ui.button("Append line").clicked() {
                         self.lines += 1;
-                        self.log.push_str(&format!("\nAppended line {}", self.lines));
+                        self.log
+                            .push_str(&format!("\nAppended line {}", self.lines));
                     }
                     ui.label("No wrapping, Tab inserts an indent");
                     ui.add(
@@ -98,7 +101,10 @@ impl App for Editor {
                             .enabled(false)
                             .rows(2.0),
                     );
-                    ui.muted(format!("Changes: {}   Submitted: {}", self.changes, self.submits));
+                    ui.muted(format!(
+                        "Changes: {}   Submitted: {}",
+                        self.changes, self.submits
+                    ));
                 });
             });
         if self.smoke_test {

@@ -2,10 +2,13 @@
 //! one glyph atlas, one image cache, one theme. No GPU or native window is involved.
 
 use crate::{
-    Context, Image, ImageSource, Modal, Rect, Root, SharedResources, TextEdit, TextureId,
-    Theme, Vec2,
+    Context, Image, ImageSource, Modal, Rect, Root, SharedResources, TextEdit, TextureId, Theme,
+    Vec2,
 };
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{DeviceId, ElementState, Ime, MouseButton, WindowEvent},
@@ -113,7 +116,10 @@ fn losing_focus_resets_capture_buttons_and_ime_of_that_window_only() {
     field(&mut a, &mut text_a);
     assert!(!a.input().primary_down, "the held button is released");
     assert!(a.input().pointer.is_none(), "hover is cleared");
-    assert!(a.ime_cursor_area().is_none(), "no IME area without a focused field");
+    assert!(
+        a.ime_cursor_area().is_none(),
+        "no IME area without a focused field"
+    );
     // B was never told anything: its composition, button and pointer are intact.
     field(&mut b, &mut text_b);
     assert!(b.input().primary_down && b.input().pointer.is_some());
@@ -144,7 +150,10 @@ fn a_modal_blocks_only_its_own_window() {
     assert!(open);
     move_pointer(&mut a, Vec2::new(30.0, 30.0));
     move_pointer(&mut b, Vec2::new(30.0, 30.0));
-    assert!(a.input().pointer.is_none(), "input outside the modal reads idle in A");
+    assert!(
+        a.input().pointer.is_none(),
+        "input outside the modal reads idle in A"
+    );
     assert!(b.input().pointer.is_some(), "B is unaffected");
 }
 
@@ -163,10 +172,17 @@ fn one_theme_call_reaches_every_window_in_its_next_frame() {
     assert!(a.needs_repaint_at(now) && b.needs_repaint_at(now));
     a.run(|_| {});
     assert_eq!(a.style(), &Theme::light().resolve());
-    assert_eq!(b.style(), &Theme::dark().resolve(), "B applies it in its own next frame");
+    assert_eq!(
+        b.style(),
+        &Theme::dark().resolve(),
+        "B applies it in its own next frame"
+    );
     b.run(|_| {});
     assert_eq!(b.style(), &Theme::light().resolve());
-    assert!(!a.needs_repaint_at(Instant::now()), "applied once, not repeatedly");
+    assert!(
+        !a.needs_repaint_at(Instant::now()),
+        "applied once, not repeatedly"
+    );
     // Windows opened later start with the current theme.
     let mut late = window(&resources);
     late.run(|_| {});
@@ -187,16 +203,28 @@ fn windows_share_one_glyph_atlas() {
     let (mut a, mut b) = (window(&resources), window(&resources));
     draw_text(&mut a, "Shared atlas 123");
     let pages = |context: &Context| -> Vec<(TextureId, u64)> {
-        context.draw_data().textures.iter().map(|t| (t.id, t.revision)).collect()
+        context
+            .draw_data()
+            .textures
+            .iter()
+            .map(|t| (t.id, t.revision))
+            .collect()
     };
     let after_a = pages(&a);
     assert!(!after_a.is_empty());
     draw_text(&mut b, "Shared atlas 123");
-    assert_eq!(pages(&b), after_a, "same glyphs: same pages, no new rasterization");
+    assert_eq!(
+        pages(&b),
+        after_a,
+        "same glyphs: same pages, no new rasterization"
+    );
     draw_text(&mut b, "Only B draws these: QWXZ");
     let after_b = pages(&b);
     assert_eq!(after_b.len(), after_a.len());
-    assert_ne!(after_b, after_a, "new glyphs advance the shared page revision");
+    assert_ne!(
+        after_b, after_a,
+        "new glyphs advance the shared page revision"
+    );
     // A's next frame sees B's glyphs for free.
     draw_text(&mut a, "Only B draws these: QWXZ");
     assert_eq!(pages(&a), after_b);
@@ -224,7 +252,10 @@ fn an_image_is_decoded_once_for_all_windows() {
     assert_eq!(after_a.cache_misses, 1);
     show(&mut b);
     let after_b = resources.image_metrics();
-    assert_eq!(after_b.cache_misses, 1, "the second window finds the entry A created");
+    assert_eq!(
+        after_b.cache_misses, 1,
+        "the second window finds the entry A created"
+    );
     assert!(after_b.cache_hits > after_a.cache_hits);
     // Both windows draw the same texture ID, so the GPU holds one texture for it.
     let image_ids = |context: &Context| -> Vec<TextureId> {
@@ -257,7 +288,10 @@ fn only_the_window_that_shows_an_image_wakes_for_it() {
     while !with_image.needs_repaint_at(Instant::now()) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(with_image.needs_repaint_at(Instant::now()), "the decoded image needs a frame");
+    assert!(
+        with_image.needs_repaint_at(Instant::now()),
+        "the decoded image needs a frame"
+    );
     assert!(
         !without.needs_repaint_at(Instant::now()),
         "a window with no images is not woken"
@@ -278,7 +312,10 @@ fn an_animation_in_one_window_does_not_repaint_the_others() {
     busy.request_repaint_after(Duration::from_millis(10));
     let later = now + Duration::from_millis(11);
     assert!(busy.needs_repaint_at(later));
-    assert!(!idle.needs_repaint_at(later), "the idle window has no deadline");
+    assert!(
+        !idle.needs_repaint_at(later),
+        "the idle window has no deadline"
+    );
     assert_eq!(idle.next_repaint(), None);
     assert!(busy.next_repaint().is_some());
 }
@@ -298,7 +335,6 @@ fn a_reopened_window_starts_with_clean_retained_state_and_the_old_context_is_rel
     assert!(second.input().pointer.is_none());
     assert_eq!(second.style(), &Theme::dark().resolve());
 }
-
 
 #[test]
 fn contexts_created_without_shared_resources_are_unchanged() {

@@ -45,11 +45,7 @@ pub(super) struct Runner<A> {
 impl<A: App> Runner<A> {
     pub(super) fn new(app: A, options: RunOptions, resources: crate::SharedResources) -> Self {
         Self {
-            hub: Hub::new(
-                options.main_window.clone(),
-                options.exit_policy,
-                resources,
-            ),
+            hub: Hub::new(options.main_window.clone(), options.exit_policy, resources),
             app,
             options,
             slots: HashMap::new(),

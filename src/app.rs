@@ -5,16 +5,16 @@ mod callbacks;
 mod commands;
 mod frame;
 mod hub;
+#[cfg(test)]
+mod hub_tests;
 mod info;
 mod key;
 mod options;
 mod registry;
-mod runner;
-mod schedule;
-#[cfg(test)]
-mod hub_tests;
 #[cfg(test)]
 mod registry_tests;
+mod runner;
+mod schedule;
 #[cfg(test)]
 mod shared_tests;
 #[cfg(test)]
@@ -29,16 +29,16 @@ pub use options::{ExitPolicy, WindowOptions};
 
 use crate::{Context, PresentationMode, RenderError, SharedResources};
 use runner::Runner;
-use std::{error::Error, fmt};
 #[cfg(test)]
 use schedule::repaint_schedule;
+#[cfg(test)]
+use std::time::{Duration, Instant};
+use std::{error::Error, fmt};
 use winit::{
     dpi::LogicalSize,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowAttributes},
 };
-#[cfg(test)]
-use std::time::{Duration, Instant};
 
 /// Application state lives here, independently of the native windows and GPU.
 ///
@@ -69,7 +69,11 @@ pub trait App {
 
     /// A key was pressed in the focused window. Return `true` to take it: the window's
     /// context then never sees it. The default leaves every shortcut with its window.
-    fn global_shortcut(&mut self, _shortcut: &GlobalShortcut<'_>, _windows: &mut Windows<'_>) -> bool {
+    fn global_shortcut(
+        &mut self,
+        _shortcut: &GlobalShortcut<'_>,
+        _windows: &mut Windows<'_>,
+    ) -> bool {
         false
     }
 }

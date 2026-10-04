@@ -28,11 +28,10 @@ pub use family::FontFamily;
 pub use variant::{MonospaceMetrics, TextFamily};
 pub use weight::FontWeight;
 
-
 use atlas::AtlasPage;
 use fonts::{font_system, Registered};
-use layout::{CachedLayout, FontKey};
 pub(crate) use layout::DEFAULT_TAB;
+use layout::{CachedLayout, FontKey};
 pub(crate) use lines::VisualLine;
 pub(crate) use variant::TextFont;
 
@@ -101,7 +100,11 @@ impl TextSystem {
     #[cfg(test)]
     pub fn new(family: FontFamily) -> Self {
         let store = GlyphStore::new(crate::images::TextureIds::default());
-        Self::with_store(family, FontFamily::default_monospace(), Arc::new(Mutex::new(store)))
+        Self::with_store(
+            family,
+            FontFamily::default_monospace(),
+            Arc::new(Mutex::new(store)),
+        )
     }
 
     pub(crate) fn with_store(
@@ -145,9 +148,11 @@ impl TextSystem {
     /// The font a request is shaped with: the family file the weight resolves to.
     pub(crate) fn font_key(&self, font: impl Into<TextFont>) -> FontKey {
         let font = font.into();
-        let (id, weight) = self.registered(font).map_or((Id::new("system-monospace"), font.weight), |r| {
-            (r.id, r.family.resolve(font.weight))
-        });
+        let (id, weight) = self
+            .registered(font)
+            .map_or((Id::new("system-monospace"), font.weight), |r| {
+                (r.id, r.family.resolve(font.weight))
+            });
         FontKey::new(id, weight, font.monospace(), font.tabular)
     }
 
@@ -224,7 +229,17 @@ impl TextSystem {
         color: Color,
         scale: f32,
     ) {
-        self.paint_with_tab(mesh, text, position, size, font, wrap_width, DEFAULT_TAB, color, scale);
+        self.paint_with_tab(
+            mesh,
+            text,
+            position,
+            size,
+            font,
+            wrap_width,
+            DEFAULT_TAB,
+            color,
+            scale,
+        );
     }
 
     pub fn paint_with_tab(
@@ -284,11 +299,11 @@ fn alignment_band(font: &FontVec, size: f32) -> (f32, f32) {
 }
 
 #[cfg(test)]
+#[path = "../tests/text/monospace.rs"]
+mod monospace_tests;
+#[cfg(test)]
 #[path = "../tests/text/layout.rs"]
 mod tests;
 #[cfg(test)]
 #[path = "../tests/text/weights.rs"]
 mod weight_tests;
-#[cfg(test)]
-#[path = "../tests/text/monospace.rs"]
-mod monospace_tests;

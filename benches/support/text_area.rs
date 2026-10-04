@@ -58,7 +58,9 @@ pub struct Probe {
 }
 
 fn line(n: usize) -> String {
-    format!("Line {n}: Привет, мир — the quick brown fox jumps over the lazy dog, again {n} and again")
+    format!(
+        "Line {n}: Привет, мир — the quick brown fox jumps over the lazy dog, again {n} and again"
+    )
 }
 
 impl Probe {
@@ -177,7 +179,10 @@ impl Probe {
         let built = context.cache_stats().text_layouts_built - self.built;
         match self.kind {
             TextAreaCase::Idle => {
-                assert!(!context.needs_repaint(), "an unchanged field needs no frame");
+                assert!(
+                    !context.needs_repaint(),
+                    "an unchanged field needs no frame"
+                );
                 assert_eq!(self.revision, context.draw_data().revision);
                 assert_eq!(built, 0, "nothing is shaped again");
                 assert_eq!(
@@ -188,10 +193,16 @@ impl Probe {
             TextAreaCase::Typing => {
                 assert!(self.changed);
                 assert_eq!(self.text.len(), self.len_before + 1);
-                assert!(self.text.ends_with(if self.step % 25 == 24 { '\n' } else { 'a' }));
+                assert!(self
+                    .text
+                    .ends_with(if self.step % 25 == 24 { '\n' } else { 'a' }));
                 // The first edit may scroll the caret into view and shape that page once.
                 let allowed = if self.step == 0 { VISIBLE_BUDGET } else { 4 };
-                assert!(built <= allowed, "typing shaped {built} paragraphs at step {}", self.step);
+                assert!(
+                    built <= allowed,
+                    "typing shaped {built} paragraphs at step {}",
+                    self.step
+                );
             }
             TextAreaCase::Paste => {
                 assert!(self.changed);
@@ -205,11 +216,18 @@ impl Probe {
             TextAreaCase::Scroll => {
                 assert!(!self.changed);
                 assert_eq!(self.text.len(), self.base_len);
-                assert!(built <= VISIBLE_BUDGET, "scrolling shaped {built} paragraphs");
+                assert!(
+                    built <= VISIBLE_BUDGET,
+                    "scrolling shaped {built} paragraphs"
+                );
                 assert_ne!(self.revision, context.draw_data().revision);
             }
             TextAreaCase::Resize => {
-                let expected = if self.step.is_multiple_of(2) { 420.0 } else { 560.0 };
+                let expected = if self.step.is_multiple_of(2) {
+                    420.0
+                } else {
+                    560.0
+                };
                 assert_eq!(self.rect.size().x, expected);
                 assert_eq!(self.text.len(), self.base_len);
                 assert!(built <= VISIBLE_BUDGET, "re-wrap shaped {built} paragraphs");

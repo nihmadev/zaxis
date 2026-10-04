@@ -1,7 +1,7 @@
 //! Ordered backdrop effects. Offscreen attachments are allocated only for blur frames.
 use super::{textures::TextureStore, viewport::scissor, Renderer};
-use std::sync::Arc;
 use crate::{Color, DrawData, Rect, Vec2};
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 struct Target {

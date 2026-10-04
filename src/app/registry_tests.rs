@@ -7,14 +7,20 @@ fn key(name: &str) -> WindowKey {
 
 fn registry(policy: ExitPolicy) -> Registry<u32> {
     let mut registry = Registry::new(WindowKey::main(), policy);
-    assert_eq!(registry.request(&WindowKey::main(), None, false), OpenRequest::Queued);
+    assert_eq!(
+        registry.request(&WindowKey::main(), None, false),
+        OpenRequest::Queued
+    );
     registry.attach(&WindowKey::main(), 1);
     registry
 }
 
 fn open(registry: &mut Registry<u32>, name: &str, parent: Option<&str>, id: u32) {
     let parent = parent.map(key);
-    assert_eq!(registry.request(&key(name), parent.as_ref(), false), OpenRequest::Queued);
+    assert_eq!(
+        registry.request(&key(name), parent.as_ref(), false),
+        OpenRequest::Queued
+    );
     registry.attach(&key(name), id);
 }
 
@@ -30,11 +36,20 @@ fn a_key_is_one_window_however_often_it_is_requested() {
     open(&mut registry, "inspector", None, 2);
     assert_eq!(registry.len(), 2);
     for _ in 0..3 {
-        assert_eq!(registry.request(&key("inspector"), None, false), OpenRequest::Exists);
+        assert_eq!(
+            registry.request(&key("inspector"), None, false),
+            OpenRequest::Exists
+        );
     }
     // A second request before the window is attached is just as harmless.
-    assert_eq!(registry.request(&key("palette"), None, false), OpenRequest::Queued);
-    assert_eq!(registry.request(&key("palette"), None, false), OpenRequest::Exists);
+    assert_eq!(
+        registry.request(&key("palette"), None, false),
+        OpenRequest::Queued
+    );
+    assert_eq!(
+        registry.request(&key("palette"), None, false),
+        OpenRequest::Exists
+    );
     assert_eq!(registry.len(), 3);
     assert!(!registry.is_open(&key("palette")));
     assert!(registry.is_open(&key("inspector")));
@@ -50,7 +65,11 @@ fn events_are_routed_by_window_id_and_unknown_ids_belong_to_nobody() {
     assert_eq!(registry.route(3), Some(&key("b")));
     assert_eq!(registry.route(99), None);
     registry.close(&key("a"));
-    assert_eq!(registry.route(2), None, "a closed window receives no events");
+    assert_eq!(
+        registry.route(2),
+        None,
+        "a closed window receives no events"
+    );
     assert_eq!(registry.route(3), Some(&key("b")));
 }
 
@@ -95,7 +114,11 @@ fn last_window_policy_keeps_unrelated_windows_alive_until_the_last_closes() {
     open(&mut registry, "child", Some("main"), 2);
     open(&mut registry, "other", None, 3);
     let closed = registry.close(&WindowKey::main());
-    assert_eq!(names(&closed), ["child", "main"], "children go with their parent");
+    assert_eq!(
+        names(&closed),
+        ["child", "main"],
+        "children go with their parent"
+    );
     assert!(!closed.exit);
     assert_eq!(registry.route(3), Some(&key("other")));
     assert!(registry.close(&key("other")).exit);
@@ -124,9 +147,16 @@ fn declarations_open_missing_windows_and_close_the_ones_no_longer_declared() {
         registry.request(&key(name), None, true);
         registry.attach(&key(name), 10 + n as u32);
     }
-    assert_eq!(registry.reconcile(&declare(&["tools", "inspector"])), Reconcile::default());
+    assert_eq!(
+        registry.reconcile(&declare(&["tools", "inspector"])),
+        Reconcile::default()
+    );
     let plan = registry.reconcile(&declare(&["tools"]));
-    assert_eq!(plan.close, [key("inspector")], "imperative windows are never touched");
+    assert_eq!(
+        plan.close,
+        [key("inspector")],
+        "imperative windows are never touched"
+    );
     assert!(plan.open.is_empty());
 }
 
@@ -137,7 +167,11 @@ fn a_declared_window_the_user_closed_stays_closed_until_undeclared_once() {
     registry.request(&key("tools"), None, true);
     registry.attach(&key("tools"), 2);
     registry.close(&key("tools"));
-    assert_eq!(registry.reconcile(&declared), Reconcile::default(), "no reopen behind the app's back");
+    assert_eq!(
+        registry.reconcile(&declared),
+        Reconcile::default(),
+        "no reopen behind the app's back"
+    );
     assert_eq!(registry.reconcile(&declared), Reconcile::default());
     assert_eq!(registry.reconcile(&[]), Reconcile::default());
     assert_eq!(registry.reconcile(&declared).open, [key("tools")]);

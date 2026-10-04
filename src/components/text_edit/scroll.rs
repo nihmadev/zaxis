@@ -87,11 +87,15 @@ impl DragScroll {
         }
         let now = ctx.frame_time();
         let seconds = self.last_tick.map_or(TICK, |last| {
-            now.saturating_duration_since(last).min(Duration::from_millis(100))
+            now.saturating_duration_since(last)
+                .min(Duration::from_millis(100))
         });
         self.last_tick = Some(now);
         ctx.request_repaint_after(TICK);
         let velocity = (outside * SPEED).clamp(Vec2::splat(-MAX_SPEED), Vec2::splat(MAX_SPEED));
-        Some((velocity * seconds.as_secs_f32(), pointer.clamp(view.min, view.max)))
+        Some((
+            velocity * seconds.as_secs_f32(),
+            pointer.clamp(view.min, view.max),
+        ))
     }
 }
