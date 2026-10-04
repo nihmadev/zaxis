@@ -27,6 +27,9 @@ ui.add(Text::new("Build output\nCompleted")
 | `color(Color)` | `Style::text_color` |
 | `muted()` | Use `Style::muted_text`; an explicit `color` takes precedence |
 | `wrap(bool)` | `true`; wrap at the available layout width |
+| `monospace()` / `family(TextFamily)` | Proportional; the code font, see [Monospace text](#monospace-text) |
+| `tabular_numbers(bool)` | `false`; equal-width digits, see [Tabular figures](#tabular-figures) |
+| `tab_size(u16)` | 8; width of a tab in cells (space advances) |
 
 Text is passive: no pointer capture or keyboard focus. Its `Response` contains its
 measured rectangle and hover state. `##` is displayed literally.
@@ -124,6 +127,60 @@ it has a file for it; otherwise the layout still succeeds with a nearest face ch
 cosmic-text, which may differ from the platform's preferred family for that script. Coverage of
 scripts depends on the fonts of the host. Disable `bundled-emoji` to use system fonts for emoji.
 
+## Monospace text
+
+`Text::monospace()` sets a string in the monospace family; `Text::family(TextFamily::Monospace)`
+is the long form, and `ui.code(text)` / `TypographyRole::Code` use it with the
+`Typography::code` size (13 px) and `TypographyWeights::code`. The family is chosen
+independently of size, weight and the main font. Precedence is the builder, then
+`TextStyle::family`, then the role.
+
+The family is bundled JetBrains Mono (OFL, Regular and, with `bundled-weights`, Bold) from the
+`bundled-monospace` feature, which is on by default. It is the same on every platform: an
+installed system monospace font is never used in its place. Replace it with
+`RunOptions::with_monospace_family`, `Context::with_font_families` or
+`SharedResources::with_font_families`. Without the feature and without a configured family,
+monospace text uses the system's generic monospace font and then differs between platforms.
+Code ligatures are turned off so one character is always one cell.
+
+Every character of the primary font is one cell wide, so `n` of them are `n × cell_width`. A
+glyph the font lacks (CJK, emoji, symbols) comes from a fallback font and keeps that font's
+own advance; combining marks add no cell. The width of a string is its real shaped width, from
+the same layout that paints, measures and positions carets, and not a character count. Text
+after a fallback glyph is therefore shifted off the grid by the difference.
+
+Code views take their metrics from the layout instead of estimating:
+
+```rust
+let cell = ui.monospace_metrics(); // MonospaceMetrics { cell_width, line_height }
+let content_width = longest_line_chars as f32 * cell.cell_width;
+ScrollArea::vertical().show_rows(ui, cell.line_height, lines.len(), |ui, range| {
+    for line in &lines[range] {
+        ui.add(Text::new(line.as_str()).typography(TypographyRole::Code).wrap(false));
+    }
+});
+```
+
+`Context::monospace_metrics(size, weight)` does the same for an arbitrary size.
+
+Tabs are tab stops, `tab_size` cells apart (default 8), counted from the start of the
+line. Use `wrap(false)` for code and columns: lines are never broken or cut by the layout; the
+enclosing clip and scroll area decide what is visible. With wrapping on, words wrap as in
+proportional text. The layout cache and the glyph atlas are keyed by family, so changing one
+family or text does not rebuild unrelated text, and an unchanged UI shapes nothing. Ranges
+with several families or colors in one string are not supported yet; the color is not part of
+the cached layout, so range coloring can be added later.
+
+## Tabular figures
+
+`Text::tabular_numbers(true)` turns on the OpenType `tnum` feature, so every digit has the
+width of the widest one and numbers in a column line up. The bundled Inter has it. A custom
+font without `tnum` renders unchanged: zaxis never imitates alignment by padding or fitting
+widths. It has no effect on the monospace family, whose digits are already one cell wide.
+`TextStyle::tabular_numbers` and `TextEdit::tabular_numbers` set it for a subtree or a field,
+and `Column::numeric(true)` of a [Table](./table.mdx) right-aligns its cells and gives their
+text tabular figures. Right alignment (`Column::align`) uses the real measured width.
+
 ## Binary size
 
 Each bundled Inter file is about 340 KB. Regular is always embedded; Medium, SemiBold and Bold
@@ -136,6 +193,9 @@ only need Regular can disable default features and enable the ones they want:
 ```toml
 zaxis = { version = "0.0.1", default-features = false, features = ["bundled-emoji"] }
 ```
+
+JetBrains Mono adds about 274 KB (Regular) and 278 KB (Bold, with `bundled-weights`) of static
+data; it is parsed only when monospace text is first shaped. Disable `bundled-monospace` to drop it.
 
 ## Rasterization and atlas
 

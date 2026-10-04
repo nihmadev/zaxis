@@ -42,9 +42,10 @@ image = { version = "=0.25.9", default-features = false, features = ["png", "jpe
 resvg = { version = "=0.48.1", default-features = false, features = ["text"] }
 
 [features]
-default = ["bundled-emoji", "bundled-weights", "image-gif", "image-tiff"]
+default = ["bundled-emoji", "bundled-weights", "bundled-monospace", "image-gif", "image-tiff"]
 bundled-emoji = ["dep:zaxis-emoji"]
 bundled-weights = []
+bundled-monospace = []
 bundled-icons = ["dep:z-icons"]
 image-gif = ["image/gif"]
 image-tiff = ["image/tiff"]

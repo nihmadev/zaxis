@@ -135,8 +135,8 @@ fn groups(glyphs: &[LayoutGlyph]) -> Vec<Group> {
 
 /// Grapheme extents of one cosmic-text run. A shaped cluster may be a ligature or
 /// several glyphs; every grapheme boundary gets an edge, never one inside a grapheme.
-pub(super) fn build_line(run: &LayoutRun<'_>) -> VisualLine {
-    let groups = groups(run.glyphs);
+pub(super) fn build_line(run: &LayoutRun<'_>, glyphs: &[LayoutGlyph]) -> VisualLine {
+    let groups = groups(glyphs);
     let start = groups.first().map_or(0, |g| g.start);
     let end = groups.iter().map(|g| g.end).max().unwrap_or(start);
     let mut clusters = Vec::new();

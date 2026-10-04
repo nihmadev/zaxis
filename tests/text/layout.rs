@@ -152,9 +152,8 @@ fn unicode_clusters_use_real_glyphs_and_color_emoji_at_multiple_scales() {
             );
             assert!(!mesh.vertices.is_empty());
             if sample != "е\u{301}" {
-                assert!(text.glyphs.values().flatten().any(|g| g.colored));
-                assert!(text.pages.iter().any(|page| page
-                    .image
+                assert!(text.has_colored_glyph());
+                assert!(text.textures().iter().any(|page| page
                     .pixels
                     .as_chunks::<4>()
                     .0

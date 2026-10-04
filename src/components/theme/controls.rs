@@ -136,6 +136,8 @@ pub struct TextEditStyle {
     pub height: Option<f32>,
     pub font_size: Option<f32>,
     pub font_weight: Option<FontWeight>,
+    /// The family of field text; `None` is proportional. `TextEdit::monospace` overrides it.
+    pub font_family: Option<crate::TextFamily>,
     pub padding: Option<Padding>,
     pub rounding: Option<CornerRadius>,
     pub placeholder: Option<Color>,
@@ -199,6 +201,10 @@ pub struct TextStyle {
     pub muted: Option<Color>,
     pub size: Option<f32>,
     pub weight: Option<FontWeight>,
+    /// The font family of text; `None` follows the typography role.
+    pub family: Option<crate::TextFamily>,
+    /// Tabular figures for proportional text; `None` leaves them off.
+    pub tabular_numbers: Option<bool>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SeparatorStyle {
@@ -234,13 +240,13 @@ merge_fields!(ButtonStyle; padding,min_size,font_size,font_weight; surface);
 merge_fields!(CheckboxStyle; size,gap,indicator_width; body,indicator);
 merge_fields!(SwitchStyle; width,height,gap,thumb_inset; track,thumb);
 merge_fields!(SliderStyle; width,height,track_height,thumb_radius; track,fill,thumb);
-merge_fields!(TextEditStyle; width,height,font_size,font_weight,padding,rounding,placeholder,selection,cursor_width,blink_interval,caret,selection_foreground,area_padding,area_min_height; surface);
+merge_fields!(TextEditStyle; width,height,font_size,font_weight,font_family,padding,rounding,placeholder,selection,cursor_width,blink_interval,caret,selection_foreground,area_padding,area_min_height; surface);
 merge_fields!(WindowStyle; padding,title_height,title_font_size,title_font_weight; body,title);
 merge_fields!(TitleBarStyle; height,button_width,font_size,font_weight; surface,controls);
 merge_fields!(PopupStyle; padding,gap,spacing; surface);
 merge_fields!(CardStyle; padding; surface);
 merge_fields!(ColorPickerStyle; width,row_height,palette_height,hue_height,gap,field_gap,rounding; body,field);
-merge_fields!(TextStyle; color,muted,size,weight; );
+merge_fields!(TextStyle; color,muted,size,weight,family,tabular_numbers; );
 merge_fields!(SeparatorStyle; color,thickness,spacing,inset; );
 merge_fields!(LoaderStyle; color,size,stroke; );
 merge_fields!(ProgressStyle; size; track,fill);

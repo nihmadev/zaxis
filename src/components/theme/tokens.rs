@@ -147,13 +147,16 @@ impl Default for Metrics {
     }
 }
 /// Sizes and weights per role. The family is chosen by `Context::with_fonts`
-/// or `RunOptions::with_font_family`.
+/// or `RunOptions::with_font_family`; the `code` role uses the monospace family
+/// (`RunOptions::with_monospace_family`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Typography {
     pub small: f32,
     pub body: f32,
     pub heading: f32,
     pub title: f32,
+    /// Size of [`TypographyRole::Code`], a little smaller than body: monospace glyphs are wide.
+    pub code: f32,
     pub weights: TypographyWeights,
 }
 impl Default for Typography {
@@ -163,6 +166,7 @@ impl Default for Typography {
             body: 14.0,
             heading: 18.0,
             title: 24.0,
+            code: 13.0,
             weights: TypographyWeights::default(),
         }
     }
@@ -176,6 +180,7 @@ pub struct TypographyWeights {
     pub body: FontWeight,
     pub heading: FontWeight,
     pub title: FontWeight,
+    pub code: FontWeight,
     /// Labels of controls such as buttons, tabs and menu items.
     pub control: FontWeight,
     /// The active tab or selected item. `None` follows `control`.
@@ -188,6 +193,7 @@ impl Default for TypographyWeights {
             body: FontWeight::REGULAR,
             heading: FontWeight::REGULAR,
             title: FontWeight::REGULAR,
+            code: FontWeight::REGULAR,
             control: FontWeight::REGULAR,
             selected: None,
         }
@@ -200,6 +206,7 @@ impl TypographyWeights {
             TypographyRole::Body => self.body,
             TypographyRole::Heading => self.heading,
             TypographyRole::Title => self.title,
+            TypographyRole::Code => self.code,
         }
     }
     pub fn selected(&self) -> FontWeight {
@@ -231,4 +238,20 @@ pub enum TypographyRole {
     Body,
     Heading,
     Title,
+    /// Source code, hashes and logs: sized by `Typography::code` and set in the
+    /// monospace family unless the text overrides it.
+    Code,
+}
+
+impl Typography {
+    /// The size of `role`, with `body` for [`TypographyRole::Body`].
+    pub fn size(&self, role: TypographyRole) -> f32 {
+        match role {
+            TypographyRole::Small => self.small,
+            TypographyRole::Body => self.body,
+            TypographyRole::Heading => self.heading,
+            TypographyRole::Title => self.title,
+            TypographyRole::Code => self.code,
+        }
+    }
 }

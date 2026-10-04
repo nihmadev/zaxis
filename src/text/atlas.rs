@@ -45,7 +45,7 @@ impl AtlasPage {
     }
 }
 
-impl TextSystem {
+impl GlyphStore {
     pub(super) fn glyph(&mut self, key: CacheKey) -> Option<CachedGlyph> {
         if let Some(cached) = self.glyphs.get(&key) {
             return *cached;
@@ -125,8 +125,30 @@ impl TextSystem {
         self.glyphs.insert(key, Some(glyph));
         Some(glyph)
     }
+}
 
+impl TextSystem {
+    /// Every atlas page, including glyphs rasterized by sibling windows.
     pub fn textures(&self) -> Vec<TextureImage> {
-        self.pages.iter().map(|page| page.image.clone()).collect()
+        let store = self.store.lock().expect("glyph store mutex");
+        store.pages.iter().map(|page| page.image.clone()).collect()
+    }
+}
+
+#[cfg(test)]
+impl TextSystem {
+    pub(crate) fn glyph_count(&self) -> usize {
+        self.store.lock().unwrap().glyphs.len()
+    }
+    pub(crate) fn page_count(&self) -> usize {
+        self.store.lock().unwrap().pages.len()
+    }
+    pub(crate) fn has_colored_glyph(&self) -> bool {
+        let store = self.store.lock().unwrap();
+        store.glyphs.values().flatten().any(|g| g.colored)
+    }
+    pub(crate) fn page_revision_sum(&self) -> u64 {
+        let store = self.store.lock().unwrap();
+        store.pages.iter().map(|p| p.image.revision).sum()
     }
 }

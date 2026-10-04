@@ -28,11 +28,13 @@ Metrics exposes spacing, padding, control height, corner radius, border width,
 elevation (Shadow), background backdrop blur, opacity and blur opacity.
 Global blur applies to Root, Window and popup backgrounds. Controls and list rows
 remain opaque and sharp; a control blur requires an explicit builder or surface override.
-Typography supplies small/body/heading/title sizes and, in `Typography::weights`, a
+Typography supplies small/body/heading/title/code sizes (`code` is 13 px; the `Code` role is
+set in the monospace family, see [Text](./components/text.mdx#monospace-text)) and, in `Typography::weights`, a
 `FontWeight` per role plus `control` (labels of Button, tabs, menus) and an optional
 `selected` (active tab). Use `Text::typography(TypographyRole::Heading)`; ordinary text
 keeps Style::font_size and the body weight. Every weight defaults to Regular, so a theme
-looks unchanged until a weight is set:
+looks unchanged until a weight is set. `TextStyle` also carries `family` and `tabular_numbers`
+for a subtree:
 
 ```rust
 theme.typography.weights.heading = FontWeight::SEMIBOLD;

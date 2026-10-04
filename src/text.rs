@@ -5,7 +5,10 @@
 //! family resolves for the weight, painting turns each positioned glyph into a
 //! cache key that also names face and weight, and the atlas rasterizes it once.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use ab_glyph::{point, Font, FontVec, Glyph};
 use cosmic_text::{fontdb, CacheKey, LayoutGlyph, SwashCache, SwashContent};
@@ -17,16 +20,21 @@ mod family;
 mod fonts;
 mod layout;
 mod lines;
+mod shape;
+mod variant;
 mod weight;
 
 pub use family::FontFamily;
+pub use variant::{MonospaceMetrics, TextFamily};
 pub use weight::FontWeight;
+
 
 use atlas::AtlasPage;
 use fonts::{font_system, Registered};
 use layout::{CachedLayout, FontKey};
 pub(crate) use layout::DEFAULT_TAB;
 pub(crate) use lines::VisualLine;
+pub(crate) use variant::TextFont;
 
 const ATLAS_SIZE: u32 = 1024;
 
@@ -49,43 +57,66 @@ pub(crate) struct TextLayout {
     width_independent: bool,
 }
 
-pub(crate) struct TextSystem {
-    family: Registered,
-    /// Cap-height top and descender bottom per font size, measured on the regular
-    /// face. One band for all weights keeps optical alignment from shifting with weight.
-    bands: HashMap<u32, (f32, f32)>,
-    /// The regular face outlines used for `bands`, parsed on first use.
-    outlines: Option<Option<FontVec>>,
+/// Glyph rasterization state shared by every `TextSystem` of one set of shared resources:
+/// the glyph cache, atlas pages, rasterizer and per-size alignment bands. Atlas pages are
+/// append-only, so a window that built geometry earlier still finds its glyphs.
+pub(crate) struct GlyphStore {
+    /// Cap-height top and descender bottom per font size and family, measured on the
+    /// regular face. One band for all weights keeps optical alignment from shifting with weight.
+    bands: HashMap<(u32, bool), (f32, f32)>,
+    /// The regular face outlines used for `bands` (proportional, monospace), parsed on first use.
+    outlines: [Option<Option<FontVec>>; 2],
     swash: SwashCache,
     glyphs: HashMap<CacheKey, Option<CachedGlyph>>,
     pages: Vec<AtlasPage>,
+    ids: crate::images::TextureIds,
+}
+
+impl GlyphStore {
+    pub(crate) fn new(ids: crate::images::TextureIds) -> Self {
+        Self {
+            bands: HashMap::new(),
+            outlines: [None, None],
+            swash: SwashCache::new(),
+            glyphs: HashMap::new(),
+            pages: Vec::new(),
+            ids,
+        }
+    }
+}
+
+pub(crate) struct TextSystem {
+    family: Registered,
+    /// The registered monospace family; `None` shapes with the system's generic monospace font.
+    mono: Option<Registered>,
+    store: Arc<Mutex<GlyphStore>>,
     layouts: HashMap<Id, CachedLayout>,
     layout_keys: HashMap<Id, Id>,
     frame: u64,
     /// Layouts shaped from scratch since creation; cache hits do not count.
     pub(crate) builds: u64,
-    ids: crate::images::TextureIds,
 }
 
 impl TextSystem {
     #[cfg(test)]
     pub fn new(family: FontFamily) -> Self {
-        Self::with_allocator(family, crate::images::TextureIds::default())
+        let store = GlyphStore::new(crate::images::TextureIds::default());
+        Self::with_store(family, FontFamily::default_monospace(), Arc::new(Mutex::new(store)))
     }
 
-    pub(crate) fn with_allocator(family: FontFamily, ids: crate::images::TextureIds) -> Self {
+    pub(crate) fn with_store(
+        family: FontFamily,
+        mono: Option<FontFamily>,
+        store: Arc<Mutex<GlyphStore>>,
+    ) -> Self {
         Self {
             family: fonts::register(family),
-            bands: HashMap::new(),
-            outlines: None,
-            swash: SwashCache::new(),
-            glyphs: HashMap::new(),
-            pages: Vec::new(),
+            mono: mono.map(fonts::register),
+            store,
             layouts: HashMap::new(),
             layout_keys: HashMap::new(),
             frame: 0,
             builds: 0,
-            ids,
         }
     }
 
@@ -102,32 +133,60 @@ impl TextSystem {
             .retain(|_, key| self.layouts.contains_key(key));
     }
 
+    /// The registered family a request is shaped with, if it is not the system monospace.
+    fn registered(&self, font: TextFont) -> Option<&Registered> {
+        if font.monospace() {
+            self.mono.as_ref()
+        } else {
+            Some(&self.family)
+        }
+    }
+
     /// The font a request is shaped with: the family file the weight resolves to.
-    pub(crate) fn font_key(&self, weight: FontWeight) -> FontKey {
-        FontKey::new(self.family.id, self.family.family.resolve(weight))
+    pub(crate) fn font_key(&self, font: impl Into<TextFont>) -> FontKey {
+        let font = font.into();
+        let (id, weight) = self.registered(font).map_or((Id::new("system-monospace"), font.weight), |r| {
+            (r.id, r.family.resolve(font.weight))
+        });
+        FontKey::new(id, weight, font.monospace(), font.tabular)
     }
 
     /// Optical alignment uses a stable cap/descender band, independent of line gap.
     /// The same baseline is retained as characters are typed or a placeholder changes.
-    pub fn centered_line_offset(&mut self, text: &str, size: f32, weight: FontWeight) -> f32 {
-        let layout = self.layout(text, size, weight, f32::INFINITY);
-        let (top, bottom) = self.band(size);
+    pub fn centered_line_offset(
+        &mut self,
+        text: &str,
+        size: f32,
+        font: impl Into<TextFont>,
+    ) -> f32 {
+        let font = font.into();
+        let layout = self.layout(text, size, font, f32::INFINITY);
+        let (top, bottom) = self.band(size, font.monospace());
         layout.size.y * 0.5 - layout.baseline - (top + bottom) * 0.5
     }
 
-    fn band(&mut self, size: f32) -> (f32, f32) {
-        if let Some(band) = self.bands.get(&size.to_bits()) {
+    /// The alignment band of the family. A system monospace font has no outlines to
+    /// measure here and borrows the proportional band.
+    fn band(&mut self, size: f32, monospace: bool) -> (f32, f32) {
+        let monospace = monospace && self.mono.is_some();
+        let mut store = self.store.lock().expect("glyph store mutex");
+        if let Some(band) = store.bands.get(&(size.to_bits(), monospace)) {
             return *band;
         }
-        let family = &self.family.family;
-        let font = self.outlines.get_or_insert_with(|| {
+        let family = if monospace {
+            self.mono.as_ref().map(|r| &r.family)
+        } else {
+            Some(&self.family.family)
+        };
+        let outlines = store.outlines[usize::from(monospace)].get_or_insert_with(|| {
+            let family = family?;
             let regular = family.data(family.resolve(FontWeight::REGULAR))?;
             FontVec::try_from_vec(regular.to_vec()).ok()
         });
-        let band = font
+        let band = outlines
             .as_ref()
             .map_or((0.0, 0.0), |font| alignment_band(font, size));
-        self.bands.insert(size.to_bits(), band);
+        store.bands.insert((size.to_bits(), monospace), band);
         band
     }
 
@@ -139,13 +198,13 @@ impl TextSystem {
         text: &str,
         position: Vec2,
         size: f32,
-        weight: FontWeight,
+        font: impl Into<TextFont>,
         wrap_width: f32,
         tab: u16,
         delta: Vec2,
         scale: f32,
     ) -> bool {
-        let layout = self.layout_with_tab(text, size, weight, wrap_width, tab);
+        let layout = self.layout_with_tab(text, size, font, wrap_width, tab);
         let moved = position + delta;
         layout.glyphs.iter().all(|(glyph, baseline)| {
             let old = glyph.physical((position.x * scale, (position.y + baseline) * scale), scale);
@@ -160,12 +219,12 @@ impl TextSystem {
         text: &str,
         position: Vec2,
         size: f32,
-        weight: FontWeight,
+        font: impl Into<TextFont>,
         wrap_width: f32,
         color: Color,
         scale: f32,
     ) {
-        self.paint_with_tab(mesh, text, position, size, weight, wrap_width, DEFAULT_TAB, color, scale);
+        self.paint_with_tab(mesh, text, position, size, font, wrap_width, DEFAULT_TAB, color, scale);
     }
 
     pub fn paint_with_tab(
@@ -174,18 +233,19 @@ impl TextSystem {
         text: &str,
         position: Vec2,
         size: f32,
-        weight: FontWeight,
+        font: impl Into<TextFont>,
         wrap_width: f32,
         tab: u16,
         color: Color,
         scale: f32,
     ) {
-        let layout = self.layout_with_tab(text, size, weight, wrap_width, tab);
+        let layout = self.layout_with_tab(text, size, font, wrap_width, tab);
+        let mut store = self.store.lock().expect("glyph store mutex");
         for (glyph, baseline) in &layout.glyphs {
             // Subpixel positioning is part of the raster cache key, including DPI.
             let physical =
                 glyph.physical((position.x * scale, (position.y + baseline) * scale), scale);
-            if let Some(cached) = self.glyph(physical.cache_key) {
+            if let Some(cached) = store.glyph(physical.cache_key) {
                 let min =
                     Vec2::new(physical.x as f32, physical.y as f32) / scale + cached.offset / scale;
                 let tint = if cached.colored {
@@ -229,3 +289,6 @@ mod tests;
 #[cfg(test)]
 #[path = "../tests/text/weights.rs"]
 mod weight_tests;
+#[cfg(test)]
+#[path = "../tests/text/monospace.rs"]
+mod monospace_tests;

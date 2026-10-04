@@ -228,27 +228,27 @@ fn atlas_grows_with_used_weights_only_and_settles() {
         }
     };
     paint(&mut text, FontWeight::REGULAR, 1.0);
-    let (regular_glyphs, regular_pages) = (text.glyphs.len(), text.pages.len());
+    let (regular_glyphs, regular_pages) = (text.glyph_count(), text.page_count());
     for weight in [FontWeight::MEDIUM, FontWeight::SEMIBOLD, FontWeight::BOLD] {
         paint(&mut text, weight, 1.0);
     }
     // Four weights cost four times the glyphs, nothing more; pages stay few.
     // Subpixel bins differ per weight, so the count is only about four times as large.
-    let used = text.glyphs.len();
-    eprintln!("atlas: {regular_glyphs} glyphs/{regular_pages} pages regular, {used} glyphs/{} pages with 4 weights", text.pages.len());
+    let used = text.glyph_count();
+    eprintln!("atlas: {regular_glyphs} glyphs/{regular_pages} pages regular, {used} glyphs/{} pages with 4 weights", text.page_count());
     assert!(used > regular_glyphs * 3 && used <= regular_glyphs * 5);
-    assert!(text.pages.len() <= regular_pages * 4 && text.pages.len() <= 2);
-    let settled = (text.glyphs.len(), text.pages.len());
-    let revision: u64 = text.pages.iter().map(|p| p.image.revision).sum();
+    assert!(text.page_count() <= regular_pages * 4 && text.page_count() <= 2);
+    let settled = (text.glyph_count(), text.page_count());
+    let revision: u64 = text.page_revision_sum();
     for weight in [FontWeight::REGULAR, FontWeight::BOLD] {
         paint(&mut text, weight, 1.0);
     }
-    assert_eq!((text.glyphs.len(), text.pages.len()), settled);
+    assert_eq!((text.glyph_count(), text.page_count()), settled);
     assert_eq!(
-        text.pages.iter().map(|p| p.image.revision).sum::<u64>(),
+        text.page_revision_sum(),
         revision
     );
     // Another DPI rasterizes again, and still within a bounded page count.
     paint(&mut text, FontWeight::BOLD, 1.25);
-    assert!(text.pages.len() <= 4);
+    assert!(text.page_count() <= 4);
 }

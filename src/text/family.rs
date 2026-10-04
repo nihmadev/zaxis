@@ -68,6 +68,30 @@ impl FontFamily {
         family
     }
 
+    /// The bundled JetBrains Mono family (OFL), the default monospace font. Available with
+    /// the `bundled-monospace` feature; Bold exists only with `bundled-weights`, otherwise
+    /// every weight resolves to Regular.
+    #[cfg(feature = "bundled-monospace")]
+    pub fn jetbrains_mono() -> Self {
+        let family = Self::new(include_bytes!("../../assets/JetBrainsMono-Regular.ttf"));
+        #[cfg(feature = "bundled-weights")]
+        let family = family.with_weight(
+            FontWeight::BOLD,
+            include_bytes!("../../assets/JetBrainsMono-Bold.ttf"),
+        );
+        family
+    }
+
+    /// The monospace family used when none is configured: the bundled one, or `None`
+    /// without the `bundled-monospace` feature, which leaves text to the system's
+    /// generic monospace font.
+    pub(crate) fn default_monospace() -> Option<Self> {
+        #[cfg(feature = "bundled-monospace")]
+        return Some(Self::jetbrains_mono());
+        #[cfg(not(feature = "bundled-monospace"))]
+        None
+    }
+
     /// Declared weights in ascending order.
     pub fn weights(&self) -> Vec<FontWeight> {
         let mut weights: Vec<_> = self.faces.iter().map(|(w, _)| *w).collect();
