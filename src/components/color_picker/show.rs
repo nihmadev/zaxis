@@ -46,15 +46,26 @@ impl Widget for ColorPicker<'_> {
         let angle = ui.transition_property(
             id.with("chevron-angle"),
             row,
-            if open { std::f32::consts::PI } else { 0.0 },
+            if open {
+                std::f32::consts::FRAC_PI_2
+            } else {
+                0.0
+            },
             style.motion.expand.clone(),
         );
         let mut rect = ui.allocate_space(Vec2::new(width, row_height));
         response.rect = rect;
         hit(ui, id, row, self.enabled, HitAction::Activate);
+        // Content is inset from the hover surface; the disclosure chevron leads the
+        // label and the color swatch is the only trailing element.
+        let inset = 8.0_f32.min(width * 0.25);
+        let swatch_size = Vec2::new((width - 2.0 * inset).clamp(0.0, 28.0), 16.0);
         let swatch = Rect::from_min_size(
-            Vec2::new((row.max.x - 28.0).max(row.min.x), row.min.y + 4.0),
-            Vec2::new(width.min(28.0), 16.0),
+            Vec2::new(
+                (row.max.x - inset - swatch_size.x).max(row.min.x),
+                row.center().y - swatch_size.y * 0.5,
+            ),
+            swatch_size,
         );
         let preset = self
             .hover_style
@@ -100,8 +111,14 @@ impl Widget for ColorPicker<'_> {
         ui.context
             .paint(id.with("row"), ui.window, ui.clip, row_paint);
 
-        if self.picker_type == ColorPickerType::Internal || open {
-            match self.picker_type {
+        // Floating panels are windows below a modal; inside one the editor expands inline.
+        let picker_type = if ui.context.building_modal() {
+            ColorPickerType::Internal
+        } else {
+            self.picker_type
+        };
+        if picker_type == ColorPickerType::Internal || open {
+            match picker_type {
                 ColorPickerType::Internal => {
                     let enabled = self.enabled;
                     self.enabled &= open;
@@ -252,22 +269,32 @@ impl Widget for ColorPicker<'_> {
         )];
         ui.context
             .paint(id.with("swatch"), ui.window, ui.clip, swatch_paint);
+        let label = visible_label(&self.text);
+        let label_size = crate::components::font_size(style.font_size);
+        let weight = style.typography.weights.control;
+        let label_height = ui
+            .context
+            .measure_text(label, label_size, weight, f32::INFINITY)
+            .y;
+        let optical = ui.context.centered_line_offset(label, label_size, weight);
+        let label_x = row.min.x + inset + 20.0;
         ui.context.paint(
             id.with("caption"),
             ui.window,
             ui.clip.intersect(Rect::from_min_max(
                 row.min,
-                Vec2::new(swatch.min.x - 26.0, row.max.y),
+                Vec2::new((swatch.min.x - 8.0).max(row.min.x), row.max.y),
             )),
             vec![Paint::Text {
-                text: visible_label(&self.text).to_owned(),
-                position: row.min + Vec2::new(0.0, 2.0),
-                size: crate::components::font_size(style.font_size),
+                text: label.to_owned(),
+                position: Vec2::new(label_x, row.center().y - label_height * 0.5 + optical),
+                size: label_size,
+                weight,
                 wrap_width: f32::INFINITY,
                 color: row_hover.text_color,
             }],
         );
-        let center = Vec2::new(swatch.min.x - 14.0, row.center().y);
+        let center = Vec2::new(row.min.x + inset + 6.0, row.center().y);
         let rotate = |v: Vec2| {
             Vec2::new(
                 v.x * angle.cos() - v.y * angle.sin(),
@@ -280,14 +307,14 @@ impl Widget for ColorPicker<'_> {
             ui.clip,
             vec![
                 Paint::Shape(Shape::Line {
-                    start: rotate(Vec2::new(-4.0, -2.0)),
-                    end: rotate(Vec2::new(0.0, 2.0)),
+                    start: rotate(Vec2::new(-2.0, -4.0)),
+                    end: rotate(Vec2::new(2.0, 0.0)),
                     width: 1.5,
                     color: row_hover.text_color,
                 }),
                 Paint::Shape(Shape::Line {
-                    start: rotate(Vec2::new(0.0, 2.0)),
-                    end: rotate(Vec2::new(4.0, -2.0)),
+                    start: rotate(Vec2::new(2.0, 0.0)),
+                    end: rotate(Vec2::new(-2.0, 4.0)),
                     width: 1.5,
                     color: row_hover.text_color,
                 }),

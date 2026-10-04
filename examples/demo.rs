@@ -1,18 +1,24 @@
 use zaxis::{
     vec2, App, Button, Color, Context, Frame, Gradient, GradientDirection, Hover, HoverStyle,
-    PresentationMode, Rect, RunOptions, Separator, Shadow, Shape, Text, Window,
+    PresentationMode, Rect, RunOptions, Separator, Shadow, Shape, Switch, Window,
 };
 
 struct Demo {
     clicks: u64,
     checked: bool,
+    notifications: bool,
     smoke_test: bool,
     smoke_frames: usize,
 }
 
 impl App for Demo {
     fn update(&mut self, context: &mut Context, frame: &mut Frame<'_>) {
-        let targets = show_ui(context, &mut self.clicks, &mut self.checked);
+        let targets = show_ui(
+            context,
+            &mut self.clicks,
+            &mut self.checked,
+            &mut self.notifications,
+        );
         if self.smoke_test {
             if self.smoke_frames >= targets.len() {
                 frame.close();
@@ -42,11 +48,13 @@ fn main() -> Result<(), zaxis::RunError> {
         } else {
             PresentationMode::Immediate
         },
+        ..Default::default()
     };
     zaxis::run_with_options(
         Demo {
             clicks: 0,
             checked: true,
+            notifications: true,
             smoke_test: std::env::args().any(|arg| arg == "--smoke-test"),
             smoke_frames: 0,
         },
@@ -54,14 +62,19 @@ fn main() -> Result<(), zaxis::RunError> {
     )
 }
 
-fn show_ui(context: &mut Context, clicks: &mut u64, checked: &mut bool) -> Vec<Rect> {
+fn show_ui(
+    context: &mut Context,
+    clicks: &mut u64,
+    checked: &mut bool,
+    notifications: &mut bool,
+) -> Vec<Rect> {
     let mut targets = Vec::new();
     Window::new("zaxis")
         .default_position(vec2(56.0, 48.0))
         .default_size(vec2(410.0, 410.0))
         .min_size(vec2(270.0, 230.0))
         .show(context, |ui| {
-            ui.add(Text::new("A small desktop UI").size(23.0));
+            ui.title("A small desktop UI");
             ui.label("Immediate mode widgets, cached geometry, and an event-driven renderer.");
             ui.separator();
             let response = ui.button("Click me");
@@ -69,9 +82,10 @@ fn show_ui(context: &mut Context, clicks: &mut u64, checked: &mut bool) -> Vec<R
             if response.clicked() { *clicks += 1; }
             ui.label(format!("Clicks: {clicks}"));
             ui.checkbox(checked, "Show checkmark");
+            ui.switch(notifications, "Notifications");
+            ui.add(Switch::new(checked, "Show checkmark when on").enabled(*notifications));
             ui.add(Separator::new().thickness(2.0).inset(8.0).spacing(2.0));
-            let muted = ui.style().muted_text;
-            ui.add(Text::new("Drag the title bar or resize the lower-right corner. Tab focuses the button; Space or Enter clicks it.").size(14.0).color(muted));
+            ui.muted("Drag the title bar or resize the lower-right corner. Tab focuses the button; Space or Enter clicks it.");
         });
     Window::new("Hover styles")
         .default_position(vec2(488.0, 48.0))

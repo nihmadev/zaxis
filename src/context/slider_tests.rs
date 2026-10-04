@@ -108,12 +108,12 @@ fn labeled_slider_formats_the_updated_value_and_preserves_disabled_values() {
         context.run(|context| {
             Window::new("Test").show(context, |ui| {
                 response = Some(
-                    ui.add_enabled(
-                        enabled,
+                    ui.add(
                         Slider::new(value, 0.0..=10.0)
                             .text("Volume##id")
                             .precision(0)
-                            .suffix("%"),
+                            .suffix("%")
+                            .enabled(enabled),
                     ),
                 );
             });
@@ -125,7 +125,7 @@ fn labeled_slider_formats_the_updated_value_and_preserves_disabled_values() {
     match &context.cache[&response.id.with("label")].paint[0] {
         Paint::Text { text, color, .. } => {
             assert_eq!(text, "Volume: 12%");
-            assert_eq!(*color, context.style().muted_text);
+            assert_eq!(*color, context.style().disabled_text);
         }
         _ => panic!("expected a slider caption"),
     }

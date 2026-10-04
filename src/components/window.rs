@@ -56,25 +56,31 @@ impl Window {
         self.id = id;
         self
     }
+    #[track_caller]
     pub fn default_position(mut self, position: Vec2) -> Self {
-        self.position = position;
+        self.position = super::sanitize::finite_vec2("Window::default_position", position)
+            .unwrap_or(self.position);
         self
     }
     /// Translate the entire panel for this pass without changing its retained
     /// drag position. Chrome, content, blur, clipping and hits move together.
     /// Unlike `default_position`, this is evaluated on every pass and may move
     /// outside the viewport for an exit animation.
+    #[track_caller]
     pub fn offset(mut self, offset: Vec2) -> Self {
-        assert!(offset.is_finite(), "window offset must be finite");
-        self.offset = offset;
+        self.offset = super::sanitize::finite_vec2("Window::offset", offset).unwrap_or(self.offset);
         self
     }
+    #[track_caller]
     pub fn default_size(mut self, size: Vec2) -> Self {
-        self.size = size;
+        self.size = super::sanitize::size("Window::default_size", size).unwrap_or(self.size);
         self
     }
+    #[track_caller]
     pub fn min_size(mut self, size: Vec2) -> Self {
-        self.min_size = size.max(Vec2::new(64.0, 64.0));
+        if let Some(size) = super::sanitize::size("Window::min_size", size) {
+            self.min_size = size.max(Vec2::new(64.0, 64.0));
+        }
         self
     }
     pub fn draggable(mut self, value: bool) -> Self {
@@ -89,12 +95,15 @@ impl Window {
         self.padding = Some(padding);
         self
     }
-    pub fn rounding(mut self, rounding: CornerRadius) -> Self {
-        self.rounding = Some(rounding);
-        self
+    #[deprecated(
+        note = "use `.corner_radius(..)`; one name for the corner radius of every component"
+    )]
+    pub fn rounding(self, rounding: CornerRadius) -> Self {
+        self.corner_radius(rounding)
     }
-    pub fn corner_radius(self, radius: impl Into<CornerRadius>) -> Self {
-        self.rounding(radius.into())
+    pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.rounding = Some(radius.into());
+        self
     }
 
     /// Blur the backdrop with sigma in logical pixels (0 disables, maximum 64).
@@ -179,6 +188,10 @@ impl Window {
         ));
         context.paint(self.id.with("chrome"), self.id, context.viewport(), chrome);
         let title_font = font_size(style.window.title_font_size.unwrap_or(style.font_size));
+        let title_weight = style
+            .window
+            .title_font_weight
+            .unwrap_or(style.typography.weights.body);
         let title_clip = title_rect.shrink(style.border.width).intersect(clip);
         context.paint(
             self.id.with("title"),
@@ -189,6 +202,7 @@ impl Window {
                 position: title_rect.min
                     + Vec2::new(14.0, (title_height - title_font * 1.25) * 0.5),
                 size: title_font,
+                weight: title_weight,
                 wrap_width: f32::INFINITY,
                 color: super::appearance::alpha(title.text_color, title.opacity),
             }],

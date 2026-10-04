@@ -120,7 +120,7 @@ fn floating_window_keeps_parent_layout_and_reopens_above_parent() {
     let mut context = context();
     let mut color = Color::rgb(78, 133, 190);
     let response = draw(&mut context, &mut color, ColorPickerType::Floating, true);
-    assert_eq!(response.rect.size().y, 24.0);
+    assert_eq!(response.rect.size().y, context.style().control_height);
     let window_id = response.id.with("floating");
     assert_eq!(context.front_window(), Some(window_id));
     let initial = context.windows[&window_id].rect;

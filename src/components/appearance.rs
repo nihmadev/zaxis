@@ -15,6 +15,11 @@ pub(crate) struct Appearance {
     pub rounding: CornerRadius,
     pub blur: f32,
     pub opacity: f32,
+    /// Keyboard-focus ring drawn outside the body; never interpolated.
+    pub ring: Option<Border>,
+    /// Validation color of a field-like control: tints the border and adds a soft
+    /// ring. Set by the control before `animate_control`; never interpolated.
+    pub status: Option<Color>,
 }
 impl Interpolate for Appearance {
     fn interpolate(&self, to: &Self, t: f32) -> Self {
@@ -26,6 +31,8 @@ impl Interpolate for Appearance {
             rounding: self.rounding.interpolate(&to.rounding, t),
             blur: self.blur.interpolate(&to.blur, t),
             opacity: self.opacity.interpolate(&to.opacity, t),
+            ring: to.ring,
+            status: to.status,
         }
     }
 }
@@ -38,6 +45,8 @@ impl Appearance {
             rounding: CornerRadius::ZERO,
             blur: 0.0,
             opacity: 1.0,
+            ring: None,
+            status: None,
             shadow: Shadow {
                 color: Color::TRANSPARENT,
                 ..Shadow::default()
@@ -90,6 +99,32 @@ impl Appearance {
             }));
         }
     }
+    /// Soft status ring, drawn inside the body so a container edge or scroll
+    /// viewport flush with the control can never clip it. It slides under the
+    /// border by half its width, so no gap shows between the two.
+    fn paint_ring(self, rect: Rect, rounding: CornerRadius, paint: &mut Vec<Paint>) {
+        let Some(ring) = self.ring.filter(|r| r.width > 0.0) else {
+            return;
+        };
+        let under = self.border.width.max(0.0) * 0.5;
+        let inset = rect.shrink(under);
+        let radius = |r: f32| (r - under).max(0.0);
+        paint.push(Paint::Shape(Shape::Rect {
+            rect: inset,
+            rounding: CornerRadius {
+                top_left: radius(rounding.top_left),
+                top_right: radius(rounding.top_right),
+                bottom_right: radius(rounding.bottom_right),
+                bottom_left: radius(rounding.bottom_left),
+            },
+            fill: Color::TRANSPARENT,
+            border: Border {
+                color: alpha(ring.color, self.opacity),
+                width: ring.width + under,
+                ..ring
+            },
+        }));
+    }
     pub fn paint_body(
         self,
         rect: Rect,
@@ -128,6 +163,7 @@ impl Appearance {
                 },
             }));
         }
+        self.paint_ring(rect, rounding, paint);
     }
 }
 
@@ -151,6 +187,7 @@ impl Ui<'_> {
         let focus = state.focus;
         let mut animated_state = state;
         animated_state.focus = false;
+        let status = base.status;
         base = resolve_control(
             self.style(),
             base,
@@ -160,6 +197,11 @@ impl Ui<'_> {
             animated_state,
             hovered,
         );
+        base.status = status;
+        if let Some(color) = status {
+            // The status border survives hover, press and disabled; it fades like any other color.
+            base.border = self.status_border(color, base.border);
+        }
         if focus {
             let mut patch = control.focus;
             patch.border = None;
@@ -180,11 +222,67 @@ impl Ui<'_> {
             base,
             motion,
         );
-        // Focus ring is an immediate independent layer, never a faint tween.
-        if focus {
+        // Rings are immediate independent layers, never a faint tween.
+        if let Some(color) = status {
+            // Invalid: status border and a soft ring in the same color, stronger while
+            // focused. A disabled control keeps the border but draws no ring.
+            appearance.border = self.status_border(color, appearance.border);
+            if focus {
+                appearance.border.width =
+                    appearance.border.width.max(self.style().focus_border.width);
+            }
+            if state.enabled {
+                appearance.ring = Some(self.status_ring(color, focus));
+            }
+        } else if focus {
+            // Focus is the solid border alone; a translucent outer ring would double it.
             appearance.border = control.focus.border.unwrap_or(self.style().focus_border);
         }
         appearance
+    }
+
+    /// Status of a field-like control: its own, else the enclosing `Field`'s.
+    pub(super) fn field_status(
+        &self,
+        own: super::theme::SemanticStatus,
+    ) -> super::theme::SemanticStatus {
+        if own == super::theme::SemanticStatus::Normal {
+            self.context.field_status
+        } else {
+            own
+        }
+    }
+
+    /// Theme color of a status; `None` for `Normal`.
+    pub(super) fn status_color(&self, status: super::theme::SemanticStatus) -> Option<Color> {
+        let style = self.style();
+        match status {
+            super::theme::SemanticStatus::Normal => None,
+            super::theme::SemanticStatus::Success => Some(style.success),
+            super::theme::SemanticStatus::Warning => Some(style.warning),
+            super::theme::SemanticStatus::Error => Some(style.error),
+        }
+    }
+
+    fn status_border(&self, color: Color, border: Border) -> Border {
+        let width = if border.width > 0.0 {
+            border.width
+        } else {
+            self.style().border.width.max(1.0)
+        };
+        Border { width, color }
+    }
+
+    /// Soft ring around an invalid control: a fifth of the color on light themes,
+    /// two fifths on dark ones and while focused, so focus stays visible.
+    fn status_ring(&self, color: Color, focus: bool) -> Border {
+        let background = self.style().background.linear();
+        let dark = background[0] * 0.2126 + background[1] * 0.7152 + background[2] * 0.0722 < 0.18;
+        let strength = if focus || dark { 0.4 } else { 0.2 };
+        let mut ring = self.style().focus_border;
+        ring.width = 2.0;
+        ring.color = alpha(color, strength);
+        ring
     }
     pub(super) fn animate_hover(
         &mut self,

@@ -1,41 +1,41 @@
 use super::{allocation::dimension, SplitHandle, SplitHandleStyle, SplitSurface, Ui};
 use crate::{context::Paint, CornerRadius, Id, Layout, Padding, Rect, Shape, Vec2};
 
-pub(super) fn validate_surface(s: SplitSurface) {
-    for n in [
-        s.padding.left,
-        s.padding.right,
-        s.padding.top,
-        s.padding.bottom,
-        s.border.width,
-        s.rounding.top_left,
-        s.rounding.top_right,
-        s.rounding.bottom_left,
-        s.rounding.bottom_right,
-        s.blur,
-    ] {
-        dimension(n);
-    }
+/// Lengths are made non-negative; a shadow that is not finite is dropped.
+pub(super) fn normalized_surface(mut s: SplitSurface) -> SplitSurface {
+    s.padding = Padding {
+        left: dimension(s.padding.left),
+        right: dimension(s.padding.right),
+        top: dimension(s.padding.top),
+        bottom: dimension(s.padding.bottom),
+    };
+    s.border.width = dimension(s.border.width);
+    s.rounding = normalized_rounding(s.rounding);
+    s.blur = dimension(s.blur);
     if let Some(shadow) = s.shadow {
-        dimension(shadow.blur_radius);
-        assert!(
-            shadow.offset.is_finite() && shadow.spread.is_finite(),
-            "split shadow must be finite"
-        );
+        let valid = shadow.offset.is_finite() && shadow.spread.is_finite();
+        let blur_radius = dimension(shadow.blur_radius);
+        s.shadow = valid.then_some(crate::Shadow {
+            blur_radius,
+            ..shadow
+        });
     }
+    s
 }
-pub(super) fn validate_handle(h: SplitHandleStyle) {
-    for n in [
-        h.hit_width,
-        h.thickness,
-        h.length,
-        h.inset,
-        h.rounding.top_left,
-        h.rounding.top_right,
-        h.rounding.bottom_left,
-        h.rounding.bottom_right,
-    ] {
-        dimension(n);
+pub(super) fn normalized_handle(mut h: SplitHandleStyle) -> SplitHandleStyle {
+    h.hit_width = dimension(h.hit_width);
+    h.thickness = dimension(h.thickness);
+    h.length = dimension(h.length);
+    h.inset = dimension(h.inset);
+    h.rounding = normalized_rounding(h.rounding);
+    h
+}
+fn normalized_rounding(r: CornerRadius) -> CornerRadius {
+    CornerRadius {
+        top_left: dimension(r.top_left),
+        top_right: dimension(r.top_right),
+        bottom_left: dimension(r.bottom_left),
+        bottom_right: dimension(r.bottom_right),
     }
 }
 /// Inscribed rectangle: every corner is inside the normalized rounded shape.

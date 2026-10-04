@@ -34,7 +34,7 @@ ui.horizontal(|ui| {
 | `spacing(f32)` | 0; extra space on each perpendicular side; finite and nonnegative |
 | `inset(f32)` | 0; shorten both ends without changing allocation; finite and nonnegative |
 
-Invalid builder measurements panic. All values use logical pixels. Horizontal
+Invalid builder measurements are normalized (negative becomes 0, NaN and infinity are ignored) and reported as [diagnostics](../diagnostics.mdx#value-normalization). All values use logical pixels. Horizontal
 length is limited by available width; vertical length is clipped by the enclosing UI.
 
 ## Allocation

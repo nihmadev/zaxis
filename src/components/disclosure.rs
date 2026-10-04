@@ -145,7 +145,7 @@ pub(super) fn header<R>(
             style.button_pressed,
         ));
     }
-    let appearance = ui.animate_control(
+    let mut appearance = ui.animate_control(
         response,
         super::HoverStyle {
             fill: Some(super::HoverFill::Theme),
@@ -157,6 +157,7 @@ pub(super) fn header<R>(
         base,
         style.button_hovered,
     );
+    appearance.ring = None;
     let mut paint = Vec::new();
     appearance.paint_shadow(rect, appearance.rounding, &mut paint);
     appearance.paint_body(
@@ -230,12 +231,15 @@ pub(super) fn header<R>(
         text_left = (left + size + gap).min(text_right);
     }
     let font = super::font_size(s.font_size.unwrap_or(style.typography.small));
-    let size = ui.context.measure_text(h.label, font, f32::INFINITY);
+    let weight = s.font_weight.unwrap_or(style.typography.weights.body);
+    let size = ui
+        .context
+        .measure_text(h.label, font, weight, f32::INFINITY);
     let text_clip = Rect::from_min_max(
         Vec2::new(text_left, rect.min.y),
         Vec2::new(text_right, rect.max.y),
     );
-    let offset = ui.context.centered_line_offset(h.label, font);
+    let offset = ui.context.centered_line_offset(h.label, font, weight);
     ui.context.paint(
         h.id.with("label"),
         ui.window,
@@ -244,6 +248,7 @@ pub(super) fn header<R>(
             text: h.label.to_owned(),
             position: Vec2::new(text_left, rect.center().y - size.y * 0.5 + offset),
             size: font,
+            weight,
             wrap_width: f32::INFINITY,
             color: appearance.text_color,
         }],
@@ -260,10 +265,8 @@ pub(super) fn header<R>(
         action_ids,
     }
 }
+/// A non-negative length; invalid values become zero.
+#[track_caller]
 pub(super) fn dimension(n: f32) -> f32 {
-    assert!(
-        n.is_finite() && n >= 0.0,
-        "disclosure dimensions must be finite and nonnegative"
-    );
-    n
+    super::sanitize::length("disclosure size", n)
 }

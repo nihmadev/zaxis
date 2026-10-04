@@ -47,18 +47,18 @@ impl Loader {
         self.active = active;
         self
     }
+    #[track_caller]
     pub fn size(mut self, size: f32) -> Self {
-        assert!(size.is_finite() && size >= 0.0);
-        self.size = Some(size);
+        self.size = super::sanitize::non_negative("Loader::size", size).or(self.size);
         self
     }
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
         self
     }
+    #[track_caller]
     pub fn stroke(mut self, stroke: f32) -> Self {
-        assert!(stroke.is_finite() && stroke >= 0.0);
-        self.stroke = Some(stroke);
+        self.stroke = super::sanitize::non_negative("Loader::stroke", stroke).or(self.stroke);
         self
     }
     pub fn period(mut self, period: Duration) -> Self {

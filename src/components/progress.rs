@@ -38,9 +38,9 @@ impl Progress {
         self.id = Some(Id::new(source));
         self
     }
+    #[track_caller]
     pub fn size(mut self, size: Vec2) -> Self {
-        assert!(size.is_finite() && size.min_element() >= 0.0);
-        self.size = Some(size);
+        self.size = super::sanitize::size("Progress::size", size).or(self.size);
         self
     }
     pub fn color(mut self, color: Color) -> Self {
@@ -87,10 +87,10 @@ impl Widget for Progress {
             0.0
         };
         let (offset, width) = match self.state {
-            ProgressState::Determinate(value) => {
-                assert!(value.is_finite());
-                (0.0, value.clamp(0.0, 1.0))
-            }
+            ProgressState::Determinate(value) => (
+                0.0,
+                super::sanitize::unit("ProgressState::Determinate", value),
+            ),
             ProgressState::Complete => (0.0, 1.0),
             ProgressState::Indeterminate { .. } => (
                 if ui.style().motion.reduced_motion || !busy {

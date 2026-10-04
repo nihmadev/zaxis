@@ -20,15 +20,13 @@ pub enum SplitSize {
     Weight(f32),
 }
 impl SplitSize {
-    pub(crate) fn validate(self) {
+    /// Lengths and fractions below zero or not finite become zero; a bad weight becomes one.
+    #[track_caller]
+    pub(crate) fn normalized(self) -> Self {
         match self {
-            Self::Pixels(n) | Self::Fraction(n) => {
-                allocation::dimension(n);
-            }
-            Self::Weight(n) => assert!(
-                n.is_finite() && n > 0.0,
-                "split weight must be positive and finite"
-            ),
+            Self::Pixels(n) => Self::Pixels(allocation::dimension(n)),
+            Self::Fraction(n) => Self::Fraction(allocation::dimension(n)),
+            Self::Weight(n) => Self::Weight(super::sanitize::weight("SplitSize::Weight", n)),
         }
     }
 }
@@ -59,22 +57,24 @@ impl SplitPanel {
             handle: None,
         }
     }
+    #[track_caller]
     pub fn default_size(mut self, size: SplitSize) -> Self {
-        size.validate();
-        self.initial = size;
+        self.initial = size.normalized();
         self
     }
     /// Applied every pass. Resize proposes sizes in the output; the application
     /// must feed those back to accept them. External changes rebase a live drag.
+    #[track_caller]
     pub fn size(mut self, size: SplitSize) -> Self {
-        size.validate();
-        self.controlled = Some(size);
+        self.controlled = Some(size.normalized());
         self
     }
+    #[track_caller]
     pub fn min_size(mut self, size: f32) -> Self {
         self.minimum = allocation::dimension(size);
         self
     }
+    #[track_caller]
     pub fn max_size(mut self, size: f32) -> Self {
         self.maximum = Some(allocation::dimension(size));
         self

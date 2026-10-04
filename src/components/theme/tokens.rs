@@ -1,4 +1,4 @@
-use crate::{Color, Padding, Shadow};
+use crate::{Color, FontWeight, Padding, Shadow};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Density {
@@ -42,53 +42,55 @@ pub struct Palette {
     pub on_error: Color,
 }
 impl Palette {
+    /// Neutral gray scale with a single blue accent. Steps follow the usual
+    /// 12-step UI scale: app bg, panel, control, hover, active, border.
     pub fn dark() -> Self {
         Self {
-            background: Color::gray(32),
-            surface: Color::gray(47),
-            surface_raised: Color::gray(57),
-            surface_control: Color::gray(66),
-            hover: Color::gray(80),
-            pressed: Color::gray(54),
-            foreground: Color::gray(230),
-            muted: Color::gray(198),
-            disabled: Color::gray(145),
-            accent: Color::gray(230),
-            on_accent: Color::gray(32),
-            selected: Color::gray(77),
-            on_selected: Color::gray(230),
-            focus: Color::gray(200),
-            border: Color::gray(100),
-            success: Color::rgb(91, 184, 121),
+            background: Color::gray(17),
+            surface: Color::gray(25),
+            surface_raised: Color::gray(34),
+            surface_control: Color::gray(34),
+            hover: Color::gray(42),
+            pressed: Color::gray(49),
+            foreground: Color::gray(238),
+            muted: Color::gray(180),
+            disabled: Color::gray(110),
+            accent: Color::rgb(10, 110, 235),
+            on_accent: Color::WHITE,
+            selected: Color::rgb(13, 40, 71),
+            on_selected: Color::gray(238),
+            focus: Color::rgb(59, 158, 255),
+            border: Color::gray(58),
+            success: Color::rgb(48, 164, 108),
             on_success: Color::BLACK,
-            warning: Color::rgb(230, 177, 70),
+            warning: Color::rgb(255, 197, 61),
             on_warning: Color::BLACK,
-            error: Color::rgb(220, 94, 94),
+            error: Color::rgb(229, 72, 77),
             on_error: Color::BLACK,
         }
     }
     pub fn light() -> Self {
         Self {
-            background: Color::gray(235),
-            surface: Color::gray(250),
-            surface_raised: Color::gray(242),
-            surface_control: Color::gray(230),
-            hover: Color::gray(215),
-            pressed: Color::gray(205),
-            foreground: Color::gray(30),
-            muted: Color::gray(80),
-            disabled: Color::gray(110),
-            accent: Color::rgb(35, 85, 155),
+            background: Color::gray(249),
+            surface: Color::WHITE,
+            surface_raised: Color::gray(252),
+            surface_control: Color::gray(240),
+            hover: Color::gray(232),
+            pressed: Color::gray(224),
+            foreground: Color::gray(32),
+            muted: Color::gray(96),
+            disabled: Color::gray(160),
+            accent: Color::rgb(0, 102, 214),
             on_accent: Color::WHITE,
-            selected: Color::rgb(202, 220, 243),
-            on_selected: Color::gray(30),
-            focus: Color::rgb(25, 65, 125),
-            border: Color::gray(135),
-            success: Color::rgb(25, 110, 55),
+            selected: Color::rgb(230, 244, 254),
+            on_selected: Color::gray(32),
+            focus: Color::rgb(0, 102, 214),
+            border: Color::gray(217),
+            success: Color::rgb(21, 128, 61),
             on_success: Color::WHITE,
-            warning: Color::rgb(135, 85, 0),
+            warning: Color::rgb(161, 98, 7),
             on_warning: Color::WHITE,
-            error: Color::rgb(175, 35, 40),
+            error: Color::rgb(200, 40, 48),
             on_error: Color::WHITE,
         }
     }
@@ -129,10 +131,10 @@ pub struct Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Self {
-            spacing: 12.0,
-            padding: Padding::all(18.0),
-            control_height: 34.0,
-            corner_radius: 7.0,
+            spacing: 8.0,
+            padding: Padding::all(16.0),
+            control_height: 32.0,
+            corner_radius: 5.0,
             border_width: 1.0,
             elevation: Shadow {
                 color: Color::TRANSPARENT,
@@ -144,22 +146,64 @@ impl Default for Metrics {
         }
     }
 }
-/// Sizes only. Font family is chosen by Context::with_font; no weight manager.
+/// Sizes and weights per role. The family is chosen by `Context::with_fonts`
+/// or `RunOptions::with_font_family`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Typography {
     pub small: f32,
     pub body: f32,
     pub heading: f32,
     pub title: f32,
+    pub weights: TypographyWeights,
 }
 impl Default for Typography {
     fn default() -> Self {
         Self {
-            small: 14.0,
-            body: 16.0,
-            heading: 20.0,
+            small: 12.0,
+            body: 14.0,
+            heading: 18.0,
             title: 24.0,
+            weights: TypographyWeights::default(),
         }
+    }
+}
+
+/// Font weight per typographic role. All Regular by default, so a theme looks
+/// the same until a weight is set.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TypographyWeights {
+    pub small: FontWeight,
+    pub body: FontWeight,
+    pub heading: FontWeight,
+    pub title: FontWeight,
+    /// Labels of controls such as buttons, tabs and menu items.
+    pub control: FontWeight,
+    /// The active tab or selected item. `None` follows `control`.
+    pub selected: Option<FontWeight>,
+}
+impl Default for TypographyWeights {
+    fn default() -> Self {
+        Self {
+            small: FontWeight::REGULAR,
+            body: FontWeight::REGULAR,
+            heading: FontWeight::REGULAR,
+            title: FontWeight::REGULAR,
+            control: FontWeight::REGULAR,
+            selected: None,
+        }
+    }
+}
+impl TypographyWeights {
+    pub fn role(&self, role: TypographyRole) -> FontWeight {
+        match role {
+            TypographyRole::Small => self.small,
+            TypographyRole::Body => self.body,
+            TypographyRole::Heading => self.heading,
+            TypographyRole::Title => self.title,
+        }
+    }
+    pub fn selected(&self) -> FontWeight {
+        self.selected.unwrap_or(self.control)
     }
 }
 

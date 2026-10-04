@@ -73,6 +73,7 @@ impl<'a> CollapsingHeader<'a> {
         self.style = Some(style);
         self
     }
+    #[track_caller]
     pub fn header_height(mut self, height: f32) -> Self {
         self.style
             .get_or_insert_with(Default::default)
@@ -117,10 +118,12 @@ impl<'a> CollapsingHeader<'a> {
                 open: self.initial,
                 descendants: Vec::new(),
             });
-        assert!(
-            state.last_frame != ui.context.frame,
-            "duplicate CollapsingHeader id_source in one pass"
-        );
+        if state.last_frame == ui.context.frame {
+            ui.context
+                .report(crate::DiagnosticKind::IdCollision, Some(id), None, || {
+                    "duplicate id: two CollapsingHeaders share one id_source".into()
+                });
+        }
         state.last_frame = ui.context.frame;
         if let Some(open) = &self.controlled {
             state.open = **open;

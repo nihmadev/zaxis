@@ -13,6 +13,7 @@ macro_rules! values { ($($ty:ty),*)=> {$(impl PatchValue for $ty {})*}; }
 values!(
     f32,
     f64,
+    crate::FontWeight,
     usize,
     bool,
     Duration,
@@ -88,6 +89,7 @@ patch!(TableStyleOverride, crate::TableStyle, {
     row_min_height: f32,
     component_spacing: f32,
     font_size: f32,
+    header_font_weight: crate::FontWeight,
     fill: Color,
     header_fill: Color,
     text_color: Color,
@@ -175,11 +177,14 @@ pub struct StyleOverrides {
     pub typography: Option<Typography>,
     pub button: ButtonStyle,
     pub checkbox: CheckboxStyle,
+    pub switch: SwitchStyle,
     pub slider: SliderStyle,
     pub text_edit: TextEditStyle,
     pub window: WindowStyle,
     pub title_bar: TitleBarStyle,
     pub popup: PopupStyle,
+    pub modal: ModalStyle,
+    pub card: CardStyle,
     pub color_picker: ColorPickerStyle,
     pub text: TextStyle,
     pub separator: SeparatorStyle,
@@ -193,6 +198,7 @@ pub struct StyleOverrides {
     pub table: TableStyleOverride,
     pub combo_box: ComboBoxStyleOverride,
     pub scroll: ScrollStyleOverride,
+    pub drag: crate::DragStyle,
     pub motion: Option<crate::MotionStyle>,
     pub background: Option<Color>,
     pub window_fill: Option<Color>,
@@ -274,11 +280,14 @@ impl StyleOverrides {
         }
         style.button.merge(self.button);
         style.checkbox.merge(self.checkbox);
+        style.switch.merge(self.switch);
         style.slider.merge(self.slider);
         style.text_edit.merge(self.text_edit);
         style.window.merge(self.window);
         style.title_bar.merge(self.title_bar);
         style.popup.merge(self.popup);
+        style.modal.merge(self.modal);
+        style.card.merge(self.card);
         style.color_picker.merge(self.color_picker);
         style.text.merge(self.text);
         style.separator.merge(self.separator);
@@ -292,6 +301,7 @@ impl StyleOverrides {
         self.table.apply(&mut style.table);
         self.combo_box.apply(&mut style.combo_box);
         self.scroll.apply(&mut style.scroll);
+        style.drag.merge(&self.drag);
         if let Some(value) = &self.motion {
             style.motion = value.clone();
         }

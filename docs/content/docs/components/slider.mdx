@@ -1,14 +1,17 @@
 ---
 title: Slider
 icon: SlidersHorizontal
-description: f32 ranges, stepping, normalization, capture, keyboard adjustment, and accents.
+description: Numeric ranges for floats and integers, stepping, normalization, capture, keyboard adjustment, and accents.
 ---
 
 ```rust
 ui.slider(&mut gain, 0.0..=1.0);
 ```
 
-The slider is horizontal and binds an `&mut f32`. Use
+The slider is horizontal and binds an `&mut` of `f32` or any [`Numeric`](./number-input.mdx)
+type (`f64`, `i32`, `u8`, ...). Integers step by one and show no decimals without any
+configuration: `ui.slider(&mut count, 0..=10)`. Integer values pass through `f64`, so a
+64-bit value above 2^53 loses its low bits. Use
 `ui.slider_labeled(&mut gain, 0.0..=1.0, "Gain")` for a caption and numeric value.
 
 ## Builders
@@ -26,16 +29,15 @@ let response = ui.add(Slider::new(&mut volume, 0.0..=100.0)
 
 | Method | Default / requirement |
 | --- | --- |
-| `new(&mut f32, RangeInclusive<f32>)` | Finite, ascending endpoints; equal endpoints allowed |
+| `new(&mut T, RangeInclusive<T>)` | Equal endpoints allowed; descending ends are swapped, a non-finite end gives `0..=1` |
 | `id_source(impl Hash)` | Optional override; default is construction call site and occurrence within the scope |
 | `text(text)` | Optional caption and value below the track, including in horizontal rows |
-| `precision(usize)` | 2 decimal places; at most 16 |
+| `precision(usize)` | 2 decimal places for floats, none for integers; at most 16 |
 | `suffix(text)` | Empty; e.g. `"%"` or `" minutes"` |
-| `step(f32)` | Default continuous; explicit step must be finite and positive |
+| `step(T)` | Floats continuous, integers 1; a step that is not positive is ignored |
 | `enabled(bool)` | `true` |
-| `disabled(bool)` | Inverse of `enabled` |
-| `width(f32)` | 200 logical pixels; finite and positive; limited by available width |
-| `status(SliderStatus)` | `Normal` |
+| `width(f32)` | 200 logical pixels; a value that is not finite and positive is ignored; limited by available width |
+| `status(SemanticStatus)` | `Normal`; `SliderStatus` is an alias of `SemanticStatus` |
 | `color(Color)` | Override the enabled status accent |
 | `hover_style(HoverStyle)` | Theme hover preset for the thumb; see [Hover](../style.mdx#hover) |
 
@@ -44,8 +46,8 @@ The response rectangle covers the interactive track. The track is 6 pixels high 
 radius is at most 8 pixels, shrinking for narrow allocations. There is no vertical
 slider builder.
 
-Invalid ranges, nonpositive/nonfinite steps, and nonpositive/nonfinite widths panic
-when constructing the builder.
+Invalid ranges, steps and widths never panic: they are normalized and reported as
+[diagnostics](../diagnostics.mdx#value-normalization).
 
 ## Normalization
 

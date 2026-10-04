@@ -20,7 +20,7 @@ let response = ui.add(Button::new("Apply")
     .enabled(dirty)
     .min_size(vec2(96.0, 38.0))
     .padding(Padding::symmetric(14.0, 8.0))
-    .rounding(CornerRadius::all(4.0))
+    .corner_radius(CornerRadius::all(4.0))
     .border(Border::new(1.0, Color::gray(100))));
 ```
 
@@ -33,9 +33,13 @@ let response = ui.add(Button::new("Apply")
 | `padding(Padding)` | `Style::button_padding` |
 | `rounding(CornerRadius)` | Radius 5 on all corners; independent of `Style::rounding` |
 | `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
+| `variant(ButtonVariant)` | `Surface`; `Solid` (accent fill), `Soft` (translucent tint), `Outline`, `Ghost`. Explicit `style`, `border` and `rounding` still win |
 | `selected(bool)` | `false`; selected buttons keep the pressed fill |
 | `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
 | `hover_style(HoverStyle)` | Theme hover preset; supports fill, shadow, gradient and custom combinations |
+
+Variants only change colors: layout, input and focus behavior are identical. Use `Solid`
+for the single primary action in a view and `Ghost` for dense toolbars.
 
 The desired size is text size plus padding, enlarged to `min_size` and at least
 24 × 24. Allocated width is limited by available layout width, even when that width
@@ -52,6 +56,6 @@ Disabled buttons block pointer fallthrough, cannot receive keyboard focus, and d
 not activate. Their fill uses `Style::button_fill` and their caption uses
 `Style::muted_text`. Hover uses the [hover preset](../style.mdx#hover); pressing
 uses `Style::button_pressed`. Keyboard focus uses `Style::focus_border` instead of
-the builder border. Mouse focus does not add this ring.
+the builder border; there is no extra outer ring. Validation status still adds its soft ring.
 
 Use [IDs and retained state](../ids.mdx) for dynamic captions and repeated buttons.

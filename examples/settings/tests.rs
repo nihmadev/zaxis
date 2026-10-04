@@ -29,7 +29,7 @@ fn profile_interaction_cache() {
         let start = Instant::now();
         for frame in 0..200 {
             match interaction {
-                "slider" => model.draft.autosave_minutes = (frame % 30 + 1) as f32,
+                "slider" => model.draft.autosave_minutes = (frame % 30 + 1) as u32,
                 "tabs" => model.section = Section::ALL[frame % 3],
                 "drag" => {
                     context.on_window_event(&WindowEvent::CursorMoved {
@@ -99,8 +99,8 @@ fn profile_blur_drag() {
         renderer.adapter_info(),
         window.scale_factor()
     );
-    for radius in [0.0, 1.0, 12.0, 32.0] {
-        model.draft.blur_enabled = radius > 0.0;
+    for radius in [0, 1, 12, 32] {
+        model.draft.blur_enabled = radius > 0;
         model.draft.blur_radius = radius;
         let mut timings = Vec::new();
         let mut cpu = 0.0;
@@ -135,22 +135,22 @@ fn profile_blur_drag() {
 #[test]
 fn apply_cancel_and_defaults_keep_committed_values_separate() {
     let mut model = SettingsModel::default();
-    model.draft.volume = 80.0;
+    model.draft.volume = 80;
     model.draft.preview_color = Color::rgb(12, 34, 56);
     model.draft.autosave = false;
     assert!(model.dirty());
-    assert_eq!(model.applied.volume, 50.0);
+    assert_eq!(model.applied.volume, 50);
     model.apply();
     assert!(!model.dirty());
-    model.draft.volume = 20.0;
+    model.draft.volume = 20;
     model.draft.preview_color = Color::rgb(255, 0, 0);
     model.cancel();
-    assert_eq!(model.draft.volume, 80.0);
+    assert_eq!(model.draft.volume, 80);
     assert_eq!(model.draft.preview_color, Color::rgb(12, 34, 56));
     assert!(!model.dirty());
     model.reset();
     assert_eq!(model.draft, Settings::default());
-    assert_eq!(model.applied.volume, 80.0);
+    assert_eq!(model.applied.volume, 80);
     assert!(model.dirty());
 }
 
@@ -181,6 +181,13 @@ fn all_sections_fit_the_minimum_viewport_at_two_dpi_scales() {
                 );
             }
             assert!(!model.dirty());
+            // Card frames settle after one scheduled redraw; then the page must idle.
+            for _ in 0..3 {
+                if !context.needs_repaint() {
+                    break;
+                }
+                context.run(|context| show_ui(context, &mut model));
+            }
             let revision = context.draw_data().revision;
             context.run(|context| show_ui(context, &mut model));
             assert_eq!(context.draw_data().revision, revision);
@@ -231,17 +238,17 @@ fn disabling_dependencies_preserves_draft_values_across_sections() {
     context.set_viewport(PhysicalSize::new(820, 780), 1.0);
     let mut model = SettingsModel::default();
     model.draft.autosave = false;
-    model.draft.autosave_minutes = 17.0;
+    model.draft.autosave_minutes = 17;
     model.draft.notifications = false;
     model.draft.sound = true;
-    model.draft.volume = 85.0;
+    model.draft.volume = 85;
     for section in Section::ALL {
         model.section = section;
         context.run(|context| show_ui(context, &mut model));
     }
-    assert_eq!(model.draft.autosave_minutes, 17.0);
+    assert_eq!(model.draft.autosave_minutes, 17);
     assert!(model.draft.sound);
-    assert_eq!(model.draft.volume, 85.0);
+    assert_eq!(model.draft.volume, 85);
     assert_eq!(model.applied, Settings::default());
 }
 
@@ -261,7 +268,7 @@ fn blur_updates_actual_chrome_and_cancel_restores_it() {
             .count(),
         1
     );
-    model.draft.blur_radius = 24.0;
+    model.draft.blur_radius = 24;
     context.run(|context| show_ui(context, &mut model));
     assert_eq!(context.style().blur_radius, 24.0);
     model.apply();
@@ -280,4 +287,42 @@ fn blur_updates_actual_chrome_and_cancel_restores_it() {
         .commands
         .iter()
         .any(|c| c.blur == Some(24.0)));
+}
+
+#[test]
+fn exit_asks_only_for_unapplied_changes_and_waits_for_the_answer() {
+    use zaxis::winit::keyboard::KeyCode;
+    let mut context = Context::new();
+    context.set_viewport(PhysicalSize::new(1000, 900), 1.0);
+    let mut model = SettingsModel::default();
+    let mut frames = |context: &mut Context, model: &mut SettingsModel| {
+        for _ in 0..4 {
+            context.run(|context| show_ui(context, model));
+        }
+    };
+    let mut press = |context: &mut Context, model: &mut SettingsModel, key| {
+        context.on_key_event(key, ElementState::Pressed, false);
+        context.run(|context| show_ui(context, model));
+        context.on_key_event(key, ElementState::Released, false);
+        frames(context, model);
+    };
+    frames(&mut context, &mut model);
+    assert!(model.request_close(), "nothing unapplied: exit at once");
+    model.draft.autosave_minutes += 1;
+    model.draft.confirm_exit = false;
+    assert!(model.request_close(), "confirmation is switched off");
+    model.draft.confirm_exit = true;
+    assert!(!model.request_close(), "unapplied changes ask first");
+    frames(&mut context, &mut model);
+    assert!(!model.exit_confirmed);
+    // Escape cancels and nothing exits.
+    press(&mut context, &mut model, KeyCode::Escape);
+    assert!(!model.exit_confirm_open && !model.exit_confirmed);
+    // Focus starts on Cancel; Tab reaches Exit, Enter confirms exactly once.
+    assert!(!model.request_close());
+    frames(&mut context, &mut model);
+    press(&mut context, &mut model, KeyCode::Tab);
+    press(&mut context, &mut model, KeyCode::Enter);
+    assert!(model.exit_confirmed);
+    assert!(!model.exit_confirm_open);
 }

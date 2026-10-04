@@ -1,4 +1,4 @@
-use crate::{Border, Color, CornerRadius, Gradient, Padding, Shadow, Vec2};
+use crate::{Border, Color, CornerRadius, FontWeight, Gradient, Padding, Shadow, Vec2};
 
 /// Missing properties inherit; transparent/zero/NONE are ordinary explicit values.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -101,6 +101,7 @@ pub struct ButtonStyle {
     pub padding: Option<Padding>,
     pub min_size: Option<Vec2>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<FontWeight>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CheckboxStyle {
@@ -109,6 +110,15 @@ pub struct CheckboxStyle {
     pub size: Option<f32>,
     pub gap: Option<f32>,
     pub indicator_width: Option<f32>,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SwitchStyle {
+    pub track: ControlStyle,
+    pub thumb: ControlStyle,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub gap: Option<f32>,
+    pub thumb_inset: Option<f32>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SliderStyle {
@@ -125,6 +135,7 @@ pub struct TextEditStyle {
     pub width: Option<f32>,
     pub height: Option<f32>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<FontWeight>,
     pub padding: Option<Padding>,
     pub rounding: Option<CornerRadius>,
     pub placeholder: Option<Color>,
@@ -134,6 +145,10 @@ pub struct TextEditStyle {
     pub surface: ControlStyle,
     pub caret: Option<Color>,
     pub selection_foreground: Option<Color>,
+    /// Padding of a multi-line field (`TextEdit::multiline`); single-line fields use `padding`.
+    pub area_padding: Option<Padding>,
+    /// Minimum height of a multi-line field with default sizing.
+    pub area_min_height: Option<f32>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WindowStyle {
@@ -142,6 +157,7 @@ pub struct WindowStyle {
     pub body: SurfaceStyle,
     pub title: SurfaceStyle,
     pub title_font_size: Option<f32>,
+    pub title_font_weight: Option<FontWeight>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TitleBarStyle {
@@ -150,6 +166,7 @@ pub struct TitleBarStyle {
     pub height: Option<f32>,
     pub button_width: Option<f32>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<FontWeight>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PopupStyle {
@@ -157,6 +174,12 @@ pub struct PopupStyle {
     pub padding: Option<Padding>,
     pub gap: Option<f32>,
     pub spacing: Option<f32>,
+}
+/// Framed content container: fill, hairline border, radius and optional shadow.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CardStyle {
+    pub surface: SurfaceStyle,
+    pub padding: Option<Padding>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ColorPickerStyle {
@@ -175,6 +198,7 @@ pub struct TextStyle {
     pub color: Option<Color>,
     pub muted: Option<Color>,
     pub size: Option<f32>,
+    pub weight: Option<FontWeight>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SeparatorStyle {
@@ -206,15 +230,17 @@ macro_rules! merge_fields {
         }
     };
 }
-merge_fields!(ButtonStyle; padding,min_size,font_size; surface);
+merge_fields!(ButtonStyle; padding,min_size,font_size,font_weight; surface);
 merge_fields!(CheckboxStyle; size,gap,indicator_width; body,indicator);
+merge_fields!(SwitchStyle; width,height,gap,thumb_inset; track,thumb);
 merge_fields!(SliderStyle; width,height,track_height,thumb_radius; track,fill,thumb);
-merge_fields!(TextEditStyle; width,height,font_size,padding,rounding,placeholder,selection,cursor_width,blink_interval,caret,selection_foreground; surface);
-merge_fields!(WindowStyle; padding,title_height,title_font_size; body,title);
-merge_fields!(TitleBarStyle; height,button_width,font_size; surface,controls);
+merge_fields!(TextEditStyle; width,height,font_size,font_weight,padding,rounding,placeholder,selection,cursor_width,blink_interval,caret,selection_foreground,area_padding,area_min_height; surface);
+merge_fields!(WindowStyle; padding,title_height,title_font_size,title_font_weight; body,title);
+merge_fields!(TitleBarStyle; height,button_width,font_size,font_weight; surface,controls);
 merge_fields!(PopupStyle; padding,gap,spacing; surface);
+merge_fields!(CardStyle; padding; surface);
 merge_fields!(ColorPickerStyle; width,row_height,palette_height,hue_height,gap,field_gap,rounding; body,field);
-merge_fields!(TextStyle; color,muted,size; );
+merge_fields!(TextStyle; color,muted,size,weight; );
 merge_fields!(SeparatorStyle; color,thickness,spacing,inset; );
 merge_fields!(LoaderStyle; color,size,stroke; );
 merge_fields!(ProgressStyle; size; track,fill);

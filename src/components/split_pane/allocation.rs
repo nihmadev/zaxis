@@ -16,12 +16,10 @@ pub(super) fn key(panels: &[SplitPanel], prefs: &[SplitSize], available: f32) ->
     crate::Id::new((available.to_bits(), sizes))
 }
 
+/// A non-negative length; invalid values become zero.
+#[track_caller]
 pub(crate) fn dimension(n: f32) -> f32 {
-    assert!(
-        n.is_finite() && n >= 0.0,
-        "split dimensions must be finite and nonnegative"
-    );
-    n
+    crate::components::sanitize::length("SplitPane size", n)
 }
 pub(super) fn limits(p: &SplitPanel) -> (f64, f64) {
     let min = dimension(p.minimum) as f64;
@@ -35,6 +33,8 @@ pub(super) fn limits(p: &SplitPanel) -> (f64, f64) {
 /// Bounded water filling in f64. Container fit outranks infeasible limits.
 pub(super) fn resolve(panels: &[SplitPanel], prefs: &[SplitSize], available: f32) -> Vec<f32> {
     let total = dimension(available) as f64;
+    let prefs: Vec<SplitSize> = prefs.iter().map(|pref| pref.normalized()).collect();
+    let prefs = prefs.as_slice();
     let mins: Vec<_> = panels.iter().map(|p| limits(p).0).collect();
     let maxs: Vec<_> = panels.iter().map(|p| limits(p).1).collect();
     let min_sum: f64 = mins.iter().sum();
@@ -48,10 +48,9 @@ pub(super) fn resolve(panels: &[SplitPanel], prefs: &[SplitSize], available: f32
         .iter()
         .enumerate()
         .map(|(i, pref)| {
-            pref.validate();
-            let desired = match pref {
-                SplitSize::Pixels(n) => *n as f64,
-                SplitSize::Fraction(n) => *n as f64 * total,
+            let desired = match pref.normalized() {
+                SplitSize::Pixels(n) => n as f64,
+                SplitSize::Fraction(n) => n as f64 * total,
                 SplitSize::Weight(_) => 0.0,
             };
             desired.clamp(mins[i], maxs[i])

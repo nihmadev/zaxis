@@ -40,6 +40,7 @@ impl ColorPicker<'_> {
                         buffer: EditBuffer {
                             cursor: text.len(),
                             anchor: 0,
+                            ..Default::default()
                         },
                         text,
                     });
@@ -62,6 +63,7 @@ impl ColorPicker<'_> {
                     buffer: EditBuffer {
                         cursor: text.len(),
                         anchor: 0,
+                            ..Default::default()
                     },
                     text,
                 });
@@ -226,14 +228,18 @@ impl ColorPicker<'_> {
                 ["R ", "G ", "B "][field]
             };
             let size = crate::components::font_size(style.text_edit_font_size);
-            let height = ui.context.measure_text("", size, f32::INFINITY).y;
+            let weight = style.typography.weights.body;
+            let height = ui.context.measure_text("", size, weight, f32::INFINITY).y;
             let cursor_position = Vec2::new(
                 rect.min.x + style.text_edit_padding.left,
                 rect.center().y - height * 0.5,
             );
             let rendered = format!("{prefix}{text}");
-            let position =
-                cursor_position + Vec2::new(0.0, ui.context.centered_line_offset(&rendered, size));
+            let position = cursor_position
+                + Vec2::new(
+                    0.0,
+                    ui.context.centered_line_offset(&rendered, size, weight),
+                );
             let preset = self
                 .hover_style
                 .or(ui.hover_style)
@@ -283,6 +289,7 @@ impl ColorPicker<'_> {
                 text: rendered,
                 position,
                 size,
+                weight,
                 wrap_width: f32::INFINITY,
                 color: hover.text_color,
             }];
@@ -292,6 +299,7 @@ impl ColorPicker<'_> {
                     .measure_text(
                         &format!("{prefix}{}", &edit.text[..edit.buffer.cursor]),
                         size,
+                        weight,
                         f32::INFINITY,
                     )
                     .x;

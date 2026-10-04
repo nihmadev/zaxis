@@ -1,5 +1,6 @@
 //! Typed themes resolve into the existing Style consumed by immediate mode UI.
 mod controls;
+mod modal;
 mod overrides;
 pub mod painter;
 mod palette;
@@ -7,6 +8,7 @@ mod resolve;
 mod tokens;
 
 pub use controls::*;
+pub use modal::ModalStyle;
 pub use overrides::*;
 pub use painter::{ControlPaint, PaintMode, PaintPart, Painter};
 pub use tokens::*;

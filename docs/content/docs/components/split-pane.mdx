@@ -1,5 +1,6 @@
 ---
 title: SplitPane
+icon: Columns2
 description: Stable, resizable panels with single-pass content and adjacent resizing.
 ---
 
@@ -30,7 +31,7 @@ Use `SplitPane::horizontal(id)` / `vertical(id)` for builders: `panels`, `panel`
 `size`, `style`, `gap`, `handle`, `resizable`, `reset` and `double_click_reset`.
 `size(Vec2)` reserves at most the remaining Ui rectangle. Empty splits still
 reserve their requested rectangle; one panel takes the entire interior.
-Duplicate IDs, unknown content IDs and repeated content builds panic. Content
+Duplicate IDs, unknown content IDs and repeated content builds are reported as [diagnostics](../diagnostics.mdx); the mistaken content is laid out in an empty area. Content
 may be built in any order; unbuilt panels still reserve and paint their surface.
 All types are exported from `components`, the crate root and `widgets`.
 
@@ -46,8 +47,8 @@ pass. `Pixels` is fixed, `Fraction` requests a fraction of panel space excluding
 gaps, and `Weight` receives remaining space (default: 1). Fractions may exceed 1;
 the shrink rule resolves overcommit. All dimensions, fractions, radii and style
 measurements must be finite and nonnegative. Weights must be finite and positive.
-NaN, infinity, negative values and zero weights panic, including direct struct
-field assignments. Omitted maximum means unbounded; `minimum > maximum` raises
+NaN, infinity and negative values become zero and a bad weight becomes one, including
+direct struct field assignments; each is reported as a diagnostic. Omitted maximum means unbounded; `minimum > maximum` raises
 maximum to minimum. Shadow spread may be signed, but must be finite.
 
 The same allocator is used for initialization, viewport changes and reset:

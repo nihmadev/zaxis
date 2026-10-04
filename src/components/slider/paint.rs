@@ -1,6 +1,6 @@
 use super::*;
 use crate::components::{appearance::Appearance, theme::*};
-impl Slider<'_> {
+impl<T: Numeric> Slider<'_, T> {
     pub(super) fn paint_parts(
         &self,
         ui: &mut Ui<'_>,
@@ -14,20 +14,15 @@ impl Slider<'_> {
     ) -> Color {
         let rect = response.rect;
         let mut state = ControlState::from_response(response, false);
-        state.status = match self.status {
-            SliderStatus::Normal => SemanticStatus::Normal,
-            SliderStatus::Success => SemanticStatus::Success,
-            SliderStatus::Warning => SemanticStatus::Warning,
-            SliderStatus::Error => SemanticStatus::Error,
-        };
+        state.status = self.status;
         let accent = if !self.enabled {
             style.disabled_text
         } else {
             self.color.unwrap_or(match self.status {
-                SliderStatus::Normal => style.accent,
-                SliderStatus::Success => style.success,
-                SliderStatus::Warning => style.warning,
-                SliderStatus::Error => style.error,
+                SemanticStatus::Normal => style.accent,
+                SemanticStatus::Success => style.success,
+                SemanticStatus::Warning => style.warning,
+                SemanticStatus::Error => style.error,
             })
         };
         let thickness = component
@@ -52,7 +47,7 @@ impl Slider<'_> {
         normal.rounding = CornerRadius::all(thickness * 0.5);
         normal.blur = self.blur.unwrap_or(0.0);
         normal.opacity = style.opacity;
-        let track_style = ui.animate_control(
+        let mut track_style = ui.animate_control(
             Response {
                 id: response.id.with("track"),
                 ..response
@@ -64,6 +59,7 @@ impl Slider<'_> {
             normal,
             style.button_hovered,
         );
+        track_style.ring = None;
         normal.fill = crate::Gradient::new(accent, accent);
         let mut fill_style = ui.animate_control(
             Response {
@@ -77,6 +73,7 @@ impl Slider<'_> {
             normal,
             accent,
         );
+        fill_style.ring = None;
         normal.rounding = CornerRadius::all(radius);
         normal.border = style.border;
         normal.shadow = style.elevation;
@@ -104,7 +101,7 @@ impl Slider<'_> {
                 part,
                 style: appearance.surface(),
                 state,
-                value: *self.value,
+                value: self.value.to_f64() as f32,
             };
             if let Some(h) = &self.painter {
                 if h.mode != PaintMode::After {
@@ -153,14 +150,6 @@ impl Slider<'_> {
                     h.run(&mut body, ui.clip_rect(), info);
                 }
             }
-        }
-        if state.focus {
-            body.push(Paint::Shape(
-                Shape::rect(rect, Color::TRANSPARENT)
-                    .corner_radius(style.rounding)
-                    .border(style.focus_border)
-                    .into(),
-            ));
         }
         ui.context
             .paint(response.id.with("body"), ui.window, ui.clip, body);

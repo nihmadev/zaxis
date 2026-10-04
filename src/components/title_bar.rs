@@ -68,6 +68,9 @@ impl TitleBar {
         title.opacity = style.opacity;
         title.apply(component.surface);
         let title_font = super::font_size(component.font_size.unwrap_or(style.font_size));
+        let title_weight = component
+            .font_weight
+            .unwrap_or(style.typography.weights.body);
         let mut paint = Vec::new();
         title.paint_shadow(rect, title.rounding, &mut paint);
         title.paint_body(rect, title.rounding, &style, title.blur, &mut paint);
@@ -75,6 +78,7 @@ impl TitleBar {
             text: self.title,
             position: rect.min + vec2(16.0, (height - title_font * 1.25) * 0.5),
             size: title_font,
+            weight: title_weight,
             wrap_width: (controls - rect.min.x - 32.0).max(0.0),
             color: title.text_color,
         });

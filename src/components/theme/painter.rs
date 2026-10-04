@@ -48,6 +48,7 @@ impl Painter<'_> {
             text: text.into(),
             position,
             size,
+            weight: crate::FontWeight::REGULAR,
             wrap_width: f32::INFINITY,
             color,
         });

@@ -28,11 +28,24 @@ Metrics exposes spacing, padding, control height, corner radius, border width,
 elevation (Shadow), background backdrop blur, opacity and blur opacity.
 Global blur applies to Root, Window and popup backgrounds. Controls and list rows
 remain opaque and sharp; a control blur requires an explicit builder or surface override.
-Typography supplies small/body/heading/title sizes. Use
-`Text::typography(TypographyRole::Heading)`; ordinary text keeps Style::font_size.
-The existing text engine chooses its primary font at Context::with_font and uses
-its current Unicode fallbacks. Theme provides no family/weight switch or runtime
-font manager.
+Typography supplies small/body/heading/title sizes and, in `Typography::weights`, a
+`FontWeight` per role plus `control` (labels of Button, tabs, menus) and an optional
+`selected` (active tab). Use `Text::typography(TypographyRole::Heading)`; ordinary text
+keeps Style::font_size and the body weight. Every weight defaults to Regular, so a theme
+looks unchanged until a weight is set:
+
+```rust
+theme.typography.weights.heading = FontWeight::SEMIBOLD;
+theme.typography.weights.control = FontWeight::MEDIUM;
+```
+
+Components override their weight through typed styles: `TextStyle::weight`,
+`ButtonStyle::font_weight` (variants and semantic status styles merge into it),
+`TextEditStyle::font_weight`, `WindowStyle::title_font_weight`,
+`TitleBarStyle::font_weight`, `TableStyle::header_font_weight` and
+`DisclosureStyle::font_weight` (tree rows and collapsing headers). See
+[Font weights](./components/text.mdx#font-weights) for the order. The family itself is
+chosen by `Context::with_fonts` or `RunOptions::with_font_family`; a theme cannot switch it.
 
 The initial audit found these separate dependencies. Theme now resolves values
 into the same fields used by the existing public components:
@@ -51,7 +64,7 @@ into the same fields used by the existing public components:
 | ColorPicker | fixed row/editor geometry, button-like fields | color_picker.body/field and metrics; RGB/HSV colors stay accurate |
 | ScrollArea | separate grey thumbs/hints | resolved scroll and scroll.thumb states |
 | Grid/Table | separate fills/stripes/selection/cell metrics | resolved grid/table, grid surface, table row/header surfaces |
-| Text/Separator | text/border color; fixed separator thickness | text/ separator typed overrides |
+| Text/Separator | text/border color; fixed separator thickness; Regular weight | text/ separator typed overrides; text weight from `TextStyle` or typography role |
 | Loader/Progress | motion size, text-colored progress | loader, progress.track/fill, accent, existing scheduler |
 | Tabs/SelectionIndicator | selected Button, text-colored indicator | Button selected layer, independent accent indicator |
 | SplitPane | existing handle palette/panel surfaces | resolved split colors/spacing; explicit SplitSurface remains |
@@ -205,4 +218,5 @@ ordinary Button type annotations; a painted button carries its callback type.
 Checkbox/Slider retain their borrowed lifetimes. Compatibility exports remain.
 
 Run `cargo run --example themes` to compare actual controls, density, overrides,
-paint hook, selection, focus and overlays.
+paint hook, selection, focus, overlays and the font weight scale (SemiBold headings,
+Medium captions, Cyrillic and emoji in every weight).

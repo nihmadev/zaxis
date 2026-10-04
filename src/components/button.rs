@@ -13,12 +13,14 @@ pub struct Button<F = fn(&mut crate::Painter<'_>, crate::ControlPaint)> {
     text: String,
     id: Option<Id>,
     enabled: bool,
+    width: Option<f32>,
     min_size: Vec2,
     padding: Option<Padding>,
     rounding: Option<CornerRadius>,
     border: Option<Border>,
     selected: bool,
     status: crate::SemanticStatus,
+    variant: super::button_variant::ButtonVariant,
     blur: Option<f32>,
     hover_style: Option<HoverStyle>,
     style: super::theme::ButtonStyle,
@@ -31,12 +33,14 @@ impl Button {
             text: text.into(),
             id: None,
             enabled: true,
+            width: None,
             min_size: Vec2::ZERO,
             padding: None,
             rounding: None,
             border: None,
             selected: false,
             status: Default::default(),
+            variant: Default::default(),
             blur: None,
             hover_style: None,
             style: Default::default(),
@@ -58,12 +62,14 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
             text: self.text,
             id: self.id,
             enabled: self.enabled,
+            width: self.width,
             min_size: self.min_size,
             padding: self.padding,
             rounding: self.rounding,
             border: self.border,
             selected: self.selected,
             status: self.status,
+            variant: self.variant,
             blur: self.blur,
             hover_style: self.hover_style,
             style: self.style,
@@ -85,24 +91,39 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
         self.status = status;
         self
     }
+    /// Emphasis preset; explicit `style`, `border` and `rounding` still win.
+    pub fn variant(mut self, variant: super::button_variant::ButtonVariant) -> Self {
+        self.variant = variant;
+        self
+    }
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
     }
-    pub fn corner_radius(self, radius: impl Into<CornerRadius>) -> Self {
-        self.rounding(radius.into())
+    pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.rounding = Some(radius.into());
+        self
     }
+    /// Exact width in logical pixels, limited by the available layout width.
+    #[track_caller]
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = super::sanitize::positive("Button::width", width).or(self.width);
+        self
+    }
+    #[track_caller]
     pub fn min_size(mut self, size: Vec2) -> Self {
-        self.min_size = size;
+        self.min_size = super::sanitize::size("Button::min_size", size).unwrap_or(self.min_size);
         self
     }
     pub fn padding(mut self, padding: Padding) -> Self {
         self.padding = Some(padding);
         self
     }
-    pub fn rounding(mut self, rounding: CornerRadius) -> Self {
-        self.rounding = Some(rounding);
-        self
+    #[deprecated(
+        note = "use `.corner_radius(..)`; one name for the corner radius of every component"
+    )]
+    pub fn rounding(self, rounding: CornerRadius) -> Self {
+        self.corner_radius(rounding)
     }
     pub fn border(mut self, border: Border) -> Self {
         self.border = Some(border);
@@ -119,26 +140,63 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
     }
 }
 
+impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
+    /// Size the button takes when nothing constrains it: text plus padding, never
+    /// below its minimum sizes. Matches what `ui` allocates before clamping.
+    pub(crate) fn natural_size(&self, ui: &mut Ui<'_>) -> Vec2 {
+        let style = ui.style().clone();
+        let mut component = style.button;
+        component.merge(self.variant.style(&style));
+        component.merge(self.style);
+        let size = font_size(component.font_size.unwrap_or(style.font_size));
+        let weight = component
+            .font_weight
+            .unwrap_or(style.typography.weights.control);
+        let text_size =
+            ui.context
+                .measure_text(visible_label(&self.text), size, weight, f32::INFINITY);
+        let padding = self
+            .padding
+            .or(component.padding)
+            .unwrap_or(style.button_padding);
+        let mut size = (text_size + padding.size())
+            .max(self.min_size)
+            .max(component.min_size.unwrap_or(Vec2::ZERO))
+            .max(Vec2::new(24.0, style.control_height));
+        if let Some(width) = self.width {
+            size.x = width;
+        }
+        size
+    }
+}
+
 impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
     fn ui(mut self, ui: &mut Ui<'_>) -> Response {
         self.enabled &= ui.is_enabled();
         let style = ui.style().clone();
         let mut component = style.button;
+        component.merge(self.variant.style(&style));
         component.merge(self.style);
         let size = font_size(component.font_size.unwrap_or(style.font_size));
+        let weight = component
+            .font_weight
+            .unwrap_or(style.typography.weights.control);
         let id = ui
             .scope
             .with(("button", self.id.unwrap_or_else(|| Id::new(&self.text))));
         let label = visible_label(&self.text);
-        let text_size = ui.context.measure_text(label, size, f32::INFINITY);
+        let text_size = ui.context.measure_text(label, size, weight, f32::INFINITY);
         let padding = self
             .padding
             .or(component.padding)
             .unwrap_or(style.button_padding);
-        let desired_size = (text_size + padding.size())
+        let mut desired_size = (text_size + padding.size())
             .max(self.min_size)
             .max(component.min_size.unwrap_or(Vec2::ZERO))
             .max(Vec2::new(24.0, style.control_height));
+        if let Some(width) = self.width {
+            desired_size.x = width;
+        }
         let rect = ui.allocate_space(Vec2::new(
             desired_size.x.min(ui.available_width()),
             desired_size.y.min(ui.available_height()),
@@ -293,7 +351,7 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
         }
         .inset(rect)
         .intersect(rect);
-        let optical = ui.context.centered_line_offset(label, size);
+        let optical = ui.context.centered_line_offset(label, size, weight);
         ui.context.paint(
             id.with("caption"),
             ui.window,
@@ -302,6 +360,7 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
                 text: label.to_owned(),
                 position: rect.center() - text_size * 0.5 + Vec2::new(0.0, optical),
                 size,
+                weight,
                 wrap_width: f32::INFINITY,
                 color: super::appearance::alpha(hover.text_color, hover.opacity),
             }],
@@ -311,8 +370,9 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
 }
 
 impl Ui<'_> {
+    #[deprecated(note = "use `ui.add(Button::new(text).enabled(enabled))`")]
     pub fn button_enabled(&mut self, enabled: bool, text: impl Into<String>) -> Response {
-        self.add_enabled(enabled, Button::new(text))
+        self.add(Button::new(text).enabled(enabled))
     }
     pub fn selectable(&mut self, selected: bool, text: impl Into<String>) -> Response {
         self.add(Button::new(text).selected(selected))
@@ -329,35 +389,6 @@ impl Ui<'_> {
             response.changed = true;
         }
         response
-    }
-    /// Equal-width tabs with identities derived from their values.
-    pub fn tab_bar<T: PartialEq + Hash, L: Into<String>>(
-        &mut self,
-        selected: &mut T,
-        tabs: impl IntoIterator<Item = (T, L)>,
-    ) -> Vec<Response> {
-        let tabs: Vec<_> = tabs.into_iter().collect();
-        let width = ((self.available_width()
-            - self.style().spacing * tabs.len().saturating_sub(1) as f32)
-            / tabs.len().max(1) as f32)
-            .max(0.0);
-        self.horizontal(|ui| {
-            tabs.into_iter()
-                .map(|(value, text)| {
-                    let mut response = ui.add(
-                        Button::new(text)
-                            .id_source(&value)
-                            .selected(*selected == value)
-                            .min_size(Vec2::new(width, 38.0)),
-                    );
-                    if response.clicked() && *selected != value {
-                        *selected = value;
-                        response.changed = true;
-                    }
-                    response
-                })
-                .collect()
-        })
     }
     pub fn button(&mut self, text: impl Into<String>) -> Response {
         self.add(Button::new(text))

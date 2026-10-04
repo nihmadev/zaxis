@@ -14,7 +14,7 @@ impl SplitPane {
         ui.layout_item(|ui| self.show_content(ui, build))
     }
     fn show_content<R>(
-        self,
+        mut self,
         ui: &mut Ui<'_>,
         build: impl FnOnce(&mut SplitUi<'_, '_>) -> R,
     ) -> SplitOutput<R> {
@@ -26,31 +26,27 @@ impl SplitPane {
         if let Some(handle) = self.handle {
             style.handle = handle;
         }
-        for n in [
-            style.gap,
-            style.spacing,
-            style.keyboard_step,
-            style.keyboard_large_step,
-        ] {
-            allocation::dimension(n);
-        }
-        paint::validate_surface(style.container);
-        paint::validate_surface(style.panel);
-        paint::validate_handle(style.handle);
+        style.gap = allocation::dimension(style.gap);
+        style.spacing = allocation::dimension(style.spacing);
+        style.keyboard_step = allocation::dimension(style.keyboard_step);
+        style.keyboard_large_step = allocation::dimension(style.keyboard_large_step);
+        style.container = paint::normalized_surface(style.container);
+        style.panel = paint::normalized_surface(style.panel);
+        style.handle = paint::normalized_handle(style.handle);
         let mut unique = std::collections::HashSet::new();
-        for p in &self.panels {
-            assert!(unique.insert(p.id), "duplicate SplitPanel Id");
-            p.initial.validate();
-            if let Some(size) = p.controlled {
-                size.validate();
+        for p in &mut self.panels {
+            if !unique.insert(p.id) {
+                ui.context
+                    .report(crate::DiagnosticKind::IdCollision, Some(p.id), None, || {
+                        "duplicate SplitPanel id".into()
+                    });
             }
-            allocation::limits(p);
-            if let Some(surface) = p.surface {
-                paint::validate_surface(surface);
-            }
-            if let Some(handle) = p.handle {
-                paint::validate_handle(handle);
-            }
+            p.initial = p.initial.normalized();
+            p.controlled = p.controlled.map(SplitSize::normalized);
+            p.minimum = allocation::dimension(p.minimum);
+            p.maximum = p.maximum.map(allocation::dimension);
+            p.surface = p.surface.map(paint::normalized_surface);
+            p.handle = p.handle.map(paint::normalized_handle);
         }
         let available = Vec2::new(ui.available_width(), ui.available_height());
         let rect = ui.allocate_space(self.size.unwrap_or(available).min(available));
@@ -219,18 +215,30 @@ impl SplitUi<'_, '_> {
         self.panel_id(Id::new(source), build)
     }
     pub fn panel_id<R>(&mut self, id: Id, build: impl FnOnce(&mut Ui<'_>) -> R) -> R {
-        let i = self
-            .specs
-            .iter()
-            .position(|p| p.id == id)
-            .expect("unknown SplitPanel Id");
-        assert!(
-            self.built.insert(id),
-            "SplitPanel content must execute at most once per pass"
-        );
-        let bounds = self.outputs[i].content_bounds;
+        let known = self.specs.iter().position(|p| p.id == id);
+        let unique = known.is_some() && self.built.insert(id);
+        if !unique {
+            let (kind, message) = if known.is_none() {
+                (crate::DiagnosticKind::InvalidUsage, "unknown SplitPanel id")
+            } else {
+                (
+                    crate::DiagnosticKind::IdCollision,
+                    "duplicate id: SplitPanel content built more than once in a pass",
+                )
+            };
+            self.ui
+                .context
+                .report(kind, Some(id), None, || message.into());
+        }
+        // A mistaken panel gets an empty area, so its content takes no space or input.
+        let (bounds, surface) = match known.filter(|_| unique) {
+            Some(i) => (
+                self.outputs[i].content_bounds,
+                self.specs[i].surface.unwrap_or(self.style.panel),
+            ),
+            None => (Rect::default(), self.style.panel),
+        };
         let clip = self.ui.clip.intersect(bounds);
-        let surface = self.specs[i].surface.unwrap_or(self.style.panel);
         self.ui.context.begin_placement(self.ui.window);
         self.ui.context.visual_clips.push((self.ui.window, clip));
         let mut child = Ui {
@@ -259,12 +267,12 @@ impl SplitUi<'_, '_> {
         child.context.place(placement, Vec2::ZERO, clip);
         result
     }
+    /// Bounds of a panel; an unknown id gives an empty rectangle.
     pub fn bounds(&self, source: impl Hash) -> Rect {
         let id = Id::new(source);
         self.outputs
             .iter()
             .find(|p| p.id == id)
-            .expect("unknown SplitPanel Id")
-            .bounds
+            .map_or(Rect::default(), |p| p.bounds)
     }
 }

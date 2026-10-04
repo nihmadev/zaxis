@@ -48,21 +48,16 @@ impl Separator {
         self.style = style;
         self
     }
+    #[track_caller]
     pub fn length(mut self, length: f32) -> Self {
-        assert!(
-            length.is_finite() && length >= 0.0,
-            "separator length must be finite and non-negative"
-        );
-        self.length = Some(length);
+        self.length = super::sanitize::non_negative("Separator::length", length).or(self.length);
         self
     }
 
+    #[track_caller]
     pub fn thickness(mut self, thickness: f32) -> Self {
-        assert!(
-            thickness.is_finite() && thickness >= 0.0,
-            "separator thickness must be finite and positive"
-        );
-        self.thickness = Some(thickness);
+        self.thickness =
+            super::sanitize::non_negative("Separator::thickness", thickness).or(self.thickness);
         self
     }
 
@@ -72,22 +67,17 @@ impl Separator {
     }
 
     /// Extra empty space on both sides perpendicular to the line.
+    #[track_caller]
     pub fn spacing(mut self, spacing: f32) -> Self {
-        assert!(
-            spacing.is_finite() && spacing >= 0.0,
-            "separator spacing must be finite and non-negative"
-        );
-        self.spacing = Some(spacing);
+        self.spacing =
+            super::sanitize::non_negative("Separator::spacing", spacing).or(self.spacing);
         self
     }
 
     /// Shorten both ends without changing the allocated layout size.
+    #[track_caller]
     pub fn inset(mut self, inset: f32) -> Self {
-        assert!(
-            inset.is_finite() && inset >= 0.0,
-            "separator inset must be finite and non-negative"
-        );
-        self.inset = Some(inset);
+        self.inset = super::sanitize::non_negative("Separator::inset", inset).or(self.inset);
         self
     }
 }

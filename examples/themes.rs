@@ -66,20 +66,45 @@ impl Themes {
             Density::Comfortable
         });
         t.metrics.blur = if self.glass { 12.0 } else { 0.0 };
+        t.typography.weights.heading = FontWeight::SEMIBOLD;
+        t.typography.weights.small = FontWeight::MEDIUM;
         t
     }
+    fn typography(&mut self, ui: &mut Ui<'_>) {
+        ui.heading("Typography");
+        ui.small("Weights · Latin, Кириллица, emoji");
+        for (name, weight) in [
+            ("Regular", FontWeight::REGULAR),
+            ("Medium", FontWeight::MEDIUM),
+            ("SemiBold", FontWeight::SEMIBOLD),
+            ("Bold", FontWeight::BOLD),
+            ("550, nearest file", FontWeight::new(550)),
+        ] {
+            ui.add(Text::new(format!("{name} Привет, мир 😀")).weight(weight));
+        }
+    }
     fn controls(&mut self, ui: &mut Ui<'_>) {
-        ui.add(Text::new("Controls").typography(TypographyRole::Heading));
+        ui.heading("Controls");
         ui.horizontal(|ui| {
             ui.button("Button");
             ui.add(Button::new("Selected").selected(true));
+        });
+        ui.horizontal(|ui| {
+            for (label, variant) in [
+                ("Solid", ButtonVariant::Solid),
+                ("Soft", ButtonVariant::Soft),
+                ("Outline", ButtonVariant::Outline),
+                ("Ghost", ButtonVariant::Ghost),
+            ] {
+                ui.add(Button::new(label).variant(variant));
+            }
         });
         ui.horizontal(|ui| {
             ui.add(Button::new("Disabled").enabled(false));
             ui.add(Button::new("Success").status(SemanticStatus::Success));
         });
         ui.checkbox(&mut self.checked, "Checked");
-        ui.add_enabled(false, Checkbox::new(&mut false, "Disabled"));
+        ui.add(Checkbox::new(&mut false, "Disabled").enabled(false));
         ui.add(
             Slider::new(&mut self.slider, 0.0..=1.0)
                 .width(300.0)
@@ -142,7 +167,7 @@ impl Themes {
         });
     }
     fn colors(&mut self, ui: &mut Ui<'_>) {
-        ui.add(Text::new("Colors").typography(TypographyRole::Heading));
+        ui.heading("Colors");
         ui.add(
             ColorPicker::new(&mut self.color, "Color")
                 .width(310.0)
@@ -217,11 +242,11 @@ impl Themes {
         });
     }
     fn data(&mut self, ui: &mut Ui<'_>) {
-        ui.add(Text::new("Data").typography(TypographyRole::Heading));
+        ui.heading("Data");
         let table = Table::new("table")
             .column(Column::fixed("n", 75.0).title("ID").sortable(true))
             .column(Column::remainder("name").title("Item"))
-            .max_height(250.0)
+            .max_height(170.0)
             .selected_row(self.row)
             .show(ui, |body| {
                 for i in 0..12 {
@@ -269,6 +294,7 @@ impl Themes {
                     ui.label("Right");
                 });
             });
+        self.typography(ui);
     }
 }
 impl App for Themes {

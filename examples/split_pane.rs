@@ -272,6 +272,7 @@ fn main() -> Result<(), zaxis::RunError> {
             window_attributes: zaxis::winit::window::Window::default_attributes()
                 .with_title("zaxis — SplitPane")
                 .with_inner_size(zaxis::winit::dpi::LogicalSize::new(1150.0, 760.0)),
+            ..Default::default()
         },
     )
 }

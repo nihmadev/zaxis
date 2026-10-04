@@ -60,12 +60,9 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
+    #[track_caller]
     pub fn width(mut self, width: f32) -> Self {
-        assert!(
-            width.is_finite() && width > 0.0,
-            "color picker width must be finite and positive"
-        );
-        self.width = Some(width);
+        self.width = super::sanitize::positive("ColorPicker::width", width).or(self.width);
         self
     }
 
@@ -74,6 +71,9 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
+    #[deprecated(
+        note = "use `.enabled(!disabled)`; `enabled` is the one way to set a control's availability"
+    )]
     pub fn disabled(self, disabled: bool) -> Self {
         self.enabled(!disabled)
     }

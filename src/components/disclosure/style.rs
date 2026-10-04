@@ -11,6 +11,7 @@ pub struct DisclosureStyle {
     pub icon_size: Option<f32>,
     pub icon_gap: Option<f32>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<crate::FontWeight>,
     pub motion: Option<TweenOptions>,
 }
 impl DisclosureStyle {
@@ -51,6 +52,7 @@ impl DisclosureStyle {
             icon_size,
             icon_gap,
             font_size,
+            font_weight,
             motion
         );
     }

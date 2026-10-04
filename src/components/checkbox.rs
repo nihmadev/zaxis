@@ -15,6 +15,7 @@ pub struct Checkbox<'a> {
     text: String,
     id: Option<Id>,
     enabled: bool,
+    status: super::SemanticStatus,
     size: Option<f32>,
     rounding: Option<CornerRadius>,
     border: Option<Border>,
@@ -31,6 +32,7 @@ impl<'a> Checkbox<'a> {
             text: text.into(),
             id: None,
             enabled: true,
+            status: Default::default(),
             size: None,
             rounding: None,
             border: None,
@@ -66,19 +68,29 @@ impl<'a> Checkbox<'a> {
         self.enabled = enabled;
         self
     }
+    /// Validation state: the border and a soft ring take the status color. Fields inherit
+    /// the status of an enclosing [`super::Field`] unless this is set.
+    pub fn status(mut self, status: super::SemanticStatus) -> Self {
+        self.status = status;
+        self
+    }
 
     /// Override the square's side length in logical pixels.
+    #[track_caller]
     pub fn size(mut self, size: f32) -> Self {
-        self.size = Some(size);
+        self.size = super::sanitize::positive("Checkbox::size", size).or(self.size);
         self
     }
 
-    pub fn rounding(mut self, rounding: CornerRadius) -> Self {
-        self.rounding = Some(rounding);
-        self
+    #[deprecated(
+        note = "use `.corner_radius(..)`; one name for the corner radius of every component"
+    )]
+    pub fn rounding(self, rounding: CornerRadius) -> Self {
+        self.corner_radius(rounding)
     }
-    pub fn corner_radius(self, radius: impl Into<CornerRadius>) -> Self {
-        self.rounding(radius.into())
+    pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.rounding = Some(radius.into());
+        self
     }
 
     pub fn border(mut self, border: Border) -> Self {
@@ -125,7 +137,12 @@ impl Widget for Checkbox<'_> {
         let text_size = if label.is_empty() {
             Vec2::ZERO
         } else {
-            ui.context.measure_text(label, font_size, label_width)
+            ui.context.measure_text(
+                label,
+                font_size,
+                ui.style().typography.weights.control,
+                label_width,
+            )
         };
         let rect = ui.allocate_space(Vec2::new(
             (side + gap + text_size.x).min(available),
@@ -155,7 +172,9 @@ impl Widget for Checkbox<'_> {
             .hover_style
             .or(ui.hover_style)
             .unwrap_or(style.hover_style);
-        let state = super::theme::ControlState::from_response(response, *self.checked);
+        let status = ui.field_status(self.status);
+        let mut state = super::theme::ControlState::from_response(response, *self.checked);
+        state.status = status;
         let fill = if response.pressed {
             style.button_pressed
         } else if *self.checked {
@@ -168,6 +187,7 @@ impl Widget for Checkbox<'_> {
         base.blur = self.blur.unwrap_or(0.0);
         base.opacity = style.opacity;
         base.shadow = style.elevation;
+        base.status = ui.status_color(status);
         let mut hover = ui.animate_control(
             response,
             preset,
@@ -280,6 +300,7 @@ impl Widget for Checkbox<'_> {
                 .as_ref()
                 .is_none_or(|h| h.mode != super::theme::PaintMode::Replace)
         {
+            mark.ring = None;
             mark.paint_shadow(square, mark.rounding, &mut indicator);
             mark.paint_body(square, mark.rounding, &style, mark.blur, &mut indicator);
             if mark.blur > 0.0 {
@@ -328,6 +349,7 @@ impl Widget for Checkbox<'_> {
                     text: label.to_owned(),
                     position: label_rect.min + Vec2::new(0.0, (rect.size().y - text_size.y) * 0.5),
                     size: font_size,
+                    weight: ui.style().typography.weights.control,
                     wrap_width: label_width,
                     color,
                 }],
@@ -338,13 +360,14 @@ impl Widget for Checkbox<'_> {
 }
 
 impl Ui<'_> {
+    #[deprecated(note = "use `ui.add(Checkbox::new(checked, text).enabled(enabled))`")]
     pub fn checkbox_enabled(
         &mut self,
         enabled: bool,
         checked: &mut bool,
         text: impl Into<String>,
     ) -> Response {
-        self.add_enabled(enabled, Checkbox::new(checked, text))
+        self.add(Checkbox::new(checked, text).enabled(enabled))
     }
     /// Toggle a boolean by clicking its rounded square or label.
     pub fn checkbox(&mut self, checked: &mut bool, text: impl Into<String>) -> Response {

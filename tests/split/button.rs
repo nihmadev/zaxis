@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Button, Column, Grid, GridStyle, Root, Table, Vec2};
+use crate::{Button, Column, FontWeight, Grid, GridStyle, Root, Table, Vec2};
 use winit::dpi::PhysicalSize;
 
 #[test]
@@ -52,8 +52,12 @@ fn buttons_fit_fixed_height_cells_and_center_their_captions() {
         else {
             panic!("caption")
         };
-        let text_size = c.text.measure(text, *size, f32::INFINITY);
-        let offset = c.text.centered_line_offset(text, *size);
+        let text_size = c
+            .text
+            .measure(text, *size, FontWeight::REGULAR, f32::INFINITY);
+        let offset = c
+            .text
+            .centered_line_offset(text, *size, FontWeight::REGULAR);
         let bounds = c.visual_rect(button.id, button.rect);
         assert!((position.x + text_size.x * 0.5 - bounds.center().x).abs() < 0.01);
         assert!((position.y + text_size.y * 0.5 - offset - bounds.center().y).abs() < 0.01);

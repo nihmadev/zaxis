@@ -84,14 +84,18 @@ fn many_panels_keep_endpoints_without_rounding_debt() {
     }
 }
 #[test]
-#[should_panic(expected = "positive and finite")]
-fn invalid_weight_is_explicit() {
-    resolve(&panels(1), &[SplitSize::Weight(f32::NAN)], 100.0);
+fn invalid_weight_counts_as_one_instead_of_panicking() {
+    let sizes = resolve(
+        &panels(2),
+        &[SplitSize::Weight(f32::NAN), SplitSize::Weight(1.0)],
+        100.0,
+    );
+    assert!(sizes.iter().all(|s| s.is_finite()));
+    assert!((sizes[0] - 50.0).abs() < 1e-3 && (sizes[1] - 50.0).abs() < 1e-3);
 }
 #[test]
-#[should_panic(expected = "finite and nonnegative")]
-fn invalid_minimum_is_explicit() {
-    resolve(
+fn invalid_minimum_counts_as_zero_instead_of_panicking() {
+    let sizes = resolve(
         &[SplitPanel {
             minimum: f32::INFINITY,
             ..SplitPanel::new(0)
@@ -99,4 +103,5 @@ fn invalid_minimum_is_explicit() {
         &[SplitSize::Weight(1.0)],
         100.0,
     );
+    assert_eq!(sizes, vec![100.0]);
 }
