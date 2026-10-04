@@ -1,8 +1,80 @@
 # Changelog
 
 Releases use a numeric Cargo version and an adjective as their display name.
-Git tags use `v<version>`; releases so far are **0.0.1 Blinking** (`v0.0.1`) and **0.0.2 Helious** (`v0.0.2`).
+Git tags use `v<version>`; releases so far are **0.0.1 Blinking** (`v0.0.1`) and **0.0.2 Helious** (`v0.0.2`);
+the next one is **0.0.3 Genetic** (`v0.0.3`).
 The entries below describe the prepared release; publication happens separately.
+
+## 0.0.3 Genetic
+
+Adds native multi-window apps with shared GPU and text resources, monospace and tabular
+text, a menu bar, toasts, key binding boxes, icon tabs and badges, and window options for
+overlays and heads-up panels. Public APIs may still change between development releases.
+
+### Added
+
+- `MenuBar` and `MenuItem`: a menu bar or (`compact`) hamburger menu with cascading submenus,
+  check marks, shortcut captions, pointer title switching and full keyboard navigation
+  (`Ui::menu_bar`, `ContextMenuItem::checked`). Popups can own extra panels, so a press
+  inside a submenu is not an outside press. The `menu_bar` example shows it.
+- Multiple native windows: `App` gained optional `windows`, `close_requested`,
+  `window_failed` and `shortcut` hooks next to `update`; `WindowKey`, `WindowOptions`,
+  `WindowPlan` (declarative windows), `Frame::open_window` and `Windows` (imperative open,
+  close and `request_close`), `CloseRequested::reject` (e.g. "Save changes?" in a `Modal`),
+  `GlobalShortcut`, `WindowInfo`/`WindowStatus`/`WindowError`, `AppStats`, and
+  `RunOptions::with_exit_policy` (`ExitPolicy`) and `with_main_window`. A single-window
+  `App` behaves as before. Each window has its own `Context`; closing one drops only its UI
+  state.
+- `SharedResources` and `Context::with_shared`: windows share one glyph atlas, image cache
+  and appearance, so a glyph or image is rasterized, decoded and uploaded once;
+  `SharedResources::set_theme` re-themes every window.
+- Monospace text: bundled JetBrains Mono (Regular, Bold with `bundled-weights`) behind the
+  default `bundled-monospace` feature (about 550 KB); `Text::monospace`, `TextFamily`,
+  `TypographyRole::Code` / `Ui::code` with `Typography::code` and `TypographyWeights::code`,
+  `Context::monospace_metrics` / `Ui::monospace_metrics` (`MonospaceMetrics`),
+  `RunOptions::with_monospace_family` and `Context::with_font_families`. Ligatures are off
+  so one character is one cell; tabs are tab stops (`Text::tab_size`, default 8 cells).
+- `TextEdit::monospace`, `family`, `font_family` and `tabular_numbers`: caret, hit testing,
+  selection and the IME rectangle read the same layout as `Text::monospace`.
+- Tabular figures: `Text::tabular_numbers`, `TextStyle::tabular_numbers` (OpenType `tnum`),
+  and `Column::numeric(true)` for right-aligned table columns with aligned digits.
+- `Toast` and `Context::toast`: transient notifications stacked in the bottom-right corner.
+  They paint above windows as passive overlays (no focus, no pointer input), fade and slide
+  in, and fade out when their time is up; unset colors come from the current style.
+- `KeyBox`, `Ui::key_box`, `KeyBinding` and `MouseBinding`: a game-style box that captures
+  the next key or mouse button (`A`, `RShift`, `LMB`, `MMB`, ...), with `KeyBinding::label`
+  and `is_down`, optional left-click capture and `Context::key_capture_active` so hotkeys can
+  ignore input meanwhile.
+- `IconTabs` and `Ui::icon_tabs`: a vertical strip of icon buttons bound to a selection, with
+  eased hover and selection fills and a tooltip per tab.
+- `Badge`: a small passive chip for key caps, status pills and counts.
+- `Window` options: `title_bar(false)` (with `Ui::drag_window` to move it), `fit_content`,
+  `on_top` for heads-up panels, and `visual(scale, opacity)` for entrance and exit animations.
+  Windows without a title strip may be smaller than 64 pixels.
+- `Button::align` places the caption at the start, center or end of a button.
+- `Slider::caption_above` puts the caption above the track with the value on the right.
+- `Ui::tab_pages_live`: tab pages that keep their normal look and input while they slide.
+- `Color::with_alpha` and `Color::with_opacity`.
+- Examples `multi_window` (with `--smoke-test`) and `code_view` (source, diff and file
+  table in the code font).
+- Docs: a `menu-bar` page; the limitations page no longer lists a missing menu bar.
+
+### Changed
+
+- The renderer shares device, queue, pipelines and the GPU texture store between windows
+  (`Renderer::create_sibling`); each window keeps its own surface, buffers and blur targets.
+  The desktop runner was split into `app` submodules.
+- The context menu popup style is shared with the menu bar; ArrowLeft and ArrowRight
+  navigate cascading submenus.
+- Combo box highlights fade through the same hue instead of black and pick a readable
+  foreground for the active fill.
+
+### Fixed
+
+- Backdrop blur no longer skips source pixels when downsampling (box prefilter).
+- Windows created with a transparent attribute composite with the desktop through
+  premultiplied alpha where the surface supports it; otherwise they stay opaque.
+- Right alignment (`Column::align`) uses the real measured text width.
 
 ## 0.0.2 Helious
 
@@ -70,29 +142,6 @@ drop, validation and diagnostics. Public APIs may still change between developme
   converts into `ImageSource`; strokes are white, so `Image::tint` sets the color. The
   `icons` example shows a filterable gallery. Lucide is ISC licensed (some icons are MIT,
   from Feather); `LICENSE-LUCIDE` ships in the crate.
-- Multiple native windows: `App` gained optional `windows`, `close_requested`,
-  `window_failed` and `shortcut` hooks next to `update`; `WindowKey`, `WindowOptions`,
-  `WindowPlan` (declarative windows), `Frame::open_window` and `Windows` (imperative open,
-  close and `request_close`), `CloseRequested::reject` (e.g. "Save changes?" in a `Modal`),
-  `GlobalShortcut`, `WindowInfo`/`WindowStatus`/`WindowError`, `AppStats`, and
-  `RunOptions::with_exit_policy` (`ExitPolicy`) and `with_main_window`. A single-window
-  `App` behaves as before. Each window has its own `Context`; closing one drops only its UI
-  state.
-- `SharedResources` and `Context::with_shared`: windows share one glyph atlas, image cache
-  and appearance, so a glyph or image is rasterized, decoded and uploaded once;
-  `SharedResources::set_theme` re-themes every window.
-- Monospace text: bundled JetBrains Mono (Regular, Bold with `bundled-weights`) behind the
-  default `bundled-monospace` feature (about 550 KB); `Text::monospace`, `TextFamily`,
-  `TypographyRole::Code` / `Ui::code` with `Typography::code` and `TypographyWeights::code`,
-  `Context::monospace_metrics` / `Ui::monospace_metrics` (`MonospaceMetrics`),
-  `RunOptions::with_monospace_family` and `Context::with_font_families`. Ligatures are off
-  so one character is one cell; tabs are tab stops (`Text::tab_size`, default 8 cells).
-- `TextEdit::monospace`, `family`, `font_family` and `tabular_numbers`: caret, hit testing,
-  selection and the IME rectangle read the same layout as `Text::monospace`.
-- Tabular figures: `Text::tabular_numbers`, `TextStyle::tabular_numbers` (OpenType `tnum`),
-  and `Column::numeric(true)` for right-aligned table columns with aligned digits.
-- Examples `multi_window` (with `--smoke-test`) and `code_view` (source, diff and file
-  table in the code font).
 - Benchmarks cover menus, disclosure and split panes; docs and examples updated for the
   new components.
 - Font weights and families: `FontWeight` (100–900) on `Text::weight`, `TextStyle::weight`,
@@ -116,9 +165,6 @@ drop, validation and diagnostics. Public APIs may still change between developme
 - `SliderStatus` is now an alias of `SemanticStatus`.
 - Inter is now the only bundled font in the main crate: SVG text also uses it and Lato
   was removed.
-- The renderer shares device, queue, pipelines and the GPU texture store between windows
-  (`Renderer::create_sibling`); each window keeps its own surface, buffers and blur targets.
-  The desktop runner was split into `app` submodules.
 - Internal: color picker, text edit, slider, split pane, text layout and animation state
   were split into smaller modules; context and widget regressions were reorganized into
   test modules.
@@ -134,11 +180,6 @@ drop, validation and diagnostics. Public APIs may still change between developme
 - `tab_bar` no longer overflows a narrow window: tabs keep their natural width and the
   strip scrolls horizontally. A plain wheel now scrolls horizontal-only `ScrollArea`s.
 - Fractional clips stay inside their panels.
-- Backdrop blur no longer skips source pixels when downsampling (box prefilter).
-- Windows created with a transparent attribute composite with the desktop through
-  premultiplied alpha where the surface supports it; otherwise they stay opaque.
-- Right alignment (`Column::align`) uses the real measured text width.
-
 ## 0.0.1 Blinking
 
 First development release. Public APIs may change between development releases.
