@@ -200,6 +200,23 @@ impl Ui<'_> {
         }
     }
 
+    /// Let a press-and-drag on `rect` move the enclosing [`super::Window`], for windows
+    /// built with `title_bar(false)`. The region sits in the content layer like any other
+    /// hit region: controls built after it win over it, and clipping and disabled groups
+    /// apply. A [`super::Root`] cannot be moved; the call is then inert.
+    pub fn drag_window(&mut self, rect: Rect) {
+        let id = self.next_id("drag-window");
+        if self.enabled {
+            self.context.register_hit(HitRegion {
+                id,
+                window: self.window,
+                rect,
+                clip: self.clip,
+                action: HitAction::Move,
+            });
+        }
+    }
+
     /// Response for custom geometry, through the same hit path as built-in controls.
     ///
     /// Allocate `rect` with [`Self::allocate_space`] (or take it from your own layout)

@@ -115,6 +115,7 @@ impl Context {
                 displayed_rect: rect,
                 min_size: Vec2::ZERO,
                 last_frame: self.frame,
+                on_top: false,
             },
         );
         self.modals.registered.insert(id);

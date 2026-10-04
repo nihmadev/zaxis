@@ -9,6 +9,8 @@ pub(crate) struct WindowState {
     pub displayed_rect: Rect,
     pub min_size: Vec2,
     pub last_frame: u64,
+    /// Stays above windows that are not `on_top`, however they were raised.
+    pub on_top: bool,
 }
 
 impl Context {
@@ -22,6 +24,7 @@ impl Context {
                 displayed_rect: rect,
                 min_size: Vec2::ZERO,
                 last_frame: self.frame,
+                on_top: false,
             },
         );
         self.layers.retain(|layer| *layer != id);
@@ -34,6 +37,25 @@ impl Context {
         }
         self.layers.retain(|layer| *layer != id);
         self.layers.push(id);
+        self.stack_on_top();
+    }
+
+    /// Keep `on_top` windows after all others, each group in its own order.
+    fn stack_on_top(&mut self) {
+        let windows = &self.windows;
+        let top = |id: &Id| windows.get(id).is_some_and(|window| window.on_top);
+        self.layers.sort_by_key(|id| top(id));
+    }
+
+    pub(crate) fn set_window_on_top(&mut self, id: Id, on_top: bool) {
+        if let Some(state) = self
+            .windows
+            .get_mut(&id)
+            .filter(|state| state.on_top != on_top)
+        {
+            state.on_top = on_top;
+            self.stack_on_top();
+        }
     }
 
     pub(crate) fn front_window(&self) -> Option<Id> {
@@ -47,6 +69,7 @@ impl Context {
     pub(crate) fn window_state(&mut self, id: Id, initial: Rect, min_size: Vec2) -> Rect {
         if !self.windows.contains_key(&id) {
             self.layers.push(id);
+            self.stack_on_top();
         }
         let state = self.windows.entry(id).or_insert(WindowState {
             root: false,
@@ -54,6 +77,7 @@ impl Context {
             displayed_rect: initial,
             min_size,
             last_frame: self.frame,
+            on_top: false,
         });
         state.min_size = min_size;
         let size = state.rect.size().max(min_size);
