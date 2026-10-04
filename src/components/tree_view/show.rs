@@ -18,10 +18,12 @@ impl TreeView<'_> {
             .trees
             .remove(&id)
             .unwrap_or_else(|| TreeState::new(self.initial_open, self.initial_selected));
-        assert!(
-            state.last_frame != ui.context.frame,
-            "duplicate TreeView id_source in one pass"
-        );
+        if state.last_frame == ui.context.frame {
+            ui.context
+                .report(crate::DiagnosticKind::IdCollision, Some(id), None, || {
+                    "duplicate id: two TreeViews share one id_source".into()
+                });
+        }
         state.last_frame = ui.context.frame;
         let action_focus = ui
             .context
@@ -88,8 +90,15 @@ impl TreeView<'_> {
         if let Some(patch) = self.style {
             style.merge(&patch);
         }
-        let pitch = disclosure::dimension(style.row.height.unwrap_or(ui.style().control_height));
-        assert!(pitch > 0.0, "TreeView needs a positive fixed row height");
+        let mut pitch =
+            disclosure::dimension(style.row.height.unwrap_or(ui.style().control_height));
+        if pitch <= 0.0 {
+            ui.context
+                .report(crate::DiagnosticKind::InvalidUsage, Some(id), None, || {
+                    "TreeView needs a positive fixed row height; using the control height".into()
+                });
+            pitch = ui.style().control_height.max(1.0);
+        }
         let indent = disclosure::dimension(style.indent.unwrap_or(18.0));
         let outer = Rect::from_min_size(
             ui.layout.cursor,
@@ -111,6 +120,9 @@ impl TreeView<'_> {
             },
         });
         let owner_focus = ui.context.focus_visible(id);
+        if self.drag {
+            drag::keep_alive(ui, id, model);
+        }
         let mut scroll = ScrollArea::vertical()
             .id_source(id)
             .max_height(self.height)
@@ -170,6 +182,22 @@ impl TreeView<'_> {
                         },
                         |ui| actions(ui, row.id),
                     );
+                    if self.drag && row.enabled && enabled {
+                        drag::attach(
+                            ui,
+                            drag::Dragged {
+                                tree: id,
+                                node: row.id,
+                                rows,
+                                index: &state.index,
+                                response: h.response,
+                                indent: row.depth as f32 * indent,
+                                branch: row.children.expandable(),
+                                focused: owns_focus && state.focused == Some(row.id),
+                            },
+                            &mut events,
+                        );
+                    }
                     state
                         .action_ids
                         .extend(h.action_ids.into_iter().map(|a| (a, row.id)));
@@ -209,6 +237,19 @@ impl TreeView<'_> {
         }
         if !events.is_empty() {
             ui.context.request_repaint();
+        }
+        // The same model problems `TreeOutput::issues` lists also reach `Context::diagnostics`.
+        for issue in &state.issues {
+            ui.context.report(
+                crate::DiagnosticKind::InvalidModel,
+                Some(match issue {
+                    TreeIssue::DuplicateOrCycle(node)
+                    | TreeIssue::MissingNode(node)
+                    | TreeIssue::InvalidRevealPath(node) => *node,
+                }),
+                Some(outer),
+                || format!("tree model: {issue:?}"),
+            );
         }
         let out = TreeOutput {
             id,

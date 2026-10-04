@@ -64,7 +64,9 @@ the remainder goes to its parent. Siblings never receive that remainder. At an
 outer boundary an unused wheel event reports `consumed = false`. Wheel input over
 a scrollbar belongs to that same area. Pixel deltas preserve fractional values
 and are divided by DPI scale once; native line deltas use `Style::font_size`. Shift converts vertical wheel input
-to horizontal scrolling.
+to horizontal scrolling. A horizontal-only area also turns a plain vertical wheel into
+horizontal motion, so tab strips and chip rows scroll without a modifier; what the area
+cannot consume (at either end) passes to its parent as usual.
 
 Thumb dragging captures the pointer through release, including outside the
 viewport. A short middle click starts autoscroll: move away from the click origin

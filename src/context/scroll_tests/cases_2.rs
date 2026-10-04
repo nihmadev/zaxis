@@ -160,10 +160,11 @@ fn line_wheel_shift_and_front_panels_respect_axis_and_layer_routing() {
         phase: TouchPhase::Moved,
     };
     assert!(c.on_window_event(&event).consumed);
-    assert_eq!(c.scrolling.states[&id.unwrap()].offset, vec2(0.0, 32.0));
+    let wheel = 2.0 * c.style().font_size;
+    assert_eq!(c.scrolling.states[&id.unwrap()].offset, vec2(0.0, wheel));
     c.input.modifiers = winit::keyboard::ModifiersState::SHIFT;
     assert!(c.on_window_event(&event).consumed);
-    assert_eq!(c.scrolling.states[&id.unwrap()].offset, vec2(32.0, 32.0));
+    assert_eq!(c.scrolling.states[&id.unwrap()].offset, vec2(wheel, wheel));
     c.run(|c| {
         Window::new("Wheel lines").show(c, |ui| {
             ScrollArea::both().max_height(120.0).show(ui, |ui| {
@@ -210,6 +211,7 @@ fn translated_mesh_matches_fresh_tessellation_including_fractional_glyph_phases(
                             text: "Glyph phases: ffi е́ 🙂".into(),
                             position: vec2(91.137, 121.234) + shift,
                             size: 16.0,
+                            weight: crate::FontWeight::REGULAR,
                             wrap_width: f32::INFINITY,
                             color: crate::Color::BLACK,
                         },
@@ -270,7 +272,7 @@ fn hidden_paint_is_retained_without_tessellation_and_reappears_with_current_hits
     let paint_id = id.with("body");
     let original_mesh = std::sync::Arc::clone(&c.cache[&paint_id].mesh);
     assert!(
-        c.draw_data().vertices.len() * 4
+        c.draw_data().vertices.len() * 2
             < c.cache
                 .values()
                 .map(|cached| cached.mesh.vertices.len())

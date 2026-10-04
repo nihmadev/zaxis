@@ -1,5 +1,6 @@
 ---
 title: TreeView
+icon: ListTree
 description: Application-owned hierarchical models, one focus stop and virtual rows.
 ---
 
@@ -100,3 +101,12 @@ controlled expansion/reveal, lazy loading, icons and 10,000 virtualized objects.
 `--smoke-test` checks presentation and callback count only; it is not visual or
 physical mouse/keyboard verification. Existing performance harness cases `tree_*`
 and `collapsing_*` cover cache reuse, revision, navigation, reveal, expansion and lifecycle.
+
+## Moving nodes
+
+`TreeView::drag_nodes(true)` lets the user drag a node before, after or inside another
+node (see [Drag and drop](./drag-and-drop.mdx)). The tree emits
+`TreeEvent::Moved { node, target, position }` and never edits the model; dropping a
+node into itself or its own subtree is rejected, leaves offer no inside zone, and
+open state, selection and focus remain keyed by node id. Ctrl+Space picks up the
+focused node. `cargo run --example drag_and_drop` shows it with model edits.

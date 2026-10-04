@@ -1,4 +1,5 @@
 //! Fixed-height virtualized tree. The application owns the model and loading.
+mod drag;
 mod input;
 mod model;
 mod show;
@@ -20,6 +21,7 @@ pub struct TreeView<'a> {
     follows_focus: bool,
     double_click_expand: bool,
     enabled: bool,
+    drag: bool,
     height: f32,
     style: Option<TreeStyle>,
     reveal: Option<Id>,
@@ -50,6 +52,7 @@ impl<'a> TreeView<'a> {
             follows_focus: false,
             double_click_expand: false,
             enabled: true,
+            drag: false,
             height: 300.0,
             style: None,
             reveal: None,
@@ -88,6 +91,14 @@ impl<'a> TreeView<'a> {
         self.enabled = enabled;
         self
     }
+    /// Let the user drag nodes before, after or inside other nodes. The tree
+    /// reports `TreeEvent::Moved` and never changes the model; dropping a node
+    /// into its own subtree is rejected. Open and selected state follow node ids.
+    /// Ctrl+Space picks up the focused node, then the arrow keys choose the place.
+    pub fn drag_nodes(mut self, enabled: bool) -> Self {
+        self.drag = enabled;
+        self
+    }
     pub fn max_height(mut self, height: f32) -> Self {
         self.height = super::disclosure::dimension(height);
         self
@@ -96,9 +107,11 @@ impl<'a> TreeView<'a> {
         self.style = Some(style);
         self
     }
+    #[track_caller]
     pub fn row_height(mut self, height: f32) -> Self {
-        assert!(height.is_finite() && height > 0.0);
-        self.style.get_or_insert_with(Default::default).row.height = Some(height);
+        if let Some(height) = super::sanitize::positive("TreeView::row_height", height) {
+            self.style.get_or_insert_with(Default::default).row.height = Some(height);
+        }
         self
     }
     /// Explicit operation. Expand ancestors, then focus and scroll when available.

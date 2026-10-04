@@ -17,6 +17,8 @@ pub(super) struct BodySetup {
     pub rows: Vec<(Id, Rect)>,
     pub seen: HashSet<Id>,
     pub origin: Option<Vec2>,
+    pub drag: bool,
+    pub moved: Option<crate::RowMove>,
 }
 pub struct TableBody<'a, 'ctx> {
     ui: &'a mut Ui<'ctx>,
@@ -51,7 +53,13 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
     }
     /// Accept an already constructed Id without hashing it again.
     pub fn row_id<R>(&mut self, row: Id, build: impl FnOnce(&mut GridRow<'_, '_, '_>) -> R) -> R {
-        assert!(self.setup.seen.insert(row), "duplicate table row ID");
+        if !self.setup.seen.insert(row) {
+            self.ui
+                .context
+                .report(crate::DiagnosticKind::IdCollision, Some(row), None, || {
+                    "duplicate id: two Table rows share one row id".into()
+                });
+        }
         let id = self.setup.id.with(("selection", row));
         let old_scope = self.ui.scope;
         self.ui.scope = self.setup.id.with("cells");
@@ -113,7 +121,7 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
             style.text_color,
         );
         base.opacity = effective.opacity;
-        let appearance = self.ui.animate_control(
+        let mut appearance = self.ui.animate_control(
             response,
             crate::HoverStyle::NONE,
             false,
@@ -122,6 +130,7 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
             base,
             style.hovered_fill,
         );
+        appearance.ring = None;
         let mut paint = Vec::new();
         appearance.paint_shadow(rect, appearance.rounding, &mut paint);
         appearance.paint_body(
@@ -149,6 +158,26 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
         self.ui
             .context
             .place(placement, Vec2::ZERO, self.ui.clip.intersect(rect));
+        if self.setup.drag && self.ui.enabled {
+            let mut handle = response;
+            handle.enabled = true;
+            let payload = crate::RowDrag {
+                owner: self.setup.id,
+                row,
+            };
+            let owner = self.setup.id;
+            crate::DragSource::new(row, payload).attach(self.ui, handle);
+            let target = crate::DropTarget::new(row, move |p: &crate::RowDrag| p.owner == owner)
+                .zones(crate::DropZones::rows())
+                .attach(self.ui, handle);
+            if let Some(drop) = target.dropped {
+                self.setup.moved = Some(crate::RowMove {
+                    row: drop.payload.row,
+                    target: row,
+                    position: drop.insertion.unwrap_or(crate::Insertion::After),
+                });
+            }
+        }
         if style.separators && style.separator_width > 0.0 {
             let mut x = rect.min.x;
             for (i, &width) in self.setup.widths.iter().enumerate() {

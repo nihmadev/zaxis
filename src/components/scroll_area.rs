@@ -70,6 +70,10 @@ impl ScrollArea {
         self.id = Some(id);
         self
     }
+    /// The scoped id under which a scroll area with `id` keeps its offset when shown in `ui`.
+    pub(crate) fn state_id(ui: &Ui<'_>, id: Id) -> Id {
+        ui.scope.with(("scroll", id))
+    }
     pub fn id_source(self, source: impl Hash) -> Self {
         self.id(Id::new(source))
     }
@@ -92,18 +96,18 @@ impl ScrollArea {
         self
     }
     /// Set the offset on this pass. Omit on following passes to retain user scrolling.
+    #[track_caller]
     pub fn scroll_offset(mut self, offset: Vec2) -> Self {
-        assert!(offset.is_finite(), "scroll offset must be finite");
-        self.offset = Some(offset.max(Vec2::ZERO));
+        if let Some(offset) = super::sanitize::finite_vec2("ScrollArea::scroll_offset", offset) {
+            self.offset = Some(offset.max(Vec2::ZERO));
+        }
         self
     }
     /// Reveal a rectangle in content coordinates (zero is the content origin).
+    #[track_caller]
     pub fn scroll_to_rect(mut self, rect: Rect) -> Self {
-        assert!(
-            rect.min.is_finite() && rect.max.is_finite(),
-            "scroll target must be finite"
-        );
-        self.target = Some(rect);
+        self.target =
+            super::sanitize::finite_rect("ScrollArea::scroll_to_rect", rect).or(self.target);
         self
     }
     /// Enable middle-button autoscroll (enabled by default).
@@ -148,17 +152,31 @@ impl ScrollArea {
         known_height: Option<f32>,
         build: impl FnOnce(&mut Ui<'_>) -> R,
     ) -> ScrollAreaOutput<R> {
+        let size = Vec2::new(ui.available_width(), ui.available_height()).min(self.max_size);
+        let outer = ui.allocate_space(size);
+        self.show_at(ui, outer, known_height, build)
+    }
+
+    /// Scroll `build`'s content inside the already allocated region `outer`. The caller
+    /// sets `ui.layout.used` for the measured content and may pass its exact height.
+    pub(crate) fn show_at<R>(
+        self,
+        ui: &mut Ui<'_>,
+        outer: Rect,
+        known_height: Option<f32>,
+        build: impl FnOnce(&mut Ui<'_>) -> R,
+    ) -> ScrollAreaOutput<R> {
         let id = match self.id {
             Some(id) => ui.scope.with(("scroll", id)),
             None => ui.auto_id(("scroll", self.source)),
         };
-        assert!(
-            !ui.context.scrolling.order.contains(&id),
-            "duplicate scroll ID"
-        );
+        if ui.context.scrolling.order.contains(&id) {
+            ui.context
+                .report(crate::DiagnosticKind::IdCollision, Some(id), None, || {
+                    "duplicate id: two ScrollAreas share one id_source".into()
+                });
+        }
         let style = self.style.unwrap_or(ui.style().scroll);
-        let size = Vec2::new(ui.available_width(), ui.available_height()).min(self.max_size);
-        let outer = ui.allocate_space(size);
         let mut viewport = style.padding.inset(outer);
         let gutter = if self.bars && !self.overlay_bars {
             style.bar_width.max(0.0) + style.bar_margin.max(0.0)
@@ -294,12 +312,9 @@ impl ScrollArea {
         }
     }
 }
+#[track_caller]
 fn length(value: f32) -> f32 {
-    assert!(
-        value.is_finite() && value >= 0.0,
-        "scroll dimensions must be finite and nonnegative"
-    );
-    value
+    super::sanitize::length("scroll size", value)
 }
 fn reveal(mut offset: Vec2, size: Vec2, target: Rect, axes: [bool; 2]) -> Vec2 {
     for axis in 0..2 {
@@ -318,12 +333,11 @@ fn reveal(mut offset: Vec2, size: Vec2, target: Rect, axes: [bool; 2]) -> Vec2 {
 impl Ui<'_> {
     /// Reveal an element/rectangle in screen coordinates in the nearest ScrollArea.
     /// The closure runs once; the measured paint and hits move together on this pass.
+    #[track_caller]
     pub fn scroll_to_rect(&mut self, rect: Rect) {
-        assert!(
-            rect.min.is_finite() && rect.max.is_finite(),
-            "scroll target must be finite"
-        );
-        self.context.scroll_target(self.window, rect);
+        if let Some(rect) = super::sanitize::finite_rect("Ui::scroll_to_rect", rect) {
+            self.context.scroll_target(self.window, rect);
+        }
     }
     pub fn scroll_to_response(&mut self, response: &super::Response) {
         self.scroll_to_rect(response.rect);

@@ -19,20 +19,30 @@ impl ScrollArea {
     /// Like show_rows, but row scopes use application keys instead of indices.
     /// Moving a keyed row preserves the identities of every descendant control.
     pub fn show_rows_keyed<K: std::hash::Hash>(
-        self,
+        mut self,
         ui: &mut Ui<'_>,
         row_height: f32,
         total_rows: usize,
         mut key: impl FnMut(usize) -> K,
         mut build: impl FnMut(&mut Ui<'_>, usize),
     ) -> ScrollAreaOutput<Range<usize>> {
-        assert!(self.axes[1], "show_rows requires vertical scrolling");
-        assert!(
-            row_height.is_finite() && row_height > 0.0,
-            "row height must be positive and finite"
-        );
+        if !self.axes[1] {
+            ui.context
+                .report(crate::DiagnosticKind::InvalidUsage, None, None, || {
+                    "show_rows needs vertical scrolling; enabled".into()
+                });
+            self.axes[1] = true;
+        }
+        let row_height =
+            crate::components::sanitize::positive("ScrollArea::show_rows row_height", row_height)
+                .unwrap_or(ui.style().control_height.max(1.0));
         let height = row_height * total_rows as f32;
-        assert!(height.is_finite(), "row content height must be finite");
+        let height = if height.is_finite() {
+            height
+        } else {
+            f32::MAX / 4.0
+        };
+
         self.show_content(ui, Some(height), |ui| {
             let origin = ui.layout.bounds.min;
             let visible = ui.clip_rect();

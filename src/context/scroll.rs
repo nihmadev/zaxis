@@ -266,7 +266,9 @@ impl Context {
                 let s = &self.scrolling.states[id];
                 s.window == window && s.enabled && s.clip.contains(pointer)
             });
-        target.is_some_and(|id| self.scroll_from(id, delta, false)) || self.popup.is_some()
+        target.is_some_and(|id| self.scroll_from(id, delta, false))
+            || self.popup.is_some()
+            || self.modal_active()
     }
     pub(super) fn scroll_from(&mut self, id: Id, mut delta: Vec2, middle: bool) -> bool {
         let mut current = Some(id);
@@ -276,14 +278,27 @@ impl Context {
             let state = self.scrolling.states.get_mut(&id).unwrap();
             let old = state.offset;
             if state.enabled && (!middle || state.middle_mouse_scroll) {
+                // A wheel without horizontal motion scrolls a horizontal-only area
+                // (tab strips, chip rows); what it cannot consume passes outward.
+                let remap = !middle && state.axes == [true, false] && delta.x == 0.0;
+                let step = if remap {
+                    Vec2::new(delta.y, 0.0)
+                } else {
+                    delta
+                };
                 state.offset =
-                    (old + delta / state.visual_scale).clamp(Vec2::ZERO, state.max_offset());
+                    (old + step / state.visual_scale).clamp(Vec2::ZERO, state.max_offset());
                 for axis in 0..2 {
                     if !state.axes[axis] {
                         state.offset[axis] = old[axis];
                     }
                 }
-                delta -= (state.offset - old) * state.visual_scale;
+                let moved = (state.offset - old) * state.visual_scale;
+                if remap {
+                    delta.y -= moved.x;
+                } else {
+                    delta -= moved;
+                }
                 changed |= old != state.offset;
             }
             current = state.parent;
@@ -296,7 +311,7 @@ impl Context {
         }
         changed
     }
-    fn invalidate_scroll_hits(&mut self, window: Id) {
+    pub(super) fn invalidate_scroll_hits(&mut self, window: Id) {
         // Input can arrive in bursts before redraw. Never activate stale content geometry.
         self.previous_hits.retain(|h| {
             h.window != window

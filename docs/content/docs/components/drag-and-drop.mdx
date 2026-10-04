@@ -1,0 +1,166 @@
+---
+title: Drag and drop
+icon: Grip
+description: Typed in-window drag and drop with sources, targets, previews, autoscroll and a keyboard alternative.
+---
+
+`DragSource` and `DropTarget` make any content draggable or droppable inside one
+native window. Hit regions, pointer capture, repaint and animation are internal;
+the application owns the payload and the model, and every result arrives as a value.
+
+```rust
+use zaxis::{DropZones, Id, Insertion};
+
+// Source: wrap freshly built content.
+ui.drag_source(Id::new(task.id), TaskDrag(task.id), |ui| ui.button(&task.title));
+
+// Target: accept by type and by value; the result carries the payload once.
+let list = ui.drop_target(Id::new("done"), |t: &TaskDrag| !done.contains(&t.0), |ui| {
+    ui.label("Done");
+});
+if let Some(drop) = list.dropped {
+    done.push(drop.payload.0); // drop.source, drop.target, drop.insertion, drop.local
+}
+```
+
+For a widget whose `Response` is already known use `DragSource::new(id, payload)
+.attach(ui, response)` and `DropTarget::new(id, accept).attach(ui, response)`.
+Builders: `enabled`, `threshold`, `delay`, `effect(Move|Copy)`, `keyboard`, `style`,
+`hide_source`, `preview(|ui| ...)`, `no_preview`, `focus_owner` for sources;
+`enabled`, `zones`, `passthrough_rejected`, `effect`, `line_indent`, `indicator`,
+`style` for targets. Ids are the application's: `Dropped::source`/`target` and
+`DragEnd` carry exactly the ids passed in, and `Response::id` is the scoped one.
+
+## Payload and compatibility
+
+The payload is any `Any` value (`'static`). It is moved into the session when the
+drag begins (use `DragSource::lazy` to build it only then), kept as a box with its
+`TypeId`, and moved back out to the accepting target. The library never serializes,
+clones or copies it, and stores no closure. A target for `P` first compares the type,
+then calls its predicate with `&P`. This happens once per pass while a drag is
+active, before highlighting, and again when the drop is delivered; a target that now
+rejects, or has vanished, leaves the session as `Cancelled` and no event is produced.
+
+## Lifecycle and thresholds
+
+A press on a source only arms it. The source and whatever is under the press keep
+clicks, double clicks and hover until the pointer travels `DragStyle::threshold`
+(5 logical pixels at every DPI) and, if set, `delay` has passed. Moving beyond the
+threshold before the delay elapsed hands the gesture back to its owner. Text
+selection, sliders, resize handles, scroll thumbs, column resizers and window chrome
+are never armed.
+
+The session then takes over the existing pointer capture: it follows the pointer
+outside the source, the `Window` and the native window. It ends exactly once as
+`DragReason::{Dropped, Cancelled, Escape, SourceLost, FocusLost}`. Resize, scale
+change and a right click cancel; a lost release is detected on the next pass. A
+source that is removed, disabled or not built again ends the session as `SourceLost`.
+
+Per user action there is one event: `DragOutput::started` on the pass the payload is
+captured, `DropOutput::dropped` once on the accepting target, and
+`DragOutput::finished` / `Context::drag_end()` with the final reason on the pass
+after. `Context::dragging()` and `Context::cancel_drag()` are available for
+application code. Focus, IME state and text input are not touched.
+
+## Target priority
+
+Only the topmost window or popup under the pointer takes part, so targets covered by
+another `Window`, or below an open `Popup`, are unreachable. Hits carry the same
+clipping as input: targets outside a scrolled `ScrollArea`, under a parent clip or
+outside the viewport never accept. Within that layer the most deeply nested target
+wins; equal depth goes to the one built later. A rejecting nested target blocks its
+parent unless it opted into `passthrough_rejected(true)`. Disabled targets and
+sources do not take part and keep their state.
+
+## Zones and indicators
+
+`DropZones::rows()`, `columns()` and `tree()` report `Insertion::{Before, Inside,
+After}` by pointer position; `edge(f)` sets the band fraction and `inside(false)`
+removes `Inside`, for leaves. `DropOutput` reports `hovering`, `acceptable`,
+`rejected`, `position` (relative to the target) and `insertion`. The built-in
+indicator is a translucent target fill and outline, a rejection outline, or a
+translucent band with a rounded insertion line inside the row's own bounds
+(indented by `line_indent`). It is painted from the target's bounds, so it follows
+scrolling, transforms and DPI without relayout. The fade uses the animation engine;
+reduced motion makes it instant and settled fades request no frames.
+
+## Preview, cursor and source
+
+The default preview replays what the source painted when the drag began, on a small
+card in an overlay layer above windows and popups. It owns no hits, is not clipped by
+the source's window and never shadows a target. It keeps the grab offset, is scaled
+down to `preview_max_size` and drawn at `preview_opacity`. `preview(|ui| ...)` builds
+custom content each pass instead (non-interactive). A cancelled drag animates the
+preview back to its source (skipped with reduced motion). The cursor shows Grabbing,
+Move or Copy over a target that accepts, and NoDrop over one that rejects. The source
+is dimmed to `source_opacity`, or hidden with `hide_source`.
+
+## Autoscroll
+
+Near the edge of a `ScrollArea`, `Table` or `TreeView` body, within
+`autoscroll_edge` (32), the container scrolls on both axes with speed growing from
+`autoscroll_min_speed` to `autoscroll_max_speed` (80..900 logical px/s) toward the
+edge, integrated over the pass clock: it does not depend on mouse events, frame rate
+or DPI. The innermost container that can still move takes the gesture; one at its
+limit hands it to the container around it. A pointer beyond the native window counts
+as at the border. It stops with the drag, and the wheel keeps working. Hover and
+indicators are resolved from the newest geometry after each scroll.
+
+Virtualized rows: only built rows are targets, and no model is walked to find
+targets. Rows revealed by scrolling become targets on the next pass. A dragged row
+that scrolls out of the window is not built, so call `ui.keep_drag_source(id)` each
+pass while the model still contains it; `Ui::dragging()` returns the id. `TreeView`
+does this itself. A row removed from the model ends the drag as `SourceLost`.
+
+## Keyboard
+
+Nothing is intercepted before a pick-up. A source that owns a focus stop (the closure
+form) is picked up with Space. A source attached to another focusable control (a
+button, a table row, a tree) uses Ctrl+Space, because that control keeps plain Space.
+Text fields, combo boxes, sliders and number fields never start a drag. While held,
+the arrow keys move between reachable insertion points of accepting targets, Home
+and End jump to the first and last, Space or Enter drops, and Escape cancels; Tab
+cancels and continues traversal, and a pointer press cancels. At the last visible
+point the container scrolls so more rows can be reached. Focus is never moved.
+
+## Style
+
+`Style::drag` is a `DragStyle` (also `StyleOverrides::drag` and palette blending).
+Priority: builder call, then `Style::drag` (including local `with_style` scopes),
+then the default. `None` fields inherit tokens: fill and line use `accent`, rejection
+uses `error`, the card uses `window_fill` and `border`, timing uses
+`motion.hover` and `motion.reorder`.
+
+## Containers
+
+- `TreeView::drag_nodes(true)` makes nodes sources and before / inside / after
+  targets and emits `TreeEvent::Moved { node, target, position }`. Dropping a node
+  into itself or its subtree is rejected, leaves have no inside zone, and open
+  state, selection and focus stay keyed by node id. The model is yours to edit.
+  Ctrl+Space picks up the focused node.
+- `Table::drag_rows(true)` and `Grid::drag_rows(true)` make rows sources and
+  before / after targets with `RowDrag` payloads, reported as `row_moved`.
+- `Reorder` stays a visual layer: `Dropped::reorder(&order)` gives `(from, to)` for
+  `move_item(&mut vec, from, to)`, then `Reorder` animates the new order.
+- Built-in payloads `TreeNodeDrag` and `RowDrag` can be accepted by your own targets,
+  for example to drop a tree node into a list.
+
+## Limitations
+
+Drag and drop works only inside one native window of one `Context`. There is no
+operating-system file drag, clipboard drag, cross-window or cross-process transfer,
+OLE, or native multi-window hosting; payloads are in-process values. Text selections
+cannot be dragged and `TextEdit` is unchanged. Variable-height virtualization has no
+model-wide target lookup, and spring-loaded expansion of collapsed branches is not
+provided. The source is dimmed only in the closure form; an attached source cannot
+be dimmed because its content is already built.
+
+## Example and benchmarks
+
+`cargo run --release --example drag_and_drop` shows reordering with `Reorder`, a
+tree with before / inside / after moves, transfer between lists and into a virtual
+`Table`, a type-rejecting archive, nested scrolling with autoscroll, a custom preview
+and the keyboard flow. `--smoke-test` replays one real drag through the event path;
+`--hold=tree` or `--hold=list` stops mid-drag for visual inspection. Benchmark cases
+`dnd_idle`, `dnd_begin_end`, `dnd_move_targets`, `dnd_autoscroll_virtual`,
+`dnd_tree`, `dnd_preview` and `dnd_lifecycle` run in `benches/performance.rs`.

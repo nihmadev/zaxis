@@ -1,6 +1,6 @@
 use zaxis::{
     vec2, App, Button, Column, Context, Frame, Grid, GridStyle, Id, Padding, SortDirection, Table,
-    Text, TextEdit, Window,
+    TextEdit, Window,
 };
 
 struct Record {
@@ -39,7 +39,7 @@ impl App for Example {
                                     .show(ui, |grid| {
                                         grid.row("title", |row| {
                                             row.cell(|ui| {
-                                                ui.add(Text::new("General").size(18.0));
+                                                ui.heading("General");
                                             });
                                         });
                                         grid.row("name", |row| {
@@ -71,7 +71,7 @@ impl App for Example {
                                     .show(ui, |grid| {
                                         grid.row("title", |row| {
                                             row.cell(|ui| {
-                                                ui.add(Text::new("Sound").size(18.0));
+                                                ui.heading("Sound");
                                             });
                                         });
                                         grid.row("volume", |row| {
@@ -97,7 +97,7 @@ impl App for Example {
                             });
                         })
                     });
-                ui.add(Text::new("Records").size(18.0));
+                ui.heading("Records");
                 let height = (ui.available_height() - 32.0).max(0.0);
                 let output = Table::new("records")
                     .max_height(height)
@@ -194,6 +194,7 @@ fn main() -> Result<(), zaxis::RunError> {
             window_attributes: zaxis::winit::window::Window::default_attributes()
                 .with_title("zaxis — Grid and Table")
                 .with_inner_size(zaxis::winit::dpi::LogicalSize::new(970.0, 790.0)),
+            ..Default::default()
         },
     )
 }

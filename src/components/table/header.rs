@@ -90,7 +90,7 @@ pub(super) fn paint(
         );
         base.opacity = effective.opacity;
         let selected = state.sort.is_some_and(|sort| sort.column == column.id);
-        let appearance = ui.animate_control(
+        let mut appearance = ui.animate_control(
             response,
             crate::HoverStyle::NONE,
             false,
@@ -99,6 +99,7 @@ pub(super) fn paint(
             base,
             style.hovered_fill,
         );
+        appearance.ring = None;
         let mut paint = Vec::new();
         appearance.paint_shadow(bounds, appearance.rounding, &mut paint);
         appearance.paint_body(
@@ -112,7 +113,8 @@ pub(super) fn paint(
             .paint(id.with("surface"), ui.window, clip.intersect(bounds), paint);
         let text = format!("{}{suffix}", column.title);
         let size = super::super::font_size(style.font_size);
-        let measured = ui.context.measure_text(&text, size, f32::INFINITY);
+        let weight = style.header_font_weight;
+        let measured = ui.context.measure_text(&text, size, weight, f32::INFINITY);
         let padded = style.cell_padding.inset(bounds);
         let position = padded.min
             + Vec2::new(
@@ -127,6 +129,7 @@ pub(super) fn paint(
                 text,
                 position,
                 size,
+                weight,
                 wrap_width: f32::INFINITY,
                 color: appearance.text_color,
             }],

@@ -113,3 +113,11 @@ the built `(row_id, rect)` pairs. Virtual output stays proportional to visible r
 Run `cargo run --example grid_table`. The example has settings cards, a 10,000-row
 table, editable checkboxes, resizing and application-side sorting.
 It uses Immediate presentation without Vsync.
+
+## Dragging rows
+
+`Table::drag_rows(true)` makes rows draggable with `RowDrag` payloads and before /
+after targets; the move is reported as `TableOutput::row_moved` and the model stays
+yours. With `show_rows`, call `ui.keep_drag_source(row)` while the dragged row exists
+so scrolling it out of the virtual window does not end the drag. Autoscroll applies to
+the table body. See [Drag and drop](./drag-and-drop.mdx).

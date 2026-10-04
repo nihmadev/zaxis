@@ -64,11 +64,29 @@ pub trait TreeModel {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TreeEvent {
-    OpenChanged { node: Id, open: bool },
-    Selected { node: Option<Id> },
-    Activated { node: Id },
-    ContextAction { node: Id },
-    RequestChildren { node: Id },
+    OpenChanged {
+        node: Id,
+        open: bool,
+    },
+    Selected {
+        node: Option<Id>,
+    },
+    Activated {
+        node: Id,
+    },
+    ContextAction {
+        node: Id,
+    },
+    RequestChildren {
+        node: Id,
+    },
+    /// A drag finished: move `node` relative to `target`. The application edits
+    /// its model and bumps the revision.
+    Moved {
+        node: Id,
+        target: Id,
+        position: crate::Insertion,
+    },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TreeIssue {

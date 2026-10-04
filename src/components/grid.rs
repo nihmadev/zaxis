@@ -1,4 +1,5 @@
 //! Shared columns with single-pass arbitrary cell callbacks.
+mod drag;
 mod rows;
 use super::{
     columns::{dimension, resolve},
@@ -52,6 +53,7 @@ pub struct Grid {
     padding: Option<Padding>,
     cell_padding: Option<Padding>,
     fill: Option<Color>,
+    drag_rows: bool,
 }
 pub struct GridOutput<R> {
     pub inner: R,
@@ -61,6 +63,8 @@ pub struct GridOutput<R> {
     pub measured_widths: Vec<f32>,
     pub rows: Vec<Rect>,
     pub cells: Vec<Vec<Rect>>,
+    /// A row was dragged before or after another.
+    pub row_moved: Option<crate::RowMove>,
 }
 impl Grid {
     pub fn new(source: impl Hash) -> Self {
@@ -75,6 +79,7 @@ impl Grid {
             padding: None,
             cell_padding: None,
             fill: None,
+            drag_rows: false,
         }
     }
     pub fn column(mut self, column: Column) -> Self {
@@ -89,14 +94,14 @@ impl Grid {
         self.style = Some(style);
         self
     }
+    #[track_caller]
     pub fn width(mut self, width: f32) -> Self {
         self.width = Some(dimension(width));
         self
     }
+    #[track_caller]
     pub fn spacing(mut self, spacing: Vec2) -> Self {
-        dimension(spacing.x);
-        dimension(spacing.y);
-        self.spacing = Some(spacing);
+        self.spacing = Some(Vec2::new(dimension(spacing.x), dimension(spacing.y)));
         self
     }
     pub fn padding(mut self, padding: Padding) -> Self {
@@ -109,6 +114,13 @@ impl Grid {
     }
     pub fn fill(mut self, fill: Color) -> Self {
         self.fill = Some(fill);
+        self
+    }
+    /// Let rows be dragged to reorder: rows are sources with `RowDrag` payloads
+    /// and before/after targets, reported as `GridOutput::row_moved`. Row ids are
+    /// `Id::new(source)` of the `row` call. The model is yours to change.
+    pub fn drag_rows(mut self, drag: bool) -> Self {
+        self.drag_rows = drag;
         self
     }
     pub(super) fn resolved(mut self, widths: Vec<f32>, height: Option<f32>) -> Self {
@@ -125,7 +137,7 @@ impl Grid {
     }
 
     fn show_content<R>(
-        self,
+        mut self,
         ui: &mut Ui<'_>,
         build: impl FnOnce(&mut GridUi<'_, '_>) -> R,
     ) -> GridOutput<R> {
@@ -143,18 +155,26 @@ impl Grid {
         if let Some(fill) = self.fill {
             style.fill = fill;
         }
-        dimension(style.spacing.x);
-        dimension(style.spacing.y);
-        dimension(style.row_min_height);
-        assert!(
-            !self.columns.is_empty(),
-            "Grid requires at least one column"
-        );
+        style.spacing = Vec2::new(dimension(style.spacing.x), dimension(style.spacing.y));
+        style.row_min_height = dimension(style.row_min_height);
+        if self.columns.is_empty() {
+            ui.context
+                .report(crate::DiagnosticKind::InvalidUsage, Some(id), None, || {
+                    "Grid has no columns; using one flexible column".into()
+                });
+            self.columns.push(Column::remainder("grid-fallback-column"));
+        }
         let mut unique = std::collections::HashSet::new();
-        assert!(
-            self.columns.iter().all(|c| unique.insert(c.id)),
-            "duplicate column ID"
-        );
+        for column in &self.columns {
+            if !unique.insert(column.id) {
+                ui.context.report(
+                    crate::DiagnosticKind::IdCollision,
+                    Some(column.id),
+                    None,
+                    || "duplicate id: two Grid columns share one id".into(),
+                );
+            }
+        }
         let available = self
             .width
             .unwrap_or(ui.available_width())
@@ -238,7 +258,9 @@ impl Grid {
         );
         let mut row_rects = Vec::new();
         let mut cells = Vec::new();
+        let mut keys = Vec::new();
         for row in grid.rows {
+            keys.push(row.key);
             let row_rect = Rect::from_min_size(
                 grid.origin + Vec2::new(0.0, row.y),
                 Vec2::new(content_width, row.height),
@@ -272,6 +294,11 @@ impl Grid {
             }
             cells.push(cell_rects);
         }
+        let row_moved = if self.drag_rows {
+            drag::rows(grid.ui, id, &keys, &row_rects, content_width)
+        } else {
+            None
+        };
         grid.ui.context.grids.insert(
             id,
             GridState {
@@ -293,6 +320,7 @@ impl Grid {
             measured_widths: grid.measured,
             rows: row_rects,
             cells,
+            row_moved,
         }
     }
 }
@@ -306,6 +334,7 @@ struct Row {
     y: f32,
     height: f32,
     cells: Vec<Cell>,
+    key: Id,
 }
 /// Rows are identified by application IDs, never by their display positions.
 pub struct GridUi<'a, 'ctx> {

@@ -1,11 +1,11 @@
 use zaxis::{
     vec2, App, Button, Color, Context, Frame, HoverStyle, Padding, Rect, ScrollArea, ScrollStyle,
-    Shape, Slider, Text, Window,
+    Shape, Slider, Window,
 };
 
 struct Settings {
     flags: [bool; 48],
-    levels: [f32; 48],
+    levels: [u32; 48],
     rows: usize,
     selected: usize,
     jump: bool,
@@ -29,17 +29,17 @@ impl App for Settings {
                 let height = (ui.available_height() - 38.0).max(0.0);
                 ui.horizontal(|ui| {
                     ScrollArea::vertical().id_source("left").max_width(width).max_height(height).show(ui, |ui| {
-                        ui.add(Text::new("Preferences").size(19.0));
+                        ui.heading("Preferences");
                         for index in 0..self.flags.len() {
                             ui.push_id(index, |ui| {
                                 ui.checkbox(&mut self.flags[index], format!("Setting {}", index + 1));
-                                ui.add(Slider::new(&mut self.levels[index], 0.0..=100.0)
-                                    .text("Level").precision(0).width(width - 20.0));
+                                ui.add(Slider::new(&mut self.levels[index], 0..=100)
+                                    .text("Level").width(width - 20.0));
                             });
                         }
                     });
                     ScrollArea::vertical().id_source("right").max_width(width).max_height(height).show(ui, |ui| {
-                        ui.add(Text::new("Nested list").size(19.0));
+                        ui.heading("Nested list");
                         ui.muted("Only visible rows are built. Resize or shorten the list to check offset clamping.");
                         let mut list = ScrollArea::vertical().id_source("items").max_height(150.0).style(ScrollStyle::compact());
                         if self.jump {
@@ -81,7 +81,7 @@ fn main() -> Result<(), zaxis::RunError> {
     zaxis::run_with_options(
         Settings {
             flags: [true; 48],
-            levels: [50.0; 48],
+            levels: [50; 48],
             rows: 10000,
             selected: 7500,
             jump: false,

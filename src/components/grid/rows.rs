@@ -7,7 +7,8 @@ impl GridUi<'_, '_> {
         source: impl Hash,
         build: impl FnOnce(&mut GridRow<'_, '_, '_>) -> R,
     ) -> R {
-        let id = self.id.with(("row", Id::new(source)));
+        let key = Id::new(source);
+        let id = self.id.with(("row", key));
         let y = self.height
             + if self.rows.is_empty() {
                 0.0
@@ -31,6 +32,7 @@ impl GridUi<'_, '_> {
             y,
             height,
             cells: row.cells,
+            key,
         });
         result
     }
@@ -46,8 +48,18 @@ impl GridRow<'_, '_, '_> {
     /// The callback runs once. Its response coordinates are the build coordinates;
     /// use GridOutput::cells for final cell bounds after content sizing/alignment.
     pub fn cell<R>(&mut self, build: impl FnOnce(&mut Ui<'_>) -> R) -> R {
-        let i = self.cells.len();
-        assert!(i < self.grid.columns.len(), "too many cells in Grid row");
+        let index = self.cells.len();
+        let hidden = index >= self.grid.columns.len();
+        if hidden {
+            self.grid.ui.context.report(
+                crate::DiagnosticKind::InvalidUsage,
+                Some(self.id),
+                None,
+                || "more cells than Grid columns; the extra cell is not shown".into(),
+            );
+        }
+        // An extra cell is laid out against the last column but never shown.
+        let i = index.min(self.grid.columns.len().saturating_sub(1));
         let c = &self.grid.columns[i];
         let id = self.id.with(c.id);
         let padding = self.grid.style.cell_padding;
@@ -72,7 +84,11 @@ impl GridRow<'_, '_, '_> {
             .map_or(self.grid.ui.available_height(), |h| {
                 (h - padding.size().y).max(0.0)
             });
-        let bounds = Rect::from_min_size(origin, Vec2::new(width, height));
+        let bounds = if hidden {
+            Rect::default()
+        } else {
+            Rect::from_min_size(origin, Vec2::new(width, height))
+        };
         let ui = &mut self.grid.ui;
         let spacing = self.grid.style.component_spacing.max(0.0);
         ui.context.begin_placement(ui.window);
@@ -95,6 +111,10 @@ impl GridRow<'_, '_, '_> {
         child.finish_layout();
         let size = child.layout.used;
         let placement = child.context.end_placement();
+        if hidden {
+            child.context.place(placement, Vec2::ZERO, Rect::default());
+            return result;
+        }
         self.height = self.height.max(size.y + padding.size().y);
         self.grid.measured[i] = self.grid.measured[i].max(size.x + padding.size().x);
         self.cells.push(Cell {

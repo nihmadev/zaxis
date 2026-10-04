@@ -48,6 +48,7 @@ pub struct Table {
     separators: Option<bool>,
     selectable: bool,
     resizable: bool,
+    drag_rows: bool,
 }
 pub struct TableOutput<R> {
     pub inner: R,
@@ -59,6 +60,8 @@ pub struct TableOutput<R> {
     pub selected_row: Option<Id>,
     pub row_clicked: Option<Id>,
     pub sort_request: Option<SortRequest>,
+    /// A row was dragged before or after another (see [`Table::drag_rows`]).
+    pub row_moved: Option<crate::RowMove>,
     /// Only built rows; virtualized output stays proportional to visible content.
     pub rows: Vec<(Id, Rect)>,
 }
@@ -80,6 +83,7 @@ impl Table {
             separators: None,
             selectable: true,
             resizable: true,
+            drag_rows: false,
         }
     }
     pub fn column(mut self, column: Column) -> Self {
@@ -94,9 +98,15 @@ impl Table {
         self.style = Some(style);
         self
     }
-    pub fn rounding(mut self, rounding: impl Into<CornerRadius>) -> Self {
-        self.rounding = Some(rounding.into());
+    pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.rounding = Some(radius.into());
         self
+    }
+    #[deprecated(
+        note = "use `.corner_radius(..)`; one name for the corner radius of every component"
+    )]
+    pub fn rounding(self, rounding: impl Into<CornerRadius>) -> Self {
+        self.corner_radius(rounding)
     }
     pub fn border(mut self, border: Border) -> Self {
         self.border = Some(border);
@@ -122,9 +132,11 @@ impl Table {
         self.sort = Some(sort);
         self
     }
+    #[track_caller]
     pub fn scroll_offset(mut self, offset: Vec2) -> Self {
-        assert!(offset.is_finite());
-        self.offset = Some(offset.max(Vec2::ZERO));
+        if let Some(offset) = super::sanitize::finite_vec2("Table::scroll_offset", offset) {
+            self.offset = Some(offset.max(Vec2::ZERO));
+        }
         self
     }
     pub fn striped(mut self, striped: bool) -> Self {
@@ -141,6 +153,14 @@ impl Table {
     }
     pub fn resizable(mut self, resizable: bool) -> Self {
         self.resizable = resizable;
+        self
+    }
+    /// Let rows be dragged to reorder. Rows are sources with `RowDrag` payloads
+    /// and before/after targets; the result is `TableOutput::row_moved`. The model
+    /// is yours to change. With `show_rows`, call `Ui::keep_drag_source` for the
+    /// dragged row while it exists so scrolling it out of view does not end the drag.
+    pub fn drag_rows(mut self, drag: bool) -> Self {
+        self.drag_rows = drag;
         self
     }
     pub fn show<R>(
@@ -165,21 +185,20 @@ impl Table {
         total: usize,
         mut build: impl FnMut(&mut TableBody<'_, '_>, usize),
     ) -> TableOutput<Range<usize>> {
-        assert!(
-            row_height.is_finite() && row_height > 0.0,
-            "row height must be positive and finite"
-        );
+        let row_height = super::sanitize::positive("Table::show_rows row_height", row_height)
+            .unwrap_or(ui.style().control_height.max(1.0));
         self.show_impl(ui, |scroll, ui, setup| {
             let out = scroll.show_rows(ui, row_height, total, |ui, index| {
                 let before = setup.rows.len();
                 let mut body = TableBody::new(ui, setup, Some(row_height));
                 body.index = index;
                 build(&mut body, index);
-                assert_eq!(
-                    setup.rows.len(),
-                    before + 1,
-                    "show_rows must build exactly one stable-ID row per callback"
-                );
+                if setup.rows.len() != before + 1 {
+                    ui.context
+                        .report(crate::DiagnosticKind::InvalidUsage, None, None, || {
+                            "Table::show_rows must build exactly one row per callback".into()
+                        });
+                }
             });
             (out.inner, out.viewport, out.offset)
         })
@@ -193,20 +212,30 @@ impl Table {
     }
 
     fn show_content<R>(
-        self,
+        mut self,
         ui: &mut Ui<'_>,
         run: impl FnOnce(ScrollArea, &mut Ui<'_>, &mut body::BodySetup) -> (R, Rect, Vec2),
     ) -> TableOutput<R> {
-        assert!(
-            !self.columns.is_empty(),
-            "Table requires at least one column"
-        );
-        let mut unique = std::collections::HashSet::new();
-        assert!(
-            self.columns.iter().all(|c| unique.insert(c.id)),
-            "duplicate column ID"
-        );
         let id = ui.scope.with(("table", self.id));
+        if self.columns.is_empty() {
+            ui.context
+                .report(crate::DiagnosticKind::InvalidUsage, Some(id), None, || {
+                    "Table has no columns; using one flexible column".into()
+                });
+            self.columns
+                .push(super::Column::remainder("table-fallback-column"));
+        }
+        let mut unique = std::collections::HashSet::new();
+        for column in &self.columns {
+            if !unique.insert(column.id) {
+                ui.context.report(
+                    crate::DiagnosticKind::IdCollision,
+                    Some(column.id),
+                    None,
+                    || "duplicate id: two Table columns share one id".into(),
+                );
+            }
+        }
         let mut state = ui.context.tables.remove(&id).unwrap_or_default();
         state.last_frame = ui.context.frame;
         if let Some(selected) = self.selected {
@@ -231,8 +260,8 @@ impl Table {
         if let Some(separators) = self.separators {
             style.separators = separators;
         }
-        dimension(style.header_height);
-        dimension(style.row_min_height);
+        style.header_height = dimension(style.header_height);
+        style.row_min_height = dimension(style.row_min_height);
         let available = self
             .width
             .unwrap_or(ui.available_width())
@@ -264,7 +293,12 @@ impl Table {
             .map(|c| {
                 let title = ui
                     .context
-                    .measure_text(&c.title, super::font_size(style.font_size), f32::INFINITY)
+                    .measure_text(
+                        &c.title,
+                        super::font_size(style.font_size),
+                        style.header_font_weight,
+                        f32::INFINITY,
+                    )
                     .x
                     + style.cell_padding.size().x
                     + if c.sortable { 18.0 } else { 0.0 };
@@ -323,6 +357,8 @@ impl Table {
             rows: Vec::new(),
             seen: Default::default(),
             origin: None,
+            drag: self.drag_rows,
+            moved: None,
         };
         let (inner, viewport, offset) = run(scroll, &mut child, &mut setup);
         if let Some(origin) = setup.origin {
@@ -368,6 +404,7 @@ impl Table {
             selected_row,
             row_clicked: setup.clicked,
             sort_request,
+            row_moved: setup.moved,
             rows: setup.rows,
         }
     }

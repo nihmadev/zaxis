@@ -254,17 +254,22 @@ fn horizontal_overflow_moves_header_with_body_and_nested_clipping() {
 fn rounded_surfaces_are_default_and_custom_radii_keep_content_inside_frame() {
     let mut c = setup();
     let out = table(&mut c, None, &[1, 2, 3]);
-    assert!(c.cache.values().flat_map(|cached| &cached.paint).any(|paint| {
-        matches!(paint, Paint::Shape(crate::Shape::Rect { rect, rounding, border, .. })
-            if *rect == out.rect && *rounding == crate::CornerRadius::all(8.0) && border.width > 0.0)
-    }));
+    assert!(c
+        .cache
+        .values()
+        .flat_map(|cached| &cached.paint)
+        .any(|paint| {
+            matches!(paint, Paint::Shape(crate::Shape::Rect { rect, rounding, border, .. })
+            if *rect == out.rect && *rounding == c.style().table.rounding && border.width > 0.0)
+        }));
     assert!(c
         .cache
         .values()
         .flat_map(|cached| &cached.paint)
         .any(|paint| {
             matches!(paint, Paint::Shape(crate::Shape::Rect { rect, rounding, .. })
-            if *rect == out.header_rect && rounding.top_left == 8.0 && rounding.top_right == 8.0)
+            if *rect == out.header_rect && rounding.top_left == c.style().table.rounding.top_left
+                && rounding.top_right == c.style().table.rounding.top_right)
         }));
     let mut custom = None;
     c.run(|c| {
@@ -272,7 +277,7 @@ fn rounded_surfaces_are_default_and_custom_radii_keep_content_inside_frame() {
             custom = Some(
                 Table::new("round")
                     .columns(columns())
-                    .rounding(40.0)
+                    .corner_radius(40.0)
                     .padding(crate::Padding::all(0.0))
                     .show(ui, |body| {
                         body.row(1, |row| {
