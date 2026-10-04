@@ -21,6 +21,21 @@ fn fs_copy(input: Output) -> @location(0) vec4<f32> {
     return textureSample(image, image_sampler, input.uv);
 }
 
+// Box prefilter for the reduced-resolution chain: four bilinear taps one source texel
+// away from the centre average a full 4x4 block, so no source pixel is skipped.
+@fragment
+fn fs_down(input: Output) -> @location(0) vec4<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(image));
+    var color = vec4<f32>(0.0);
+    for (var y = -1; y <= 1; y += 2) {
+        for (var x = -1; x <= 1; x += 2) {
+            let offset = vec2<f32>(f32(x), f32(y)) * texel;
+            color += textureSample(image, image_sampler, input.uv + offset);
+        }
+    }
+    return color * 0.25;
+}
+
 @fragment
 fn fs_blur(input: Output) -> @location(0) vec4<f32> {
     var color = vec4<f32>(0.0);

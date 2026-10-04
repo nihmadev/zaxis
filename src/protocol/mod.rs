@@ -47,6 +47,7 @@ mod texture;
 mod vertex;
 
 pub use draw_command::DrawCommand;
+pub(crate) use draw_data::next_source;
 pub use draw_data::{DrawData, GeometryUpdate};
 pub use texture::{TextureFilter, TextureId, TextureImage, TextureOptions};
 pub use vertex::Vertex;

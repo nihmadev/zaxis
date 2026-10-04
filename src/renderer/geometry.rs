@@ -5,7 +5,11 @@ use crate::{DrawData, Vertex};
 use std::ops::Range;
 
 impl Renderer {
-    pub(super) fn prepare_geometry(&mut self, data: &DrawData) -> Result<(), RenderError> {
+    pub(super) fn prepare_geometry(
+        &mut self,
+        data: &DrawData,
+        store: &super::textures::TextureStore,
+    ) -> Result<(), RenderError> {
         let revision = (data.source, data.revision);
         if self.uploaded != Some(revision) {
             let update = data.geometry_update.as_ref().filter(|update| {
@@ -43,7 +47,7 @@ impl Renderer {
                     || command.indices.end as usize > data.indices.len()
                     || !command.clip_rect.min.is_finite()
                     || !command.clip_rect.max.is_finite()
-                    || !self.textures.contains_key(&command.texture)
+                    || !store.textures.contains_key(&command.texture)
                 {
                     return Err(RenderError::InvalidDrawData(
                         "draw range, clip rectangle, or texture ID is invalid",

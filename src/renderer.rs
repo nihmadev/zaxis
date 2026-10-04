@@ -23,12 +23,8 @@ mod tests;
 mod textures;
 mod viewport;
 
-use crate::TextureId;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-use textures::GpuTexture;
+use std::sync::{Arc, Mutex, OnceLock};
+use textures::TextureStore;
 use winit::{dpi::PhysicalSize, window::Window};
 
 pub use diagnostics::{ImageUploadMeasurement, RendererStage, RendererTiming};
@@ -80,6 +76,10 @@ pub struct RendererStats {
 
 /// A renderer bound to one winit window. Owning an `Arc<Window>` makes surface
 /// lifetime management safe without raw handles or unsafe code.
+///
+/// Further windows get their own renderer through [`Renderer::create_sibling`]. Siblings
+/// share the device, queue, pipelines and the GPU texture store (glyph atlas pages and
+/// images); each keeps its own surface, uniform, geometry buffers and blur targets.
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
     window: Arc<Window>,
@@ -96,19 +96,20 @@ pub struct Renderer {
     scroll_hint_pipeline: wgpu::RenderPipeline,
     backdrop_pipeline: wgpu::RenderPipeline,
     blur: Option<blur::BlurRenderer>,
+    blur_pipelines: Arc<OnceLock<Arc<blur::BlurPipelines>>>,
     uniform: wgpu::Buffer,
+    viewport_layout: wgpu::BindGroupLayout,
     viewport_group: wgpu::BindGroup,
     texture_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     nearest_sampler: wgpu::Sampler,
-    textures: HashMap<TextureId, GpuTexture>,
+    store: Arc<Mutex<TextureStore>>,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     vertex_capacity: u64,
     index_capacity: u64,
     uploaded: Option<(u64, u64)>,
     uploaded_sizes: [usize; 2],
-    texture_source: Option<u64>,
     viewport_value: [f32; 4],
     device_lost: Arc<Mutex<Option<String>>>,
     stats: RendererStats,

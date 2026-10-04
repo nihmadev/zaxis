@@ -5,10 +5,17 @@ use crate::{DrawData, Rect};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
+#[cfg(test)]
 pub(super) fn create_bindings(
     device: &wgpu::Device,
 ) -> (wgpu::BindGroupLayout, wgpu::Buffer, wgpu::BindGroup) {
-    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+    let layout = create_layout(device);
+    let (uniform, viewport_group) = create_uniform(device, &layout);
+    (layout, uniform, viewport_group)
+}
+
+pub(super) fn create_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("zaxis viewport layout"),
         entries: &[wgpu::BindGroupLayoutEntry {
             binding: 0,
@@ -20,7 +27,14 @@ pub(super) fn create_bindings(
             },
             count: None,
         }],
-    });
+    })
+}
+
+/// The per-window viewport uniform; the layout is shared by every window.
+pub(super) fn create_uniform(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+) -> (wgpu::Buffer, wgpu::BindGroup) {
     let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("zaxis viewport"),
         contents: bytemuck::cast_slice(&[1.0_f32, 1.0, 0.0, 0.0]),
@@ -28,13 +42,13 @@ pub(super) fn create_bindings(
     });
     let viewport_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("zaxis viewport bind group"),
-        layout: &layout,
+        layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
             resource: uniform.as_entire_binding(),
         }],
     });
-    (layout, uniform, viewport_group)
+    (uniform, viewport_group)
 }
 
 pub(super) fn validate(data: &DrawData) -> Result<(), RenderError> {

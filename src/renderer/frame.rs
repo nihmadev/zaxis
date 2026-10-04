@@ -11,6 +11,7 @@ impl Renderer {
     /// Present draw commands. Geometry and atlas pages upload only when their
     /// revisions change. Call on requested redraws, including OS exposure events.
     pub fn render(&mut self, data: &DrawData, clear: Color) -> Result<RenderStatus, RenderError> {
+        let clear = self.surface_clear(clear);
         if let Some(message) = self
             .device_lost
             .lock()
@@ -54,8 +55,11 @@ impl Renderer {
             }
         };
         viewport::validate(data)?;
-        self.prepare_textures(data)?;
-        self.prepare_geometry(data)?;
+        let store = Arc::clone(&self.store);
+        let mut store = store.lock().expect("texture store mutex");
+        store.clock += 1;
+        self.prepare_textures(&mut store, data)?;
+        self.prepare_geometry(data, &store)?;
         self.prepare_viewport(data);
         let encoding = self.diagnostics.start();
         self.diagnostics.render_pending = false;
@@ -69,7 +73,7 @@ impl Renderer {
                 label: Some("zaxis frame"),
             });
         if data.commands.iter().any(|c| c.blur.is_some()) {
-            self.render_blur(&mut encoder, data, clear, &view);
+            self.render_blur(&mut encoder, data, clear, &view, &store);
         } else {
             let clear = clear.linear();
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -113,7 +117,7 @@ impl Renderer {
                     };
                     pass.set_scissor_rect(x, y, width, height);
                     pass.set_pipeline(self.pipeline_for(command, data));
-                    pass.set_bind_group(1, &self.textures[&command.texture].bind_group, &[]);
+                    pass.set_bind_group(1, &store.textures[&command.texture].bind_group, &[]);
                     pass.draw_indexed(command.indices.clone(), 0, 0..1);
                 }
             }
@@ -124,6 +128,7 @@ impl Renderer {
                 self.diagnostics.render_pending = true;
             }
         }
+        drop(store);
         let commands = encoder.finish();
         self.diagnostics
             .end(super::diagnostics::RendererStage::EncodingCpu, encoding);

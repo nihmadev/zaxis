@@ -9,6 +9,11 @@ use std::{
 
 static NEXT_SOURCE: AtomicU64 = AtomicU64::new(1);
 
+/// A fresh producer identity, also used to tell image caches apart.
+pub(crate) fn next_source() -> u64 {
+    NEXT_SOURCE.fetch_add(1, Ordering::Relaxed)
+}
+
 /// Optional dirty ranges relative to a previously validated geometry revision.
 /// Ranges use vertex/index element offsets, not bytes. Backends may ignore this
 /// hint and upload the complete frame. Every changed buffer entry must be covered.
@@ -79,7 +84,7 @@ impl Default for DrawData {
             logical_size: Vec2::ZERO,
             scale_factor: 0.0,
             revision: 0,
-            source: NEXT_SOURCE.fetch_add(1, Ordering::Relaxed),
+            source: next_source(),
             textures: Vec::new(),
             texture_options: Default::default(),
             texture_budget_bytes: 256 << 20,

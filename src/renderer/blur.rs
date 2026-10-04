@@ -1,5 +1,6 @@
 //! Ordered backdrop effects. Offscreen attachments are allocated only for blur frames.
-use super::{viewport::scissor, Renderer};
+use super::{textures::TextureStore, viewport::scissor, Renderer};
+use std::sync::Arc;
 use crate::{Color, DrawData, Rect, Vec2};
 use wgpu::util::DeviceExt;
 
@@ -8,19 +9,27 @@ struct Target {
     group: wgpu::BindGroup,
 }
 
+/// Pipelines and layout, created once and shared by every window of a device.
+pub(super) struct BlurPipelines {
+    layout: wgpu::BindGroupLayout,
+    gaussian: wgpu::RenderPipeline,
+    down: wgpu::RenderPipeline,
+    copy: wgpu::RenderPipeline,
+}
+
+/// Offscreen targets and parameters of one window; freed on resize and when it closes.
 pub(super) struct BlurRenderer {
     canvas: Target,
     backdrop: Target,
+    low: Target,
     scratch: Target,
     blurred: Target,
-    layout: wgpu::BindGroupLayout,
-    gaussian: wgpu::RenderPipeline,
-    copy: wgpu::RenderPipeline,
+    pipelines: Arc<BlurPipelines>,
     parameters: Vec<(f32, [wgpu::BindGroup; 2])>,
     downsample: u32,
 }
 
-impl BlurRenderer {
+impl BlurPipelines {
     fn new(renderer: &Renderer) -> Self {
         let device = &renderer.device;
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -72,15 +81,30 @@ impl BlurRenderer {
                 cache: None,
             })
         };
+        Self {
+            layout,
+            gaussian: pipeline("fs_blur"),
+            down: pipeline("fs_down"),
+            copy: pipeline("fs_copy"),
+        }
+    }
+}
+
+impl BlurRenderer {
+    fn new(renderer: &Renderer) -> Self {
+        let pipelines = Arc::clone(
+            renderer
+                .blur_pipelines
+                .get_or_init(|| Arc::new(BlurPipelines::new(renderer))),
+        );
         let target = || Self::target(renderer, 1);
         Self {
             canvas: target(),
             backdrop: target(),
+            low: target(),
             scratch: target(),
             blurred: target(),
-            layout,
-            gaussian: pipeline("fs_blur"),
-            copy: pipeline("fs_copy"),
+            pipelines,
             parameters: Vec::new(),
             downsample: 1,
         }
@@ -138,6 +162,7 @@ impl BlurRenderer {
             1
         };
         if self.downsample != downsample {
+            self.low = Self::target(renderer, downsample);
             self.scratch = Self::target(renderer, downsample);
             self.blurred = Self::target(renderer, downsample);
             self.downsample = downsample;
@@ -155,7 +180,7 @@ impl BlurRenderer {
             .map(|sigma| {
                 let samples = (3.0 * sigma / self.downsample as f32)
                     .ceil()
-                    .clamp(1.0, 12.0);
+                    .clamp(1.0, 32.0);
                 let groups = [
                     [sigma / renderer.config.width as f32, 0.0, samples, 0.0],
                     [0.0, sigma / renderer.config.height as f32, samples, 0.0],
@@ -173,7 +198,7 @@ impl BlurRenderer {
                         .device
                         .create_bind_group(&wgpu::BindGroupDescriptor {
                             label: Some("zaxis blur step group"),
-                            layout: &self.layout,
+                            layout: &self.pipelines.layout,
                             entries: &[wgpu::BindGroupEntry {
                                 binding: 0,
                                 resource: buffer.as_entire_binding(),
@@ -237,6 +262,7 @@ impl BlurRenderer {
     fn segment(
         &self,
         renderer: &Renderer,
+        store: &TextureStore,
         encoder: &mut wgpu::CommandEncoder,
         data: &DrawData,
         range: std::ops::Range<usize>,
@@ -289,7 +315,7 @@ impl BlurRenderer {
                 pass.set_bind_group(2, &self.backdrop.group, &[]);
             } else {
                 pass.set_pipeline(renderer.pipeline_for(command, data));
-                pass.set_bind_group(1, &renderer.textures[&command.texture].bind_group, &[]);
+                pass.set_bind_group(1, &store.textures[&command.texture].bind_group, &[]);
             }
             pass.draw_indexed(command.indices.clone(), 0, 0..1);
         }
@@ -303,6 +329,7 @@ impl Renderer {
         data: &DrawData,
         clear: Color,
         output: &wgpu::TextureView,
+        store: &TextureStore,
     ) {
         let mut blur = self.blur.take().unwrap_or_else(|| BlurRenderer::new(self));
         blur.prepare(self, data);
@@ -312,7 +339,7 @@ impl Renderer {
             .enumerate()
             .filter_map(|(i, c)| c.blur.map(|_| i))
             .collect();
-        blur.segment(self, encoder, data, 0..effects[0], Some(clear));
+        blur.segment(self, store, encoder, data, 0..effects[0], Some(clear));
         for (n, &index) in effects.iter().enumerate() {
             let parameters = &blur.parameters[n].1;
             let command = &data.commands[index];
@@ -350,33 +377,47 @@ impl Renderer {
                     command.blur.unwrap() * 3.0 + 2.0 * blur.downsample as f32 / data.scale_factor,
                 );
                 let padded = Rect::from_min_max(bounds.min - padding, bounds.max + padding);
-                let horizontal_region = scissor(padded, data.scale_factor, self.physical_size);
+                let horizontal_region = scissor(padded, data.scale_factor, self.physical_size)
+                    .map(|region| blur.filter_region(region));
+                let source = if blur.downsample > 1 {
+                    blur.fullscreen(
+                        encoder,
+                        &blur.low.view,
+                        &blur.canvas.group,
+                        &parameters[0],
+                        &blur.pipelines.down,
+                        horizontal_region,
+                    );
+                    &blur.low.group
+                } else {
+                    &blur.canvas.group
+                };
                 blur.fullscreen(
                     encoder,
                     &blur.scratch.view,
-                    &blur.canvas.group,
+                    source,
                     &parameters[0],
-                    &blur.gaussian,
-                    horizontal_region.map(|region| blur.filter_region(region)),
+                    &blur.pipelines.gaussian,
+                    horizontal_region,
                 );
                 blur.fullscreen(
                     encoder,
                     &blur.blurred.view,
                     &blur.scratch.group,
                     &parameters[1],
-                    &blur.gaussian,
+                    &blur.pipelines.gaussian,
                     Some(blur.filter_region(region)),
                 );
             }
             let end = effects.get(n + 1).copied().unwrap_or(data.commands.len());
-            blur.segment(self, encoder, data, index..end, None);
+            blur.segment(self, store, encoder, data, index..end, None);
         }
         blur.fullscreen(
             encoder,
             output,
             &blur.canvas.group,
             &blur.parameters[0].1[0],
-            &blur.copy,
+            &blur.pipelines.copy,
             None,
         );
         self.blur = Some(blur);
