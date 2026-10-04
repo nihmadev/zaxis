@@ -1,69 +1,99 @@
-//! Single-window desktop runner. The low-level Context and Renderer remain available.
+//! Desktop runner: one or several native windows, each with its own context and surface.
+//! The low-level Context and Renderer remain available for custom hosts.
 
-use crate::{Context, PresentationMode, RenderError, RenderStatus, Renderer};
-use std::{
-    error::Error,
-    fmt,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+mod callbacks;
+mod commands;
+mod frame;
+mod hub;
+mod info;
+mod key;
+mod options;
+mod registry;
+mod runner;
+mod schedule;
+#[cfg(test)]
+mod hub_tests;
+#[cfg(test)]
+mod registry_tests;
+#[cfg(test)]
+mod shared_tests;
+#[cfg(test)]
+mod tests;
+
+pub use callbacks::{CloseRequested, CloseSource, GlobalShortcut, WindowPlan};
+pub use commands::{OpenOutcome, Windows};
+pub use frame::Frame;
+pub use info::{AppStats, WindowError, WindowInfo, WindowStatus};
+pub use key::WindowKey;
+pub use options::{ExitPolicy, WindowOptions};
+
+use crate::{Context, PresentationMode, RenderError, SharedResources};
+use runner::Runner;
+use std::{error::Error, fmt};
+#[cfg(test)]
+use schedule::repaint_schedule;
 use winit::{
-    application::ApplicationHandler,
     dpi::LogicalSize,
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    window::{CursorIcon, Window, WindowAttributes, WindowId},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowAttributes},
 };
+#[cfg(test)]
+use std::time::{Duration, Instant};
 
-/// Application state lives here, independently of the native window and GPU.
+/// Application state lives here, independently of the native windows and GPU.
+///
+/// Only [`update`](Self::update) is required; an application that implements nothing else
+/// is a single-window application: closing its window ends it, as before. The other
+/// methods are for applications with several native windows.
 pub trait App {
-    /// Build the UI on each redraw. Do not call `Context::run` yourself.
-    /// Widgets request follow-up frames automatically. For timers and animations,
-    /// use `Context::request_repaint_after`; the runner sleeps between redraws.
+    /// Build the UI of one window on each of its redraws. Do not call `Context::run` yourself.
+    /// `frame.window_key()` names the window and `context` is that window's alone, so draw
+    /// each window from your own data keyed by it. Widgets request follow-up frames
+    /// automatically. For timers and animations, use `Context::request_repaint_after`;
+    /// the runner sleeps between redraws and redraws only the windows that asked.
     fn update(&mut self, context: &mut Context, frame: &mut Frame<'_>);
-}
 
-/// Native window access and application shutdown during an update.
-pub struct Frame<'a> {
-    window: &'a Arc<Window>,
-    close_requested: &'a mut bool,
-    device_resets: u64,
-    device_loss: Option<&'a str>,
-}
+    /// Declare the secondary windows that should be open. Called at startup and after every
+    /// frame; see [`WindowPlan`]. Skip it to open windows imperatively with
+    /// [`Frame::open_window`] instead. Both styles can be mixed.
+    fn windows(&mut self, _plan: &mut WindowPlan) {}
 
-impl Frame<'_> {
-    /// Native window for changing the title, requesting redraws, or cloning its
-    /// Arc into a background worker that needs to wake the sleeping event loop.
-    pub fn window(&self) -> &Arc<Window> {
-        self.window
-    }
+    /// The user (or [`Windows::request_close`]) asked to close a window. The default closes it;
+    /// call [`CloseRequested::reject`] to keep it open, for example to ask "Save changes?"
+    /// in a [`Modal`](crate::Modal). Closing the main window follows [`RunOptions::exit_policy`].
+    fn close_requested(&mut self, _request: &mut CloseRequested<'_>) {}
 
-    /// How many times the runner has recreated the GPU renderer after a lost device.
-    /// Recovery is automatic; compare with the previous value to notice it.
-    pub fn device_resets(&self) -> u64 {
-        self.device_resets
-    }
+    /// A secondary window could not be created or recovered. The other windows are unaffected
+    /// and the failed key can be requested again.
+    fn window_failed(&mut self, _key: &WindowKey, _error: &WindowError) {}
 
-    /// The reason the GPU device was last lost, if it ever was.
-    pub fn last_device_loss(&self) -> Option<&str> {
-        self.device_loss
-    }
-
-    /// Exit after the current frame has been presented successfully.
-    pub fn close(&mut self) {
-        *self.close_requested = true;
+    /// A key was pressed in the focused window. Return `true` to take it: the window's
+    /// context then never sees it. The default leaves every shortcut with its window.
+    fn global_shortcut(&mut self, _shortcut: &GlobalShortcut<'_>, _windows: &mut Windows<'_>) -> bool {
+        false
     }
 }
 
 /// Native window configuration. Sizes in `WindowAttributes` may be logical or physical.
 /// On macOS the runner always enables system decorations for native controls and resizing.
+///
+/// `window_attributes` and `presentation_mode` describe the main window. Other windows use
+/// [`WindowOptions`].
 #[derive(Debug, Clone)]
 pub struct RunOptions {
     pub window_attributes: WindowAttributes,
     pub presentation_mode: PresentationMode,
-    /// Replaces the bundled Inter family. System fonts and color emoji still
-    /// supply scripts the family lacks.
+    /// Replaces the bundled Inter family for every window. System fonts and color emoji
+    /// still supply scripts the family lacks.
     pub font_family: Option<crate::FontFamily>,
+    /// Replaces the bundled JetBrains Mono used by monospace text, independently of
+    /// `font_family`. Without the `bundled-monospace` feature and without this, monospace
+    /// text uses the system's generic monospace font.
+    pub monospace_family: Option<crate::FontFamily>,
+    /// Key of the first window. Default: [`WindowKey::main`].
+    pub main_window: WindowKey,
+    /// What closing the main window does. Default: [`ExitPolicy::MainWindow`].
+    pub exit_policy: ExitPolicy,
 }
 
 impl Default for RunOptions {
@@ -74,6 +104,9 @@ impl Default for RunOptions {
                 .with_inner_size(LogicalSize::new(860.0, 560.0)),
             presentation_mode: PresentationMode::default(),
             font_family: None,
+            monospace_family: None,
+            main_window: WindowKey::main(),
+            exit_policy: ExitPolicy::default(),
         }
     }
 }
@@ -86,27 +119,50 @@ impl RunOptions {
         self
     }
 
+    /// Use `family` for monospace text instead of the bundled JetBrains Mono.
+    pub fn with_monospace_family(mut self, family: crate::FontFamily) -> Self {
+        self.monospace_family = Some(family);
+        self
+    }
+
+    /// Choose whether the application ends with the main window or with the last window.
+    pub fn with_exit_policy(mut self, policy: ExitPolicy) -> Self {
+        self.exit_policy = policy;
+        self
+    }
+
+    /// Name the main window, for applications that address it by a key of their own.
+    pub fn with_main_window(mut self, key: impl Into<WindowKey>) -> Self {
+        self.main_window = key.into();
+        self
+    }
+
     /// Request native rounded corners and the system shadow on Windows 11.
     /// Applies to undecorated windows as well. Maximized/snapped windows follow
     /// the OS policy. On other platforms this leaves window attributes unchanged.
-    /// Call after setting `window_attributes`.
+    /// Call after setting `window_attributes`. Secondary windows choose their own with
+    /// [`WindowOptions::with_rounded_corners`].
     pub fn with_rounded_corners(mut self, rounded: bool) -> Self {
-        #[cfg(target_os = "windows")]
-        {
-            use winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
-            self.window_attributes = self
-                .window_attributes
-                .with_undecorated_shadow(rounded)
-                .with_corner_preference(if rounded {
-                    CornerPreference::Round
-                } else {
-                    CornerPreference::DoNotRound
-                });
-        }
-        #[cfg(not(target_os = "windows"))]
-        let _ = rounded;
+        self.window_attributes = round_corners(self.window_attributes, rounded);
         self
     }
+}
+
+#[cfg(target_os = "windows")]
+fn round_corners(attributes: WindowAttributes, rounded: bool) -> WindowAttributes {
+    use winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
+    attributes
+        .with_undecorated_shadow(rounded)
+        .with_corner_preference(if rounded {
+            CornerPreference::Round
+        } else {
+            CornerPreference::DoNotRound
+        })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn round_corners(attributes: WindowAttributes, _rounded: bool) -> WindowAttributes {
+    attributes
 }
 
 /// Open a desktop window and run an application on the main thread until closed.
@@ -136,25 +192,21 @@ pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunErr
         .map_err(RunError::EventLoop)?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut context = options
-        .font_family
-        .clone()
-        .map_or_else(Context::new, Context::with_fonts);
-    context.set_image_waker(move || {
+    let resources = match (&options.font_family, &options.monospace_family) {
+        (None, None) => SharedResources::new(),
+        (family, monospace) => SharedResources::with_font_families(
+            family.clone().unwrap_or_default(),
+            monospace
+                .clone()
+                .or_else(crate::FontFamily::default_monospace),
+        ),
+    };
+    resources.set_image_waker(move || {
         let _ = proxy.send_event(());
     });
-    let mut runner = Runner {
-        app,
-        options,
-        context,
-        state: None,
-        error: None,
-        close_requested: false,
-        device_resets: 0,
-        device_loss: None,
-    };
+    let mut runner = Runner::new(app, options, resources);
     let result = event_loop.run_app(&mut runner).map_err(RunError::EventLoop);
-    runner.error.map_or(result, Err)
+    runner.error.take().map_or(result, Err)
 }
 
 /// An unrecoverable desktop runner failure.
@@ -184,239 +236,3 @@ impl Error for RunError {
         })
     }
 }
-
-struct State {
-    window: Arc<Window>,
-    renderer: Renderer,
-    occluded: bool,
-    retry_at: Option<Instant>,
-    cursor: CursorIcon,
-}
-
-impl State {
-    fn visible(&self) -> bool {
-        let size = self.window.inner_size();
-        !self.occluded
-            && self.window.is_minimized() != Some(true)
-            && size.width > 0
-            && size.height > 0
-    }
-}
-
-struct Runner<A> {
-    app: A,
-    options: RunOptions,
-    context: Context,
-    state: Option<State>,
-    error: Option<RunError>,
-    close_requested: bool,
-    device_resets: u64,
-    device_loss: Option<String>,
-}
-
-impl<A: App> Runner<A> {
-    fn fail(&mut self, event_loop: &ActiveEventLoop, error: RunError) {
-        self.error = Some(error);
-        event_loop.exit();
-    }
-
-    fn create_state(&mut self, event_loop: &ActiveEventLoop) -> Result<State, RunError> {
-        let window = Arc::new(
-            event_loop
-                .create_window(self.options.window_attributes.clone().with_decorations(
-                    cfg!(target_os = "macos") || self.options.window_attributes.decorations,
-                ))
-                .map_err(RunError::Window)?,
-        );
-        let renderer = pollster::block_on(Renderer::new_with_presentation_mode(
-            Arc::clone(&window),
-            self.options.presentation_mode,
-        ))
-        .map_err(RunError::Render)?;
-        let mut limits = self.context.image_limits().clone();
-        limits.max_dimension = limits
-            .max_dimension
-            .min(renderer.max_texture_dimension_2d());
-        if limits.max_dimension != self.context.image_limits().max_dimension {
-            self.context.set_image_limits(limits);
-        }
-        self.context
-            .set_viewport(window.inner_size(), window.scale_factor());
-        window.request_redraw();
-        Ok(State {
-            window,
-            renderer,
-            occluded: false,
-            retry_at: None,
-            cursor: CursorIcon::Default,
-        })
-    }
-
-    fn handle_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        event: WindowEvent,
-    ) -> Result<(), RenderError> {
-        let state = self.state.as_mut().unwrap();
-        if self.context.native_chrome_press(&event, &state.window) {
-            state.window.request_redraw();
-            return Ok(());
-        }
-        let response = self.context.on_window_event(&event);
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                let size = state.window.inner_size();
-                self.context.set_viewport(size, state.window.scale_factor());
-                state.renderer.resize(size)?;
-            }
-            WindowEvent::Occluded(value) => {
-                state.occluded = value;
-                if !value {
-                    state.window.request_redraw();
-                }
-            }
-            WindowEvent::RedrawRequested if state.visible() => {
-                state.retry_at = None;
-                let mut frame = Frame {
-                    window: &state.window,
-                    close_requested: &mut self.close_requested,
-                    device_resets: self.device_resets,
-                    device_loss: self.device_loss.as_deref(),
-                };
-                self.context
-                    .run(|context| self.app.update(context, &mut frame));
-                self.context.sync_ime(&state.window);
-                match state
-                    .renderer
-                    .render(self.context.draw_data(), self.context.style().background)
-                {
-                    Ok(RenderStatus::Presented) => {
-                        if self.close_requested {
-                            event_loop.exit();
-                        }
-                    }
-                    Ok(RenderStatus::Dormant) => {}
-                    Ok(RenderStatus::Retry) => {
-                        state.retry_at = Some(Instant::now() + Duration::from_millis(16))
-                    }
-                    Err(RenderError::DeviceLost(reason)) => {
-                        self.device_resets += 1;
-                        self.device_loss = Some(reason);
-                        state.renderer = pollster::block_on(Renderer::new_with_presentation_mode(
-                            Arc::clone(&state.window),
-                            state.renderer.presentation_mode(),
-                        ))?;
-                        let mut limits = self.context.image_limits().clone();
-                        limits.max_dimension = limits
-                            .max_dimension
-                            .min(state.renderer.max_texture_dimension_2d());
-                        if limits.max_dimension != self.context.image_limits().max_dimension {
-                            self.context.set_image_limits(limits);
-                        }
-                        state.window.request_redraw();
-                    }
-                    Err(error) => return Err(error),
-                }
-            }
-            _ => {}
-        }
-        if response.repaint && state.visible() {
-            state.window.request_redraw();
-        }
-        let cursor = self.context.cursor_icon();
-        if cursor != state.cursor {
-            state.window.set_cursor(cursor);
-            state.cursor = cursor;
-        }
-        Ok(())
-    }
-}
-
-impl<A: App> ApplicationHandler for Runner<A> {
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _: ()) {
-        if let Some(state) = &self.state {
-            if state.visible() {
-                state.window.request_redraw();
-            }
-        }
-    }
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if let Some(state) = &mut self.state {
-            state.occluded = false;
-            self.context.request_repaint();
-            state.window.request_redraw();
-        } else {
-            match self.create_state(event_loop) {
-                Ok(state) => self.state = Some(state),
-                Err(error) => self.fail(event_loop, error),
-            }
-        }
-    }
-
-    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
-        // Drop the surface on platforms that invalidate it on suspension, while
-        // preserving both application state and retained UI state.
-        self.state = None;
-        self.context.on_window_event(&WindowEvent::Focused(false));
-        event_loop.set_control_flow(ControlFlow::Wait);
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        if !self
-            .state
-            .as_ref()
-            .is_some_and(|state| state.window.id() == id)
-        {
-            return;
-        }
-        if let Err(error) = self.handle_event(event_loop, event) {
-            self.fail(event_loop, RunError::Render(error));
-        }
-    }
-
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let Some(state) = &mut self.state else {
-            event_loop.set_control_flow(ControlFlow::Wait);
-            return;
-        };
-        let now = Instant::now();
-        let moving = state.renderer.presentation_mode() == PresentationMode::Vsync
-            && self.context.wants_animation_frame();
-        let (redraw, control_flow) = repaint_schedule(
-            now,
-            state.visible(),
-            self.context.needs_repaint_at(now) || moving,
-            self.context.next_repaint(),
-            state.retry_at,
-        );
-        if redraw {
-            state.window.request_redraw();
-        }
-        event_loop.set_control_flow(control_flow);
-    }
-}
-
-fn repaint_schedule(
-    now: Instant,
-    visible: bool,
-    needs_repaint: bool,
-    next_repaint: Option<Instant>,
-    retry_at: Option<Instant>,
-) -> (bool, ControlFlow) {
-    if !visible {
-        return (false, ControlFlow::Wait);
-    }
-    // Back off transient surface failures even when the UI requests another frame.
-    let redraw = retry_at.map_or(needs_repaint, |deadline| deadline <= now);
-    let deadline = retry_at
-        .or(next_repaint)
-        .filter(|time| !redraw && *time > now);
-    (
-        redraw,
-        deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
-    )
-}
-
-#[cfg(test)]
-mod tests;
