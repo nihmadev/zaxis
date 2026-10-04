@@ -3,8 +3,8 @@
   "pages": [
     "index",
     "---Start---", "installation", "quickstart", "examples",
-    "---Application---", "app", "layout", "ids", "input", "repaint", "animation",
-    "---UI---", "components", "style", "drawing",
+    "---Application---", "app", "layout", "ids", "input", "repaint", "animation", "diagnostics",
+    "---UI---", "components", "custom-widgets", "style", "drawing",
     "---Integration---", "integration", "renderer", "protocol", "performance",
     "---Reference---", "api", "limitations", "troubleshooting", "development"
   ]

@@ -6,6 +6,8 @@ import {
   Keyboard, Timer, Palette, Shapes, Plug, Monitor, Braces, Gauge,
   List, CircleSlash, Wrench, Code,
   Blocks, PanelsTopLeft, Type, MousePointer2, SquareCheck, SlidersHorizontal, Minus,
+  MoveVertical, Grid2X2, Table2, ListFilter, ToggleRight, BadgeAlert,
+  Columns2, ListTree, Grip, ListCollapse, MessageSquare, ListOrdered, Image, ChevronsUpDown,
 } from 'lucide-react';
 
 const icons = {
@@ -13,6 +15,8 @@ const icons = {
   Keyboard, Timer, Palette, Shapes, Plug, Monitor, Braces, Gauge,
   List, CircleSlash, Wrench, Code,
   Blocks, PanelsTopLeft, Type, MousePointer2, SquareCheck, SlidersHorizontal, Minus,
+  MoveVertical, Grid2X2, Table2, ListFilter, ToggleRight, BadgeAlert,
+  Columns2, ListTree, Grip, ListCollapse, MessageSquare, ListOrdered, Image, ChevronsUpDown,
 };
 
 export const source = loader({

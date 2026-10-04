@@ -11,6 +11,7 @@ impl Context {
         if state == ElementState::Released {
             self.input.secondary_down = false;
             self.input.secondary_released = true;
+            self.gesture_secondary_release();
             return self.popup.is_some();
         }
         if self.input.secondary_down {
@@ -18,7 +19,7 @@ impl Context {
         }
         self.input.secondary_down = true;
         self.input.secondary_pressed = true;
-        self.secondary_target = None;
+        self.drag_cancel(crate::components::drag_drop::DragReason::Cancelled);
         if self.popup.is_some() {
             self.dismiss_popup(true);
             return true;
@@ -27,16 +28,7 @@ impl Context {
             if self.tree_context(pointer) {
                 return true;
             }
-            let window = self.top_window(pointer);
-            if let Some(hit) = self.previous_hits.iter().rev().find(|hit| {
-                Some(hit.window) == window
-                    && hit.action == HitAction::ContextMenu
-                    && hit.rect.contains(pointer)
-                    && hit.clip.contains(pointer)
-            }) {
-                self.secondary_target = Some((hit.id, pointer));
-                return true;
-            }
+            return self.gesture_secondary_press(pointer);
         }
         false
     }
@@ -65,6 +57,7 @@ impl Context {
                 if hit.is_none_or(|hit| hit.action != HitAction::TextEdit) {
                     self.text_click = None;
                 }
+                self.drag_press(hit);
                 if let Some(hit) = hit {
                     if self.windows.contains_key(&hit.window) {
                         self.raise_window(hit.window);
@@ -73,13 +66,16 @@ impl Context {
                         HitAction::TreeRow { tree, .. } => Some(tree),
                         _ => hit.action.focusable().then_some(hit.id),
                     };
-                    self.set_focus(focus);
+                    if !(self.is_modal_layer(hit.window) && focus.is_none()) {
+                        self.set_focus(focus);
+                    }
                     if hit.action != HitAction::Block {
                         self.capture = Some(Capture {
                             hit,
                             pointer: self.input.pointer.unwrap(),
                             rect: self.windows.get(&hit.window).map_or(hit.rect, |w| w.rect),
                         });
+                        self.gesture_press(hit, self.input.pointer.unwrap());
                         if let HitAction::ScrollThumb { area, axis } = hit.action {
                             self.begin_scroll_drag(area, axis);
                         }
@@ -146,6 +142,9 @@ impl Context {
             ElementState::Released => {
                 self.input.primary_down = false;
                 self.input.primary_released = true;
+                if self.drag_release() {
+                    return true;
+                }
                 if let Some(capture) = self.capture.take() {
                     if self
                         .input
@@ -188,17 +187,7 @@ impl Context {
                                 .push(SliderInput::Pointer(pointer));
                         }
                     }
-                    if matches!(
-                        capture.hit.action,
-                        HitAction::Activate | HitAction::ComboBox
-                    ) && self
-                        .input
-                        .pointer
-                        .and_then(|p| self.hit_test(p))
-                        .is_some_and(|h| h.id == capture.hit.id)
-                    {
-                        self.clicked.insert(capture.hit.id);
-                    }
+                    self.gesture_release(capture.hit);
                     true
                 } else {
                     false
@@ -210,7 +199,9 @@ impl Context {
     pub(super) fn move_pointer(&mut self, pointer: Vec2) {
         self.input.pointer = Some(pointer);
         self.update_auto_scroll_pointer(pointer);
+        self.drag_move(pointer);
         if let Some(capture) = self.capture {
+            self.gesture_move(pointer);
             if matches!(capture.hit.action, HitAction::SplitResize { .. }) {
                 self.split_pointer(capture.hit.id, pointer, 0);
             }

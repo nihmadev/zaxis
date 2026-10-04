@@ -47,7 +47,7 @@ Cargo prerelease resolution. An already-uploaded version is checked but not uplo
 
 Before publishing, review `cargo package --workspace --list` and compressed package sizes.
 The main crate includes library source, examples, tests, benchmarks, sample images,
-Lato, licenses, and release/contribution documents. `zaxis-emoji` contains the
+Inter, licenses, and release/contribution documents. `zaxis-emoji` contains the
 complete Noto Color Emoji font and its license. The website, node_modules, prompts,
 and generated builds stay in the Git repository.
 The compressed archive must stay below crates.io's default 10 MiB upload limit;

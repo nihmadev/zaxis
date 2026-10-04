@@ -70,6 +70,11 @@ impl Context {
                 return Some(popup.id);
             }
         }
+        if let Some(modal) = self.modals.stack.last() {
+            if self.viewport().contains(pointer) {
+                return Some(modal.id);
+            }
+        }
         self.layers.iter().rev().copied().find(|id| {
             self.windows.get(id).is_some_and(|w| {
                 (self.visible_windows.contains(id) || w.last_frame == self.frame)

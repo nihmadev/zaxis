@@ -65,6 +65,9 @@ impl Context {
         if state == ElementState::Pressed {
             self.focus_visible = true;
         }
+        if self.drag_key(code, state, repeat) {
+            return true;
+        }
         if self.popup.is_some() && matches!(code, KeyCode::Escape | KeyCode::Tab) {
             if state == ElementState::Pressed {
                 self.dismiss_popup(true);
@@ -72,6 +75,9 @@ impl Context {
             if code == KeyCode::Escape {
                 return true;
             }
+        }
+        if self.popup.is_none() && self.modal_escape(code, state, repeat) {
+            return true;
         }
         let combo = self
             .popup
@@ -162,7 +168,9 @@ impl Context {
             }
             return true;
         }
-        if focused_action == Some(HitAction::TextEdit) && code != KeyCode::Tab {
+        let tab_input = self.focused_widget.is_some_and(|id| self.text_edit_tabs_previous.contains(&id))
+            && !self.input.modifiers.shift_key();
+        if focused_action == Some(HitAction::TextEdit) && (code != KeyCode::Tab || tab_input) {
             match state {
                 ElementState::Pressed => {
                     self.input.keys_down.insert(code);
@@ -207,6 +215,7 @@ impl Context {
                         .filter(|h| {
                             h.action.focusable()
                                 && !self.tree_tab_action(h.id)
+                                && self.modal_tab_scope(h)
                                 && !h.rect.intersect(h.clip).is_empty()
                         })
                         .map(|h| h.id)
@@ -229,9 +238,22 @@ impl Context {
                     }
                     return !buttons.is_empty();
                 }
+                if matches!(code, KeyCode::Enter | KeyCode::NumpadEnter)
+                    && !repeat
+                    && !focused_action.is_some_and(|action| {
+                        action == HitAction::Activate
+                            || matches!(action, HitAction::Interact(sense) if sense.click())
+                    })
+                    && self.modal_default_action()
+                {
+                    return true;
+                }
                 if matches!(code, KeyCode::Enter | KeyCode::Space)
                     && !repeat
-                    && focused_action == Some(HitAction::Activate)
+                    && focused_action.is_some_and(|action| {
+                        action == HitAction::Activate
+                            || matches!(action, HitAction::Interact(sense) if sense.click())
+                    })
                 {
                     if let Some(id) = self.focused_widget {
                         self.keyboard_active = Some((id, code));

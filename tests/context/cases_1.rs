@@ -112,7 +112,8 @@ fn hover_preserves_layout_caches_and_pointer_focus_without_a_ring() {
     let hovered = build(&mut context, "Hover test");
     assert_eq!(hovered.state(), WidgetState::Hovered);
     assert_eq!(hovered.rect, idle.rect);
-    assert!(context.draw_data().vertices.len() > idle_vertices.len());
+    // Hover recolors the control without adding geometry.
+    assert_ne!(context.draw_data().vertices, idle_vertices);
     let stats = context.cache_stats();
     let revision = context.draw_data().revision;
     build(&mut context, "Hover test");

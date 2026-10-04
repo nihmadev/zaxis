@@ -1,6 +1,6 @@
 [package]
 name = "zaxis"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 rust-version = "1.90"
 description = "An event-driven immediate mode GUI for desktop tools"
@@ -18,7 +18,7 @@ include = [
 ]
 
 [workspace]
-members = ["crates/zaxis-emoji"]
+members = ["crates/zaxis-emoji", "crates/z-icons"]
 resolver = "2"
 
 [package.metadata.docs.rs]
@@ -37,12 +37,15 @@ arboard = { version = "3.6", default-features = false, features = ["wayland-data
 cosmic-text = "0.17.0"
 unicode-script = "0.5.8"
 zaxis-emoji = { version = "0.0.1", path = "crates/zaxis-emoji", optional = true }
+z-icons = { version = "0.0.1", path = "crates/z-icons", optional = true }
 image = { version = "=0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 resvg = { version = "=0.48.1", default-features = false, features = ["text"] }
 
 [features]
-default = ["bundled-emoji", "image-gif", "image-tiff"]
+default = ["bundled-emoji", "bundled-weights", "image-gif", "image-tiff"]
 bundled-emoji = ["dep:zaxis-emoji"]
+bundled-weights = []
+bundled-icons = ["dep:z-icons"]
 image-gif = ["image/gif"]
 image-tiff = ["image/tiff"]
 
@@ -63,6 +66,11 @@ harness = false
 [[example]]
 name = "demo"
 path = "examples/demo.rs"
+
+[[example]]
+name = "icons"
+path = "examples/icons.rs"
+required-features = ["bundled-icons"]
 
 [[example]]
 name = "settings"

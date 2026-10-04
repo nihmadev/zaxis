@@ -84,9 +84,10 @@ Use `ui.add(StatusRow { ... })`. `Ui::add` applies follow-up repaint when the re
 response clicks or changes. A composed component's response describes the control
 it returns, not automatically the entire row.
 
-Public `Ui::allocate_space` and `paint` support passive geometry. Hit registration,
-paint descriptions, and response construction internals are private. A new interaction
-primitive needs crate changes rather than an external `Response` literal.
+Public `Ui::allocate_space` and `paint` support passive geometry. A widget with its
+own input asks `Ui::interact(rect, id_source, Sense)` for its `Response`; hit
+registration, paint descriptions and `Response` construction stay private, so there is
+one hit path for built-in and external widgets. See [Custom widgets](./custom-widgets.mdx).
 
 Inside the library, add a component in this order:
 
@@ -150,11 +151,13 @@ export as `page/index.html`, so direct links work on Pages without a server rewr
 ## Licenses
 
 Source is [MIT licensed](https://github.com/nihmadev/zaxis/blob/main/LICENSE).
-The bundled unmodified Lato font uses the
-[SIL Open Font License](https://github.com/nihmadev/zaxis/blob/main/assets/OFL-Lato.txt).
+The bundled Inter fonts (UI and SVG text) use the
+[SIL Open Font License](https://github.com/nihmadev/zaxis/blob/main/assets/OFL-Inter.txt).
 The bundled Noto Color Emoji font also uses the
 [SIL Open Font License](https://github.com/nihmadev/zaxis/blob/main/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
-Include both licenses when redistributing these fonts.
+Medium, SemiBold and Bold are static instances of the Inter 4.1 variable font
+(`fonttools varLib.instancer InterVariable.ttf wght=500|600|700 opsz=14`), the same recipe
+as the bundled Regular. Include both licenses when redistributing these fonts.
 
 ## Contributions and releases
 

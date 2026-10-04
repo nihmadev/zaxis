@@ -1,7 +1,7 @@
 //! Hit regions, pointer capture, and widget interaction queries.
 
 use super::{Context, Id};
-use crate::{Rect, Vec2};
+use crate::{components::Sense, Rect, Vec2};
 use winit::keyboard::{KeyCode, ModifiersState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -9,33 +9,67 @@ pub(crate) enum HitAction {
     Block,
     ContextMenu,
     Activate,
+    /// Custom widget region from `Ui::interact`; the sense picks its behavior.
+    Interact(Sense),
     Focus,
     ComboBox,
     Tree,
-    TreeRow { tree: Id, node: Id, chevron: bool },
+    TreeRow {
+        tree: Id,
+        node: Id,
+        chevron: bool,
+    },
     Slider,
     DragValue,
-    SplitResize { vertical: bool },
+    SplitResize {
+        vertical: bool,
+    },
     TextEdit,
     Move,
     Resize,
-    ScrollThumb { area: Id, axis: usize },
-    ColumnResize { table: Id, column: Id },
+    ScrollThumb {
+        area: Id,
+        axis: usize,
+    },
+    ColumnResize {
+        table: Id,
+        column: Id,
+    },
+    /// Passive: drag sources and drop targets never take part in ordinary hit
+    /// testing. `slot` indexes the registry published with the same pass.
+    DragSource {
+        slot: u32,
+    },
+    DropTarget {
+        slot: u32,
+    },
 }
 
 impl HitAction {
+    /// Pointer inputs a region reports through `Response`.
+    pub(super) fn sense(self) -> Sense {
+        match self {
+            Self::Activate | Self::ComboBox => Sense::CLICK | Sense::FOCUS,
+            Self::Focus => Sense::FOCUS,
+            Self::Slider => Sense::DRAG | Sense::FOCUS,
+            Self::TextEdit | Self::DragValue => Sense::CLICK | Sense::DRAG | Sense::FOCUS,
+            Self::Interact(sense) => sense,
+            _ => Sense::NONE,
+        }
+    }
     pub(super) fn focusable(self) -> bool {
-        matches!(
-            self,
-            Self::Activate
-                | Self::Focus
-                | Self::ComboBox
-                | Self::Tree
-                | Self::Slider
-                | Self::TextEdit
-                | Self::DragValue
-                | Self::SplitResize { .. }
-        )
+        matches!(self, Self::Interact(sense) if sense.focus())
+            || matches!(
+                self,
+                Self::Activate
+                    | Self::Focus
+                    | Self::ComboBox
+                    | Self::Tree
+                    | Self::Slider
+                    | Self::TextEdit
+                    | Self::DragValue
+                    | Self::SplitResize { .. }
+            )
     }
 }
 
@@ -99,6 +133,7 @@ impl Context {
             }
         }
         self.ime_composing = false;
+        self.gestures.focus_changed(self.focused_widget, focus);
         self.focused_widget = focus;
     }
     /// Move focus to a widget returned by a component on this pass.
@@ -108,7 +143,18 @@ impl Context {
     }
     pub(crate) fn register_hit(&mut self, hit: HitRegion) {
         let order = self.hit_order.len();
-        self.hit_order.entry(hit.id).or_insert(order);
+        let first = self
+            .hit_order
+            .entry(hit.id)
+            .or_insert((order, Some(hit.window)));
+        // The same ID may reappear in another layer (popup key targets alias their trigger).
+        if first.0 != order && first.1 == Some(hit.window) {
+            self.note_hit_collision(&hit);
+        }
+        self.route_hit(hit);
+    }
+    /// Deliver a hit already counted by `register_hit` to its final list.
+    pub(crate) fn route_hit(&mut self, hit: HitRegion) {
         if !self.defer_placement_hit(hit) && !self.defer_scroll_hit(hit) {
             self.hits.push(hit);
         }
@@ -135,6 +181,11 @@ impl Context {
                 input => input,
             })
             .collect()
+    }
+    /// Pointer position in the field's own (untransformed) coordinates, e.g. for drag auto-scroll.
+    pub(crate) fn text_edit_pointer(&self, id: Id) -> Option<Vec2> {
+        let transform = self.input_transforms.get(&id).copied().unwrap_or_default().inverse();
+        self.input.pointer.map(|p| transform.point(p))
     }
     pub(crate) fn take_text_edit_input(&mut self, id: Id) -> Vec<TextEditInput> {
         let transform = self
@@ -204,14 +255,43 @@ impl Context {
                     .all(|(_, clip)| clip.contains(p))
                 && self.top_window(p).is_none_or(|top| top == window)
                 && self.capture.is_none_or(|capture| capture.hit.id == id)
+                && self
+                    .drag
+                    .session
+                    .as_ref()
+                    .is_none_or(|session| session.info.id == id)
         })
     }
 
     pub(super) fn hit_test(&self, pointer: Vec2) -> Option<HitRegion> {
         let window = self.top_window(pointer)?;
+        // A popup's trigger proxy sits in the popup layer under its full-viewport blocker;
+        // deferred routing can order it first, so the anchor must win explicitly or a
+        // second press on the trigger could never reach it.
+        if let Some(target) = self
+            .popup
+            .as_ref()
+            .filter(|popup| popup.id == window && popup.anchor.contains(pointer))
+            .and_then(|popup| popup.key_target)
+        {
+            let proxy = self.previous_hits.iter().rev().copied().find(|hit| {
+                hit.id == target
+                    && hit.window == window
+                    && hit.action == HitAction::ComboBox
+                    && hit.rect.contains(pointer)
+                    && hit.clip.contains(pointer)
+            });
+            if proxy.is_some() {
+                return proxy;
+            }
+        }
         self.previous_hits.iter().rev().copied().find(|hit| {
-            hit.action != HitAction::ContextMenu
-                && hit.window == window
+            !matches!(
+                hit.action,
+                HitAction::ContextMenu
+                    | HitAction::DragSource { .. }
+                    | HitAction::DropTarget { .. }
+            ) && hit.window == window
                 && hit.rect.contains(pointer)
                 && hit.clip.contains(pointer)
         })

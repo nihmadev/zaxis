@@ -24,29 +24,41 @@ mod text;
 pub mod widgets;
 
 pub use animation::{
-    Animated, Animation, AnimationOptions, AnimationSample, AnimationStatus, Delay, Easing,
-    Interpolate, Keyframe, Keyframes, MotionStyle, Parallel, Procedural, Pulse, Repeat, Rotation,
-    Sequence, Spring, SpringOptions, SpringState, SpringValue, Stagger, Tween, TweenOptions, Wake,
+    Animated, Animation, AnimationOptions, AnimationSample, AnimationStatus, Decay, DecayOptions,
+    Delay, Easing, Interpolate, Keyframe, Keyframes, MotionStyle, Oklab, Parallel, Path,
+    PathFollow, PathPose, Procedural, Pulse, Repeat, Rotation, Sequence, Spring, SpringOptions,
+    SpringState, SpringValue, Stagger, Tween, TweenOptions, Wake,
 };
 pub use app::{run, run_with_options, App, Frame, RunError, RunOptions};
 pub use components::theme::*;
 pub use components::{
-    Align, Blur, Button, Checkbox, ColorPicker, ColorPickerType, Column, ColumnWidth, ComboBox,
-    ComboBoxOption, ComboBoxStyle, ContextMenu, ContextMenuItem, ContextMenuOutput,
-    ContextMenuStyle, DragValue, Grid, GridOutput, GridRow, GridStyle, GridUi, Hover, HoverFill,
-    HoverStyle, Image, ImageFit, ImageOutput, Loader, NumberInput, NumberStyle, Numeric, Popup,
-    PopupOutput, Presence, Progress, ProgressState, Reorder, ReorderUi, Response, Root, ScrollArea,
-    ScrollAreaOutput, ScrollStyle, SelectionIndicator, Separator, Slider, SliderStatus,
+    move_item, DragEffect, DragEnd, DragOutput, DragReason, DragSource, DragStyle, DropOutput,
+    DropTarget, DropZones, Dropped, Insertion, PreviewKind, RowDrag, RowMove, TreeNodeDrag,
+};
+pub use components::{
+    Align, Blur, Button, ButtonVariant, Card, CardOutput, CardVariant, Checkbox, ColorPicker,
+    ColorPickerType, Column, ColumnWidth, ComboBox, ComboBoxOption, ComboBoxStyle, ContextMenu,
+    ContextMenuItem, ContextMenuOutput, ContextMenuStyle, ContextMenuWidget, DragValue, Field,
+    Grid, GridOutput, GridRow, GridStyle, GridUi, Hover, HoverFill, HoverStyle, Image, ImageFit,
+    ImageOutput, Loader, NumberInput, NumberStyle, Numeric, Popup, PopupOutput, Presence, Progress,
+    ProgressState, Reorder, ReorderUi, Response, Root, RowPresence, ScrollArea, ScrollAreaOutput,
+    ScrollStyle, SelectionIndicator, Sense, Separator, Skeleton, Slider, SliderStatus,
     SortDirection, SortRequest, SplitBoundaryOutput, SplitHandle, SplitHandleStyle, SplitOutput,
     SplitPane, SplitPanel, SplitPanelOutput, SplitSize, SplitStyle, SplitSurface, SplitUi, Style,
-    Table, TableBody, TableOutput, TableStyle, Text, TextEdit, TitleBar, TitleBarResponse, Tooltip,
-    TooltipStyle, TooltipWidget, Ui, Widget, WidgetState, Window,
+    Switch, Table, TableBody, TableOutput, TableStyle, Text, TextEdit, TitleBar, TitleBarResponse,
+    Tooltip, TooltipStyle, TooltipWidget, Ui, Validation, Widget, WidgetState, Window,
+};
+pub use components::{
+    CloseReason, Confirm, Confirmation, Dialog, DialogAction, DialogOutput, Modal, ModalAnchor,
+    ModalOutput,
 };
 pub use components::{
     CollapsingHeader, CollapsingOutput, CollapsingStyle, DisclosureStyle, TreeChildren, TreeEvent,
     TreeIssue, TreeModel, TreeNode, TreeOutput, TreeStyle, TreeView,
 };
-pub use context::{CacheStats, Context, EventResponse, Id, InputState};
+pub use context::{
+    CacheStats, Context, DebugOverlay, Diagnostic, DiagnosticKind, EventResponse, Id, InputState,
+};
 pub use glam::{vec2, Vec2};
 pub use images::{
     DecodedImage, ImageDecoder, ImageError, ImageHandle, ImageLimits, ImageMetrics, ImageSource,
@@ -62,5 +74,8 @@ pub use shapes::{
     Border, Color, CornerRadius, Gradient, GradientDirection, Rect, RectShape, Shadow, Shape,
     Transform,
 };
+pub use text::{FontFamily, FontWeight};
+#[cfg(feature = "bundled-icons")]
+pub use z_icons as icons;
 // Integrations are always available; zaxis has no optional backend features.
 pub use {wgpu, winit};

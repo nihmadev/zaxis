@@ -1,7 +1,7 @@
 //! Paint descriptions, tessellation, and per-element mesh caching.
 
 use super::{geometry::Element, Context, Id};
-use crate::{shapes::Mesh, Color, CornerRadius, Rect, Shape, Vec2};
+use crate::{shapes::Mesh, Color, CornerRadius, FontWeight, Rect, Shape, Vec2};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -38,7 +38,19 @@ pub(crate) enum Paint {
         text: String,
         position: Vec2,
         size: f32,
+        weight: FontWeight,
         wrap_width: f32,
+        color: Color,
+    },
+    /// A paragraph of a multi-line field: like `Text`, shaped with an explicit tab width
+    /// so painting reads the same cached layout as the field's position queries.
+    Paragraph {
+        text: String,
+        position: Vec2,
+        size: f32,
+        weight: FontWeight,
+        wrap_width: f32,
+        tab: u16,
         color: Color,
     },
 }
@@ -61,13 +73,6 @@ impl Context {
     pub(crate) fn record_paint_order(&mut self, id: Id) {
         let order = self.paint_order.len();
         self.paint_order.entry(id).or_insert(order);
-    }
-    pub(crate) fn centered_line_offset(&mut self, text: &str, size: f32) -> f32 {
-        self.text.centered_line_offset(text, size)
-    }
-
-    pub(crate) fn text_carets(&mut self, text: &str, size: f32) -> Vec<(usize, f32)> {
-        self.text.carets(text, size)
     }
     /// Paint a cached shape behind all panels. Call before building windows.
     /// This provides a backdrop for translucent panels and their blur effects.
@@ -183,10 +188,23 @@ impl Context {
         if !self.visual_materializing && self.visual_meshes.remove(&id).is_some() {
             self.modified.insert(id);
         }
-        assert!(
-            self.seen.insert(id),
-            "duplicate widget/paint ID: use Ui::push_id or an explicit widget ID"
-        );
+        let id = if self.seen.insert(id) {
+            id
+        } else {
+            // Two elements share an ID: report it and draw the second under an alias,
+            // so neither disappears and the geometry cache stays consistent.
+            self.report_paint_collision(id);
+            let mut n = 1_u32;
+            let alias = loop {
+                let alias = id.with(("duplicate", n));
+                if self.seen.insert(alias) {
+                    break alias;
+                }
+                n += 1;
+            };
+            self.record_paint_order(alias);
+            alias
+        };
         for primitive in &paint {
             if let Paint::Image {
                 rect,
@@ -253,13 +271,34 @@ impl Context {
                     text,
                     position,
                     size,
+                    weight,
                     wrap_width,
                     ..
                 } => self.text.translation_preserves_raster(
                     text,
                     *position,
                     *size,
+                    *weight,
                     *wrap_width,
+                    crate::text::DEFAULT_TAB,
+                    delta,
+                    self.scale,
+                ),
+                Paint::Paragraph {
+                    text,
+                    position,
+                    size,
+                    weight,
+                    wrap_width,
+                    tab,
+                    ..
+                } => self.text.translation_preserves_raster(
+                    text,
+                    *position,
+                    *size,
+                    *weight,
+                    *wrap_width,
+                    *tab,
                     delta,
                     self.scale,
                 ),
@@ -361,6 +400,7 @@ impl Context {
                         text,
                         position,
                         size,
+                        weight,
                         wrap_width,
                         color,
                     } => self.text.paint(
@@ -368,7 +408,27 @@ impl Context {
                         text,
                         *position,
                         *size,
+                        *weight,
                         *wrap_width,
+                        *color,
+                        self.scale,
+                    ),
+                    Paint::Paragraph {
+                        text,
+                        position,
+                        size,
+                        weight,
+                        wrap_width,
+                        tab,
+                        color,
+                    } => self.text.paint_with_tab(
+                        &mut mesh,
+                        text,
+                        *position,
+                        *size,
+                        *weight,
+                        *wrap_width,
+                        *tab,
                         *color,
                         self.scale,
                     ),
@@ -403,13 +463,6 @@ impl Context {
             blur: None,
             scroll_hint,
         });
-    }
-
-    pub(crate) fn measure_text(&mut self, text: &str, size: f32, wrap: f32) -> Vec2 {
-        self.text.measure(text, size, wrap)
-    }
-    pub(crate) fn measure_text_layout(&mut self, text: &str, size: f32, wrap: f32) -> (Vec2, f32) {
-        self.text.measure_with_wrap(text, size, wrap)
     }
 }
 

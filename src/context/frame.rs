@@ -44,7 +44,9 @@ impl Context {
         self.current_transforms.clear();
         self.auto_ids.clear();
         self.popup_layers.clear();
+        self.modals.begin_pass();
         self.tick_auto_scroll();
+        self.drag_begin_frame();
         self.scrolling.begin_frame();
         build(self);
         self.finish_frame();
@@ -53,6 +55,9 @@ impl Context {
     }
 
     pub(super) fn finish_frame(&mut self) {
+        // Events were delivered to this pass; anything recorded from here on
+        // (vanished widgets, cancelled captures) belongs to the next one.
+        self.gestures.finish_frame();
         if self.popup.as_ref().is_some_and(|popup| {
             popup.last_frame != self.frame
                 || !self
@@ -68,7 +73,10 @@ impl Context {
             .filter(|(_, window)| window.last_frame == self.frame)
             .map(|(id, _)| *id)
             .collect();
+        self.finish_modals();
         self.finish_tooltips();
+        self.drag_emit_preview();
+        self.finish_diagnostics();
         let ranks: std::collections::HashMap<_, _> = self
             .layers
             .iter()
@@ -85,7 +93,7 @@ impl Context {
         self.hits.sort_by_key(|hit| {
             (
                 ranks.get(&hit.window).copied().unwrap_or(0),
-                self.hit_order.get(&hit.id).copied().unwrap_or(0),
+                self.hit_order.get(&hit.id).map_or(0, |slot| slot.0),
             )
         });
         self.hits.retain(|h| !h.rect.intersect(h.clip).is_empty());
@@ -104,7 +112,6 @@ impl Context {
             .retain(|_, state| state.last_frame == self.frame);
         self.context_menus
             .retain(|_, state| state.last_frame == self.frame);
-        self.secondary_target = None;
         self.effect_states
             .retain(|_, state| state.last_frame == self.frame);
         self.visual_meshes.retain(|id, _| self.seen.contains(id));
@@ -112,12 +119,16 @@ impl Context {
             .retain(|id, _| self.seen.contains(id) || self.hits.iter().any(|hit| hit.id == *id));
         self.input_transforms = std::mem::take(&mut self.current_transforms);
         self.grids.retain(|_, state| state.last_frame == self.frame);
+        self.cards.retain(|_, state| state.last_frame == self.frame);
         self.layouts
             .retain(|_, state| state.last_frame == self.frame);
         self.local_styles.retain(|_, s| s.2 == self.frame);
         self.previous_hits = std::mem::take(&mut self.hits);
+        self.text_edit_tabs_previous = std::mem::take(&mut self.text_edit_tabs);
+        self.drag_finish_state();
         self.cache
             .retain(|_, element| element.last_frame == self.frame);
+        self.settle_modal_focus();
         if self.focused_widget.is_some_and(|id| {
             !self
                 .previous_hits
@@ -137,6 +148,7 @@ impl Context {
                         && self.visible_windows.contains(&capture.hit.window))
         }) {
             self.capture = None;
+            self.gesture_cancel();
         }
         self.splits
             .retain(|_, state| state.last_frame == self.frame);

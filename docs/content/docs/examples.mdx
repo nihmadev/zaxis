@@ -13,15 +13,27 @@ Run these commands from the repository root.
 | Searchable dropdown and popup layers | `cargo run --example combo_box` | [combo_box.rs](https://github.com/nihmadev/zaxis/blob/main/examples/combo_box.rs) |
 | Settings application | `cargo run --example settings` | [settings.rs](https://github.com/nihmadev/zaxis/blob/main/examples/settings.rs) |
 | Custom winit host | `cargo run --example integration` | [integration.rs](https://github.com/nihmadev/zaxis/blob/main/examples/integration.rs) |
-| Reference motion sequence | `cargo run --example animations` | [animations.rs](https://github.com/nihmadev/zaxis/blob/main/examples/animations.rs) |
+| Every built-in animation, by tab | `cargo run --example animations` | [animations.rs](https://github.com/nihmadev/zaxis/blob/main/examples/animations.rs) |
 | Application value and physical spring | `cargo run --example custom_animation` | [custom_animation.rs](https://github.com/nihmadev/zaxis/blob/main/examples/custom_animation.rs) |
 | Continuous gallery of built-in animations | `cargo run --example ade_motion` | [ade_motion.rs](https://github.com/nihmadev/zaxis/blob/main/examples/ade_motion.rs) |
+| In-window drag and drop |  `cargo run --release --example drag_and_drop` | [drag_and_drop.rs](https://github.com/nihmadev/zaxis/blob/main/examples/drag_and_drop.rs) |
+| A widget written outside the crate | `cargo run --example custom_widget` | [custom_widget.rs](https://github.com/nihmadev/zaxis/blob/main/examples/custom_widget.rs) |
+| Lucide icon gallery | `cargo run --example icons --features bundled-icons` | [icons.rs](https://github.com/nihmadev/zaxis/blob/main/examples/icons.rs) |
+| Validated form | `cargo run --example validation` | [validation.rs](https://github.com/nihmadev/zaxis/blob/main/examples/validation.rs) |
 
 All three select `PresentationMode::Immediate` unless passed `--vsync`:
 
 ```sh
 cargo run --example settings -- --vsync
 ```
+
+## Custom widget and validation
+
+`custom_widget` implements a rotary knob with `Widget`, `Ui::interact` and `Ui::paint`
+and uses it in a Grid, a ScrollArea and a disabled group; drag turns it, arrows step,
+double click resets, right click opens a menu. `validation` is a sign-up form built from
+`Field`, `Validation` and the field-like controls; errors appear after a field is left
+or after submit. Both toggle the [debug overlay](./diagnostics.mdx#debug-overlay) with F3.
 
 ## Demo
 
@@ -60,15 +72,13 @@ in [Custom host](./integration.mdx).
 
 ## Smoke tests
 
-The reference sequence fades in “Zaxis UI Library”, switches to “Тестирование
-анимаций”, then increases the panel's backdrop blur and slides the entire panel
-down. It uses the default grey theme. Space replays the sequence; Escape closes
-the example. `--reduced-motion` disables decorative motion. Its `BlurExit` is
-implemented in application code through `Animation<T>`.
+The `animations` example shows every built-in animation on its own tab: easing
+curves (including CSS beziers, steps, back, elastic and bounce), tweens and retargeted transitions, a scrubbable timeline (pause, reverse,
+rate, seek), springs, decay and smooth retargeting, path following and Oklab colors, compositions (with offsets and marks), skeleton loaders, effects, layout presence and reorder. The
+header toggles reduced motion and a global time scale.
 
-The animation examples use the default Vsync runner. `animations -- --slow`
-lengthens the sequence for inspecting motion. Both have
-`--smoke-test` modes; the custom spring asserts a single completion event.
+The animation examples use the default Vsync runner. Both have `--smoke-test`
+modes; the custom spring asserts a single completion event.
 
 ```sh
 cargo run --example demo -- --smoke-test

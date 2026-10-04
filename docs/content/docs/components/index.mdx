@@ -15,15 +15,21 @@ compatibility re-export of the component module.
 | [Table](./table.mdx) | `Table::new(id).columns(columns).show(ui, build)` | Pinned headers, resize, selection, sort requests and virtual rows |
 | [CollapsingHeader](./collapsing-header.mdx) | `ui.collapsing(id, caption, body)` | Measured disclosure and independent header actions |
 | [TreeView](./tree-view.mdx) | `ui.tree(id, &model)` | Stable hierarchical model, keyboard navigation and virtual rows |
+| [Drag and drop](./drag-and-drop.mdx) | `ui.drag_source(id, payload, build)` / `ui.drop_target(id, accept, build)` | Typed in-window drag, drop targets, preview and autoscroll |
 | [Popup](./popup.mdx) | `Popup::new(id, anchor).show(ui, &mut open, build)` | Overlay layer, viewport placement and dismissal |
-| [ComboBox](./combo-box.mdx) | `ui.combo_box(&mut Option<T>, &options)` | Stable selection and optional filtering |
+| [Modal](./modal.mdx) | `Modal::new(id).show(ui, &mut open, build)` / `Dialog` / `Confirm` | Input-blocking dialogs, confirmations and sheets |
+| [ComboBox](./combo-box.mdx) | `ui.combo_box(&mut Option<T>, &options)` / `ui.combo_box_values(&mut T, pairs)` | Stable selection and optional filtering |
 | [Text](./text.mdx) | `ui.label(text)` | Read-only text |
+| [Icons](./icons.mdx) | `ui.image(&icons::USER)` | Bundled Lucide icons, tintable (`bundled-icons` feature) |
 | [TextEdit](./text-edit.mdx) | `ui.text_edit(&mut String)` | Single-line Unicode editing and IME |
 | [Button](./button.mdx) | `ui.button(text)` | Activation |
 | [Checkbox](./checkbox.mdx) | `ui.checkbox(&mut bool, text)` | Boolean value |
+| [Switch](./switch.mdx) | `ui.switch(&mut bool, text)` | Animated on/off value |
 | [NumberInput / DragValue](./number-input.mdx) | `ui.number_input(&mut value)` / `ui.drag_value(&mut value)` | Typed numeric value |
-| [Slider](./slider.mdx) | `ui.slider(&mut f32, range)` | Numeric value |
+| [Slider](./slider.mdx) | `ui.slider(&mut number, range)` | Numeric value, floats and integers |
 | [ColorPicker](./color-picker.mdx) | `ui.color_picker(&mut Color, text)` | HSV, RGB, and HEX color selection |
+| [Card](./card.mdx) | `Card::new(id).show(ui, build)` | Framed, padded container |
+| [Field](./field.mdx) | `Field::new(label).validation(v).show(ui, build)` | Label, control and validation message with steady layout |
 | [Separator](./separator.mdx) | `ui.separator()` | Passive dividing line |
 
 Builders are consumed when shown or added. Use `ui.add(Component::new(...).builder(...))`
@@ -33,17 +39,33 @@ implementations of `Widget`.
 ```rust
 use zaxis::{Button, Slider};
 
-ui.button_enabled(can_run, "Run");
+ui.add(Button::new("Run").enabled(can_run).tooltip("Run the selected task"));
 ui.add(Slider::new(&mut gain, 0.0..=1.0).step(0.05).width(240.0));
+ui.add(Slider::new(&mut volume, 0..=100).suffix("%")); // integers: step 1, no decimals
+ui.heading("Output");
 ```
+
+## One rule for enabled and disabled
+
+* **One control:** `.enabled(bool)` on its builder, the same on every control (`Button`,
+  `Checkbox`, `Switch`, `Slider`, `TextEdit`, `NumberInput`, `DragValue`, `ComboBox`,
+  `ColorPicker`, headers, trees, drag sources and targets).
+* **A group:** `ui.add_enabled_ui(bool, build)`.
+
+The deprecated spellings `disabled(bool)`, `Ui::add_enabled`, `button_enabled`,
+`checkbox_enabled`, `switch_enabled` and `slider_enabled` still work and mean exactly
+the replacements above. The other shared builder names are the same everywhere too:
+`id_source(impl Hash)`, `width(f32)`, `style(..)`, `hover_style(HoverStyle)`,
+`corner_radius(impl Into<CornerRadius>)` (the old `rounding` is a deprecated alias) and
+`status(SemanticStatus)`. Out-of-range arguments are normalized, never panics; see
+[Diagnostics](../diagnostics.mdx#value-normalization).
 
 For dependent controls, keep short forms inside an enabled group:
 
 ```rust
 ui.add_enabled_ui(notifications, |ui| {
     ui.checkbox(&mut sound, "Play sound");
-    ui.add_enabled(sound, Slider::new(&mut volume, 0.0..=100.0)
-        .text("Volume").precision(0).suffix("%"));
+    ui.add(Slider::new(&mut volume, 0..=100).text("Volume").suffix("%").enabled(sound));
 });
 ui.tab_bar(&mut section, [(0, "General"), (1, "Appearance")]);
 ui.selectable_value(&mut accent_blue, true, "Blue");
@@ -59,6 +81,10 @@ controls cannot activate, focus, or capture the pointer. Custom widgets can quer
 `selectable` returns activation only; `selectable_value` and `tab_bar` also report
 `changed()` when selection changes. Tabs use values as IDs, so values must be unique
 within a bar. They use ordinary button Tab/Enter/Space navigation.
+
+Tabs share the row equally. A label wider than its share gets its natural width, and
+when the natural widths no longer fit the row, the strip becomes a horizontal
+`ScrollArea` (wheel, touchpad, overlay thumb); clicking a tab scrolls it into view.
 
 `Ui::add` returns `Response` and requests follow-up repaint on a click, value change, text submission or text focus loss.
 Use `clicked()` for activation and `changed()` for bound-value updates. Exact response

@@ -3400,8 +3400,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e01738255b5a16e78bbb83e7fbba0a1e7dd506905cfc53f4622d89015a03fbb5"
 
 [[package]]
-name = "zaxis"
+name = "z-icons"
 version = "0.0.1"
+
+[[package]]
+name = "zaxis"
+version = "0.0.2"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -3418,6 +3422,7 @@ dependencies = [
  "unicode-segmentation",
  "wgpu",
  "winit",
+ "z-icons",
  "zaxis-emoji",
 ]
 

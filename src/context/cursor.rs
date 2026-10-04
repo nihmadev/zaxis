@@ -7,6 +7,9 @@ impl Context {
     /// The desktop runner applies it automatically. Custom hosts call
     /// `window.set_cursor(context.cursor_icon())` after events and UI passes.
     pub fn cursor_icon(&self) -> CursorIcon {
+        if let Some(session) = &self.drag.session {
+            return session.cursor;
+        }
         let hit = self.capture.map(|capture| capture.hit).or_else(|| {
             self.input
                 .pointer

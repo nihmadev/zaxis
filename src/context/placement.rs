@@ -412,7 +412,7 @@ impl Context {
             } else if let Some(scope) = scope {
                 self.scrolling.hits.push((hit, scope));
             } else {
-                self.register_hit(hit);
+                self.route_hit(hit);
             }
         }
         self.placements.outstanding -= 1;

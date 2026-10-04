@@ -28,6 +28,7 @@ pub(super) fn paint_translation(old: &[Paint], new: &[Paint], scale: f32) -> Opt
                 text: at,
                 position: ap,
                 size: az,
+                weight: aweight,
                 wrap_width: aw,
                 color: ac,
             },
@@ -35,6 +36,7 @@ pub(super) fn paint_translation(old: &[Paint], new: &[Paint], scale: f32) -> Opt
                 text: bt,
                 position: bp,
                 size: bz,
+                weight: bweight,
                 wrap_width: bw,
                 color: bc,
             },
@@ -45,7 +47,13 @@ pub(super) fn paint_translation(old: &[Paint], new: &[Paint], scale: f32) -> Opt
             {
                 return None;
             }
-            if at != bt || *ap + delta != *bp || az != bz || aw != bw || ac != bc {
+            if at != bt
+                || *ap + delta != *bp
+                || az != bz
+                || aweight != bweight
+                || aw != bw
+                || ac != bc
+            {
                 return None;
             }
         } else {
@@ -64,7 +72,7 @@ impl Paint {
             Self::Visual {
                 paint, transform, ..
             } => transform.point(paint.first().map_or(Vec2::ZERO, Paint::origin)),
-            Self::Text { position, .. } => *position,
+            Self::Text { position, .. } | Self::Paragraph { position, .. } => *position,
             Self::Image { rect, .. }
             | Self::ScrollHint { rect, .. }
             | Self::Gradient { rect, .. } => rect.min,
@@ -87,7 +95,7 @@ impl Paint {
                 }
                 transform.translation += delta - transform.vector(delta);
             }
-            Self::Text { position, .. } => *position += delta,
+            Self::Text { position, .. } | Self::Paragraph { position, .. } => *position += delta,
             Self::Image { rect, .. }
             | Self::ScrollHint { rect, .. }
             | Self::Gradient { rect, .. } => *rect = rect.translate(delta),

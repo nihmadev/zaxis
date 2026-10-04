@@ -111,6 +111,7 @@ cargo run --example scroll_area
 cargo run --example grid_table
 cargo run --example text_edit
 cargo run --example combo_box
+cargo run --example modals
 cargo run --example collapsing_headers
 cargo run --example tree
 cargo run --example integration
@@ -193,8 +194,8 @@ For sensitive vulnerabilities, contact Telegram privately; see [SECURITY.md](SEC
 
 ## License
 
-Source: [MIT](LICENSE). Bundled Lato and Noto Color Emoji fonts:
-[Lato OFL](assets/OFL-Lato.txt),
+Source: [MIT](LICENSE). Bundled Inter (Regular, Medium, SemiBold, Bold) and Noto Color Emoji fonts:
+[Inter OFL](assets/OFL-Inter.txt),
 [Noto Emoji OFL](https://github.com/nihmadev/zaxis/blob/main/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
 Lucide-derived icons: [ISC](assets/LUCIDE-LICENSE). Include the corresponding
 licenses when redistributing these assets.

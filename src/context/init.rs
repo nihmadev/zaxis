@@ -1,8 +1,8 @@
 //! Context construction and unique draw-data sources.
 
 use super::{CacheStats, Context, InputState};
-use crate::{text::TextSystem, DrawData, Style, Vec2};
-use ab_glyph::FontArc;
+use crate::{text::TextSystem, DrawData, FontFamily, Vec2};
+use ab_glyph::{Font, FontArc};
 use std::collections::{HashMap, HashSet};
 
 impl Default for Context {
@@ -12,16 +12,20 @@ impl Default for Context {
 }
 
 impl Context {
-    /// Construct a context with the bundled OFL-licensed Lato font and grey style.
+    /// Construct a context with the bundled OFL-licensed Inter family and the dark theme.
     pub fn new() -> Self {
-        Self::with_font(
-            FontArc::try_from_slice(include_bytes!("../../assets/Lato-Regular.ttf"))
-                .expect("bundled font is valid"),
-        )
+        Self::with_fonts(FontFamily::inter())
     }
 
-    /// Replace the default font without relying on platform font discovery.
+    /// Replace the default font with a single regular face, without relying on
+    /// platform font discovery. Use [`Context::with_fonts`] for several weights.
     pub fn with_font(font: FontArc) -> Self {
+        Self::with_fonts(FontFamily::new(font.font_data().to_vec()))
+    }
+
+    /// Replace the default font with a family of per-weight font files. System
+    /// fonts still supply scripts the family lacks, followed by color emoji.
+    pub fn with_fonts(family: FontFamily) -> Self {
         let draw_data = DrawData::default();
         let ids = crate::images::TextureIds::default();
         Self {
@@ -30,7 +34,7 @@ impl Context {
                 focused: true,
                 ..Default::default()
             },
-            style: Style::default(),
+            style: crate::Theme::dark().resolve(),
             theme: None,
             style_revision: 0,
             local_styles: HashMap::new(),
@@ -44,7 +48,7 @@ impl Context {
             frame_time: std::time::Instant::now(),
             in_pass: false,
             animations: Default::default(),
-            text: TextSystem::with_allocator(font, ids.clone()),
+            text: TextSystem::with_allocator(family, ids.clone()),
             images: crate::images::ImageCache::new(draw_data.source, ids),
             image_visual_scale: 1.0,
             cache: HashMap::new(),
@@ -69,15 +73,20 @@ impl Context {
             clicked: HashSet::new(),
             slider_input: HashMap::new(),
             text_edit_input: HashMap::new(),
+            text_edit_tabs: HashSet::new(),
+            text_edit_tabs_previous: HashSet::new(),
             number_input: HashMap::new(),
             numbers: HashMap::new(),
             combo_boxes: HashMap::new(),
             combo_input: HashMap::new(),
             context_menus: HashMap::new(),
-            secondary_target: None,
+            gestures: Default::default(),
+            diagnostics: Default::default(),
+            field_status: Default::default(),
             popup: None,
             dismissed_popups: HashSet::new(),
             popup_layers: Vec::new(),
+            modals: Default::default(),
             tooltips: Default::default(),
             color_pickers: HashMap::new(),
             text_edits: HashMap::new(),
@@ -98,6 +107,7 @@ impl Context {
             auto_ids: HashMap::new(),
             placements: Default::default(),
             grids: HashMap::new(),
+            cards: HashMap::new(),
             layouts: HashMap::new(),
             tables: HashMap::new(),
             column_resize: HashMap::new(),
@@ -108,6 +118,7 @@ impl Context {
             trees: HashMap::new(),
             tree_input: HashMap::new(),
             tree_click: None,
+            drag: Default::default(),
         }
     }
 }

@@ -18,14 +18,36 @@ Every `Ui::add` and component convenience method returns a `Response` for that U
 | `focus_visible: bool` | Show the keyboard focus indication; mouse focus alone keeps it hidden |
 | `enabled: bool` | This control is interactive, including its parent group's enabled state |
 | `state() -> WidgetState` | `Disabled`, `Pressed`, `Hovered`, or `Idle`, in that priority order |
-| `clicked() -> bool` | A button/checkbox was activated on pointer or keyboard release |
+| `clicked() -> bool` | Pointer release inside, or Enter/Space release when focused; a press that became a drag is not a click |
+| `double_clicked() -> bool` | The second click of a double click (same widget, within 500 ms and 4 px); `clicked()` is also true on both |
+| `secondary_clicked() -> bool` | The secondary button was pressed and released over this widget |
+| `drag_started() -> bool` | The pointer moved more than 4 px while pressed on a widget that senses drags |
+| `dragged() -> bool` | A drag is in progress, including the pass that starts it and the pass that ends it |
+| `drag_delta() -> Vec2` | Pointer movement in logical pixels since the previous pass; the first delta starts at the press position, so a drag's deltas add up to its displacement |
+| `drag_stopped() -> bool` | The drag ended by release, focus loss or a vanished widget |
+| `gained_focus() -> bool` | Keyboard focus arrived by Tab, a press or `Context::request_focus` |
+| `lost_focus() -> bool` | Focus left the widget, including between redraws |
 | `changed() -> bool` | A bound value changed during this pass |
 | `submitted() -> bool` | TextEdit received Enter outside IME composition |
-| `lost_focus() -> bool` | TextEdit lost focus, including between redraws |
+| `menu_selected() -> Option<Id>` | The context menu attached with `Widget::context_menu` chose this entry |
+| `mark_changed()` | For custom widgets: report a value change |
 
-`clicked` and `changed` are private fields with public getters. Passive controls can
-be hovered, but cannot be pressed, focused, clicked, or changed. A disabled control
-may still report hover; it does not activate or change its bound value.
+Every event is reported by exactly one pass per user input: the pass after the input
+sees it, the following pass does not, and `Ui::add` schedules that one follow-up pass.
+`Response` is `Copy` and holds no borrow of `Ui`. Events are consistent with each
+other: a double click is two `clicked()` passes with `double_clicked()` on the second; a
+press that turned into a drag never produces `clicked()`; `changed()` of a checkbox
+arrives in the pass of its `clicked()`. Context menus open on the same
+`secondary_clicked()` signal, and a drag-and-drop source reports the same `drag_started`,
+`drag_delta` and `drag_stopped` as any dragged control.
+
+Which controls report which events: clicks and double clicks on buttons, checkboxes,
+switches, combo boxes, text edits and drag values; drag events on sliders, drag values,
+text edits and drag-and-drop sources; secondary clicks and focus events on everything
+interactive. `Ui::interact` gives custom widgets all of them through
+[`Sense`](./custom-widgets.mdx#sense). Passive controls can be hovered, but cannot be
+pressed, focused, clicked, or changed. A disabled control may still report hover; it does
+not activate or change its bound value.
 
 Buttons report clicks without a value change. Checkboxes report both on a toggle.
 Sliders use `changed()` and do not report activation through `clicked()`.

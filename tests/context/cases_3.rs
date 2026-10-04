@@ -71,7 +71,7 @@ fn disabled_groups_inherit_through_rows_and_restore_the_parent() {
                                 responses.push(ui.slider(value, 0.0..=10.0));
                             });
                         });
-                        responses.push(ui.button_enabled(true, "Disabled button"));
+                        responses.push(ui.button("Disabled button"));
                     });
                     assert!(ui.is_enabled());
                     responses.push(ui.button("Outside"));

@@ -33,7 +33,11 @@ impl Context {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
-        match (deadline, self.scrolling.auto_deadline) {
+        let deadline = match (deadline, self.scrolling.auto_deadline) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        match (deadline, self.drag.deadline) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         }
@@ -52,6 +56,8 @@ impl Context {
     /// pace it. Immediate hosts should honor `next_repaint` instead. Delayed,
     /// paused, completed, cancelled and hidden channels return false.
     pub fn wants_animation_frame(&self) -> bool {
-        self.animations.wants_frame() || self.scrolling.auto_deadline.is_some()
+        self.animations.wants_frame()
+            || self.scrolling.auto_deadline.is_some()
+            || self.drag.scrolling
     }
 }

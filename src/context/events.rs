@@ -25,6 +25,7 @@ impl Context {
             }
             WindowEvent::CursorLeft { .. } => {
                 self.input.pointer = None;
+                self.drag_cursor_left();
                 self.stop_auto_scroll();
                 true
             }
@@ -38,7 +39,7 @@ impl Context {
                 } else if *button == MouseButton::Right {
                     consumed = self.secondary_button(*state);
                 }
-                consumed |= self.popup.is_some();
+                consumed |= self.popup.is_some() || self.modal_active();
                 true
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -112,10 +113,11 @@ impl Context {
                 self.input.focused = *focused;
                 if !focused {
                     self.dismiss_popup(false);
+                    self.drag_cancel(crate::components::drag_drop::DragReason::FocusLost);
                     self.input.primary_down = false;
                     self.input.middle_down = false;
                     self.input.secondary_down = false;
-                    self.secondary_target = None;
+                    self.gesture_cancel();
                     self.stop_auto_scroll();
                     self.input.keys_down.clear();
                     self.capture = None;
@@ -127,10 +129,12 @@ impl Context {
                 true
             }
             WindowEvent::Resized(size) => {
+                self.drag_cancel(crate::components::drag_drop::DragReason::Cancelled);
                 self.set_viewport(*size, f64::from(self.scale));
                 true
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.drag_cancel(crate::components::drag_drop::DragReason::Cancelled);
                 let physical = PhysicalSize::new(
                     (self.logical_size.x * self.scale).round() as u32,
                     (self.logical_size.y * self.scale).round() as u32,
