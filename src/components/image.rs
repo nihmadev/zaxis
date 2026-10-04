@@ -195,7 +195,12 @@ impl Widget for Image {
         }
         if let Ok(handle) = handle {
             let (paint_rect, uv) = fit(rect, intrinsic, uv, self.fit);
-            let texture = ui.context.images.lock().texture(handle, self.filter).unwrap();
+            let texture = ui
+                .context
+                .images
+                .lock()
+                .texture(handle, self.filter)
+                .unwrap();
             // Always carry demand through placement/scroll/visual materialization.
             // Invisible sources don't enqueue jobs; suppressed placeholders still load.
             ui.context.paint(
@@ -222,6 +227,38 @@ impl Widget for Image {
     }
 }
 impl Ui<'_> {
+    /// Paint `source` contained in `rect` without allocating layout space, for
+    /// components that draw an icon inside their own geometry.
+    pub(super) fn paint_image_in(&mut self, id: Id, source: ImageSource, rect: Rect, tint: Color) {
+        let handle = self.context.images.lock().resolve(source);
+        let Ok(handle) = handle else { return };
+        let state = self.context.image_state(handle);
+        let intrinsic = state.size().unwrap_or(rect.size());
+        let full = Rect::from_min_size(Vec2::ZERO, Vec2::ONE);
+        let (rect, uv) = fit(rect, intrinsic, full, ImageFit::Contain);
+        let texture = self
+            .context
+            .images
+            .lock()
+            .texture(handle, TextureFilter::Linear)
+            .unwrap();
+        self.context.paint(
+            id,
+            self.window,
+            self.clip,
+            vec![Paint::Image {
+                rect,
+                uv,
+                rounding: CornerRadius::ZERO,
+                color: tint,
+                opacity: 1.0,
+                handle,
+                texture,
+                hidden: false,
+            }],
+        );
+    }
+
     pub fn image(&mut self, source: impl Into<ImageSource>) -> Response {
         self.add(Image::new(source))
     }

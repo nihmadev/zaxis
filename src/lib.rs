@@ -44,7 +44,7 @@ pub use components::{
     ColorPicker, ColorPickerType, Column, ColumnWidth, ComboBox, ComboBoxOption, ComboBoxStyle,
     ContextMenu, ContextMenuItem, ContextMenuOutput, ContextMenuStyle, ContextMenuWidget,
     DragValue, Field, Grid, GridOutput, GridRow, GridStyle, GridUi, Hover, HoverFill, HoverStyle,
-    Image, ImageFit, ImageOutput, Loader, NumberInput, NumberStyle, Numeric, Popup, PopupOutput, Presence,
+    IconTabs, Image, ImageFit, ImageOutput, Loader, NumberInput, NumberStyle, Numeric, Popup, PopupOutput, Presence,
     Progress, ProgressState, Reorder, ReorderUi, Response, Root, RowPresence, ScrollArea,
     ScrollAreaOutput, ScrollStyle, SelectionIndicator, Sense, Separator, Skeleton, Slider,
     SliderStatus, SortDirection, SortRequest, SplitBoundaryOutput, SplitHandle, SplitHandleStyle,

@@ -23,6 +23,7 @@ pub mod effects;
 pub mod field;
 pub mod grid;
 pub mod hover;
+pub mod icon_tabs;
 pub mod image;
 pub mod loader;
 pub mod modal;
@@ -79,6 +80,7 @@ pub use effects::Presence;
 pub use field::{Field, Validation};
 pub use grid::{Grid, GridOutput, GridRow, GridStyle, GridUi};
 pub use hover::{Hover, HoverFill, HoverStyle};
+pub use icon_tabs::IconTabs;
 pub use image::{Image, ImageFit, ImageOutput};
 pub use loader::Loader;
 pub use modal::{

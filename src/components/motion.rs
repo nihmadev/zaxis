@@ -104,6 +104,29 @@ impl Ui<'_> {
         source: impl Hash,
         selected: usize,
         size: Vec2,
+        build: impl FnMut(&mut Ui<'_>, usize),
+    ) {
+        self.tab_pages_with(source, selected, size, true, build);
+    }
+
+    /// Like [`Self::tab_pages`], but the pages keep their normal look and input while they
+    /// slide: nothing is disabled or dimmed, so the motion is the only change.
+    pub fn tab_pages_live(
+        &mut self,
+        source: impl Hash,
+        selected: usize,
+        size: Vec2,
+        build: impl FnMut(&mut Ui<'_>, usize),
+    ) {
+        self.tab_pages_with(source, selected, size, false, build);
+    }
+
+    fn tab_pages_with(
+        &mut self,
+        source: impl Hash,
+        selected: usize,
+        size: Vec2,
+        dim: bool,
         mut build: impl FnMut(&mut Ui<'_>, usize),
     ) {
         let id = self.scope.with(("tab-pages", Id::new(source)));
@@ -159,7 +182,15 @@ impl Ui<'_> {
         let switching = state.outgoing.is_some();
         let distance = (rect.size().x + 20.0) * state.direction;
         if let Some(outgoing) = state.outgoing {
-            self.build_page(id, outgoing, rect, -distance * progress, false, &mut build);
+            self.build_page(
+                id,
+                outgoing,
+                rect,
+                -distance * progress,
+                false,
+                dim,
+                &mut build,
+            );
         }
         self.build_page(
             id,
@@ -171,6 +202,7 @@ impl Ui<'_> {
                 0.0
             },
             !switching,
+            dim,
             &mut build,
         );
         self.context.tab_pages.insert(id, state);
@@ -183,6 +215,7 @@ impl Ui<'_> {
         rect: Rect,
         offset: f32,
         interactive: bool,
+        dim: bool,
         build: &mut impl FnMut(&mut Ui<'_>, usize),
     ) {
         let bounds = rect.translate(Vec2::new(offset, 0.0));
@@ -199,7 +232,7 @@ impl Ui<'_> {
             sequence: 0,
             clip,
             layout: LayoutCursor::new(bounds, Layout::Vertical, spacing),
-            enabled: self.enabled && interactive,
+            enabled: self.enabled && (interactive || !dim),
             backdrop_blur: self.backdrop_blur,
             hover_style: self.hover_style,
             local_style: self.local_style.clone(),
