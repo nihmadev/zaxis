@@ -20,6 +20,7 @@ pub struct Column {
     pub(crate) title: String,
     pub(crate) sortable: bool,
     pub(crate) resizable: bool,
+    pub(crate) tabular: bool,
 }
 impl Column {
     #[track_caller]
@@ -40,6 +41,7 @@ impl Column {
             title: String::new(),
             sortable: false,
             resizable: true,
+            tabular: false,
         }
     }
     #[track_caller]
@@ -60,6 +62,13 @@ impl Column {
     pub fn align(mut self, horizontal: Align, vertical: Align) -> Self {
         self.horizontal = horizontal;
         self.vertical = vertical;
+        self
+    }
+    /// A column of numbers: right-aligned cells whose digits are tabular, so decimal
+    /// places line up. Text in cells inherits it through the cell's text style.
+    pub fn numeric(mut self, numeric: bool) -> Self {
+        self.tabular = numeric;
+        self.horizontal = if numeric { Align::End } else { Align::Start };
         self
     }
     pub fn title(mut self, title: impl Into<String>) -> Self {

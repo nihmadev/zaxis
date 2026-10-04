@@ -107,7 +107,18 @@ impl GridRow<'_, '_, '_> {
             local_style_revision: ui.local_style_revision,
         };
         child.begin_layout(crate::Align::Start);
-        let result = build(&mut child);
+        let result = if self.grid.columns[i].tabular {
+            let patch = crate::StyleOverrides {
+                text: crate::TextStyle {
+                    tabular_numbers: Some(true),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            child.with_style(&patch, build)
+        } else {
+            build(&mut child)
+        };
         child.finish_layout();
         let size = child.layout.used;
         let placement = child.context.end_placement();
