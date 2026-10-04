@@ -1,7 +1,7 @@
 ---
 title: Text and fonts
 icon: Type
-description: Shaped labels, bidirectional layout, font fallback, color emoji, and glyph caching.
+description: Shaped labels, font weights and families, bidirectional layout, font fallback, color emoji, and glyph caching.
 ---
 
 ```rust
@@ -22,7 +22,8 @@ ui.add(Text::new("Build output\nCompleted")
 | Method | Default / behavior |
 | --- | --- |
 | `new(impl Into<String>)` | Own the text string |
-| `size(f32)` | `Style::font_size`; effective size clamped to 1–256 logical pixels |
+| `size(f32)` | `Style::font_size`; effective size clamped to 1–256 logical pixels; prefer `typography(role)` or `ui.heading` / `title` / `small` to stay on the theme scale |
+| `weight(FontWeight)` | `TextStyle::weight`, else the weight of the typography role (Regular unless the theme sets one); see [Font weights](#font-weights) |
 | `color(Color)` | `Style::text_color` |
 | `muted()` | Use `Style::muted_text`; an explicit `color` takes precedence |
 | `wrap(bool)` | `true`; wrap at the available layout width |
@@ -44,42 +45,105 @@ Painting is clipped by the enclosing UI.
 bounds, but painting still uses the enclosing content clip. The engine reserves at
 least one line even for an empty string. Line height is `1.25 × font_size`.
 
-## Replace the font
+## Font weights
 
-`Context::new()` loads the bundled unmodified Lato font. A custom host can construct
-the context with an `ab_glyph::FontArc`:
-
-```toml title="Cargo.toml"
-[dependencies]
-ab_glyph = "0.2.32"
-```
+`FontWeight` is a number on the CSS scale (100–900, clamped) with the constants `THIN`,
+`EXTRA_LIGHT`, `LIGHT`, `REGULAR` (400), `MEDIUM` (500), `SEMIBOLD` (600), `BOLD` (700),
+`EXTRA_BOLD` and `BLACK`.
 
 ```rust
-use ab_glyph::FontArc;
-use zaxis::Context;
+use zaxis::{FontWeight, Text, TextStyle, TypographyRole};
 
-fn load_context() -> Result<Context, Box<dyn std::error::Error>> {
-    let bytes = std::fs::read("assets/YourFont.ttf")?;
-    let font = FontArc::try_from_vec(bytes)?;
-    Ok(Context::with_font(font))
-}
+ui.add(Text::new("Build output").weight(FontWeight::SEMIBOLD));
+ui.add(Text::new("Caption").style(TextStyle { weight: Some(FontWeight::MEDIUM), ..Default::default() }));
 ```
 
-Set the new context's viewport before rendering. The built-in runner constructs its
-own default context and has no `RunOptions` font field. Font injection is a
-[custom-host](../integration.mdx) configuration.
+A weight selects a font file. Bold is drawn from real bold outlines with their own advance
+widths, never by thickening Regular. The bundled Inter has Regular, Medium, SemiBold and Bold
+(`bundled-weights` feature, on by default). A weight the family has no file for uses the
+nearest declared one by the CSS rule: an exact file wins; below 400 lighter files are tried
+first, then heavier; above 500 heavier files first, then lighter; 400–500 look up to 500, then
+down, then above. `FontFamily::resolve(weight)` returns the choice. Without
+`bundled-weights`, or in a family declared with only Regular, every weight resolves to Regular
+and nothing is faked.
 
-The selected font is the context's primary family. A shared font database discovers
-system fonts and provides script fallback; bundled Noto Color Emoji supplies color
-emoji without requiring an installed emoji font through the default `bundled-emoji`
-feature and the `zaxis-emoji` crate. Disable that feature to use system fonts for emoji.
-Coverage of other scripts depends
-on the fonts available on the host. There is no public runtime font setter.
+Weight resolution, highest priority first:
+
+| Source | Applies to |
+| --- | --- |
+| `Text::weight` | One `Text` |
+| `TextStyle::weight` (`Style::text`, `StyleOverrides::text`, `Text::style`) | Text widgets in the subtree |
+| `Typography::weights` by role: `small`, `body`, `heading`, `title` | `Text::typography`, `ui.heading`, `ui.title`, `ui.small`; `body` is the default |
+| `ButtonStyle::font_weight`, then `Typography::weights.control` | Button and its variants |
+| `Typography::weights.selected` (falls back to `control`) | Active tab of `ui.tab_bar` |
+| `WindowStyle::title_font_weight`, `TitleBarStyle::font_weight` | Window and title bar titles |
+| `TableStyle::header_font_weight` | Table column headers |
+| `DisclosureStyle::font_weight` (`tree.row`, `collapsing.header`) | Tree node names and collapsing headers |
+| `TextEditStyle::font_weight` | TextEdit text, placeholder, caret and selection |
+
+Everything defaults to Regular, so a theme looks exactly as before until a weight is set:
+
+```rust
+let mut theme = Theme::dark();
+theme.typography.weights.heading = FontWeight::SEMIBOLD;
+theme.typography.weights.small = FontWeight::MEDIUM;
+```
+
+Measurement, caret positions, selection and IME placement use the same weighted layout as
+painting, so a weight change reflows only text that uses it. A weight is a property of a
+whole string; there is no mixed-weight rich text or range styling.
+
+## Replace the font
+
+`Context::new()` uses the bundled Inter family (OFL). Pass your own with a `FontFamily`: one
+file per weight, the first for Regular.
+
+```rust
+use zaxis::{FontFamily, FontWeight, RunOptions};
+
+let family = FontFamily::new(include_bytes!("../assets/Brand-Regular.ttf"))
+    .with_weight(FontWeight::MEDIUM, include_bytes!("../assets/Brand-Medium.ttf"))
+    .with_weight(FontWeight::BOLD, include_bytes!("../assets/Brand-Bold.ttf"));
+
+zaxis::run_with_options(app, RunOptions::default().with_font_family(family))?;
+```
+
+`FontFamily::new` and `with_weight` accept anything that is `AsRef<[u8]> + Send + Sync + 'static`:
+`include_bytes!` data stays in the executable image, a `Vec<u8>` is kept as given. The declared
+weight is authoritative; the font's own weight metadata is ignored. `FontFamily::inter()` is the
+bundled family, for example to add a missing weight. A [custom host](../integration.mdx) calls
+`Context::with_fonts(family)`; `Context::with_font(FontArc)` remains for a single regular face.
+
+Set the new context's viewport before rendering. There is no public runtime font setter.
+
+Fallback order for a character the family lacks: the family itself, then installed system
+fonts chosen by script (platform tables), then the bundled Noto Color Emoji, then any installed
+face. The weight applies to all of them. Color emoji follow every requested weight (the single
+file is registered at each weight step). A system font is used at the requested weight only if
+it has a file for it; otherwise the layout still succeeds with a nearest face chosen by
+cosmic-text, which may differ from the platform's preferred family for that script. Coverage of
+scripts depends on the fonts of the host. Disable `bundled-emoji` to use system fonts for emoji.
+
+## Binary size
+
+Each bundled Inter file is about 340 KB. Regular is always embedded; Medium, SemiBold and Bold
+add about 1 MB to the executable and are controlled by the `bundled-weights` feature. The data
+is `include_bytes!` static data. A face is indexed when the context starts (name and OS/2
+tables only); its outlines are parsed, shaped and rasterized only when a weight that resolves
+to it is first used, and only used faces enter the layout and atlas caches. Applications that
+only need Regular can disable default features and enable the ones they want:
+
+```toml
+zaxis = { version = "0.0.1", default-features = false, features = ["bundled-emoji"] }
+```
 
 ## Rasterization and atlas
 
-Glyphs rasterize at logical font size multiplied by DPI. Cache keys include the font,
-glyph, size, and subpixel position. Glyphs rasterize through Swash; color emoji retain
+Glyphs rasterize at logical font size multiplied by DPI. Cache keys include the font face,
+its weight, the glyph, size, and subpixel position; layout keys add the text, wrap width,
+family, weight and style slot (italic is not implemented, but the key has room for it). Each
+weight in use has its own glyphs, so four weights cost about four times the glyph entries of
+one but share pages: a UI of short labels in four weights still fits one 1024 × 1024 page. Glyphs rasterize through Swash; color emoji retain
 their own RGB colors and use the requested text alpha.
 
 Atlas pages normally use 1024 × 1024 RGBA8 pixels, with transparent white background

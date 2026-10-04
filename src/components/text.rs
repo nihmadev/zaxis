@@ -6,6 +6,7 @@ use super::{font_size, Response, Ui, Widget};
 pub struct Text {
     text: String,
     size: Option<f32>,
+    weight: Option<crate::FontWeight>,
     color: Option<Color>,
     wrap: bool,
     muted: bool,
@@ -18,6 +19,7 @@ impl Text {
         Self {
             text: text.into(),
             size: None,
+            weight: None,
             color: None,
             wrap: true,
             muted: false,
@@ -33,8 +35,14 @@ impl Text {
         self.role = role;
         self
     }
+    #[track_caller]
     pub fn size(mut self, size: f32) -> Self {
-        self.size = Some(size);
+        self.size = super::sanitize::positive("Text::size", size).or(self.size);
+        self
+    }
+    /// The font file weight for this text; overrides the style and the role.
+    pub fn weight(mut self, weight: crate::FontWeight) -> Self {
+        self.weight = Some(weight);
         self
     }
     pub fn muted(mut self) -> Self {
@@ -63,6 +71,10 @@ impl Widget for Text {
             crate::TypographyRole::Title => ui.style().typography.title,
         };
         let size = font_size(self.size.or(style.size).unwrap_or(inherited));
+        let weight = self
+            .weight
+            .or(style.weight)
+            .unwrap_or_else(|| ui.style().typography.weights.role(self.role));
         let color = self.color.or(style.color).unwrap_or(if !ui.is_enabled() {
             ui.style().disabled_text
         } else if self.muted {
@@ -75,7 +87,9 @@ impl Widget for Text {
         } else {
             f32::INFINITY
         };
-        let (text_size, wrap_width) = ui.context.measure_text_layout(&self.text, size, wrap_width);
+        let (text_size, wrap_width) = ui
+            .context
+            .measure_text_layout(&self.text, size, weight, wrap_width);
         let rect = ui.allocate_space(text_size);
         ui.context.paint(
             id,
@@ -85,6 +99,7 @@ impl Widget for Text {
                 text: self.text,
                 position: rect.min,
                 size,
+                weight,
                 wrap_width,
                 color: super::appearance::alpha(color, ui.style().opacity),
             }],
@@ -94,6 +109,19 @@ impl Widget for Text {
 }
 
 impl Ui<'_> {
+    /// Text at a theme size. `heading`, `title` and `small` are shortcuts for the roles.
+    pub fn typography(&mut self, role: crate::TypographyRole, text: impl Into<String>) -> Response {
+        self.add(Text::new(text).typography(role))
+    }
+    pub fn heading(&mut self, text: impl Into<String>) -> Response {
+        self.typography(crate::TypographyRole::Heading, text)
+    }
+    pub fn title(&mut self, text: impl Into<String>) -> Response {
+        self.typography(crate::TypographyRole::Title, text)
+    }
+    pub fn small(&mut self, text: impl Into<String>) -> Response {
+        self.typography(crate::TypographyRole::Small, text)
+    }
     pub fn muted(&mut self, text: impl Into<String>) -> Response {
         self.add(Text::new(text).muted())
     }

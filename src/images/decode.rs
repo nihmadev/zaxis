@@ -205,12 +205,12 @@ fn parse_svg(xml: &str, limits: &ImageLimits) -> Result<Document, ImageError> {
     static FONTS: std::sync::OnceLock<Arc<usvg::fontdb::Database>> = std::sync::OnceLock::new();
     let fonts = FONTS.get_or_init(|| {
         let mut db = usvg::fontdb::Database::new();
-        db.load_font_data(include_bytes!("../../assets/Lato-Regular.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../assets/Inter-Regular.ttf").to_vec());
         Arc::new(db)
     });
     let options = usvg::Options {
         fontdb: fonts.clone(),
-        font_family: "Lato".into(),
+        font_family: "Inter".into(),
         image_href_resolver: usvg::ImageHrefResolver {
             resolve_data: Box::new(|_, _, _| None),
             resolve_string: Box::new(|_, _| None),
