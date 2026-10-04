@@ -1,5 +1,6 @@
 ---
 title: NumberInput & DragValue
+icon: ChevronsUpDown
 description: Typed numeric entry and horizontal dragging, using the shared TextEdit editor.
 ---
 
@@ -37,7 +38,9 @@ Use `.id_source(...)` or `ui.push_id(...)` for stable identity in dynamic lists.
 | `.precision(0..=16)` | Display decimals for floats; does not round the stored value. Ignored for integers. |
 | `.formatter(\|value\| format!("{value:.2}"))` | Typed, display-only formatter. Editing uses the full parseable value. |
 | `.prefix("$ ")`, `.suffix(" kg")` | Noneditable decorations, also visible during editing. |
-| `.enabled(bool)`, `.disabled(bool)` | Disabled fields preserve the number and discard pending drafts. Inherited disabled scopes apply. |
+| `.enabled(bool)` | Disabled fields preserve the number and discard pending drafts. Inherited disabled scopes apply. |
+| `.status(SemanticStatus)` | Validation state; inherited from an enclosing [Field](./field.mdx) |
+| `.corner_radius(..)`, `.hover_style(..)` | Same names and types as the other controls |
 | `.width(pixels)`, `.style(NumberStyle)` | Per-control appearance overrides. |
 | `.sensitivity(steps_per_pixel)` | Horizontal drag sensitivity; default 0.1 steps per logical pixel. |
 

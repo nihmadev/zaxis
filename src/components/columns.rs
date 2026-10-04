@@ -22,17 +22,15 @@ pub struct Column {
     pub(crate) resizable: bool,
 }
 impl Column {
+    #[track_caller]
     pub fn new(source: impl Hash, width: ColumnWidth) -> Self {
-        match width {
-            ColumnWidth::Fixed(n) => {
-                dimension(n);
+        let width = match width {
+            ColumnWidth::Fixed(n) => ColumnWidth::Fixed(dimension(n)),
+            ColumnWidth::Remainder(n) => {
+                ColumnWidth::Remainder(super::sanitize::weight("Column weight", n))
             }
-            ColumnWidth::Remainder(n) => assert!(
-                n.is_finite() && n > 0.0,
-                "column weight must be positive and finite"
-            ),
-            ColumnWidth::Content => {}
-        }
+            ColumnWidth::Content => width,
+        };
         Self {
             id: Id::new(source),
             width,
@@ -44,6 +42,7 @@ impl Column {
             resizable: true,
         }
     }
+    #[track_caller]
     pub fn fixed(source: impl Hash, width: f32) -> Self {
         Self::new(source, ColumnWidth::Fixed(width))
     }
@@ -53,6 +52,7 @@ impl Column {
     pub fn remainder(source: impl Hash) -> Self {
         Self::new(source, ColumnWidth::Remainder(1.0))
     }
+    #[track_caller]
     pub fn min_width(mut self, width: f32) -> Self {
         self.minimum = dimension(width);
         self
@@ -76,12 +76,10 @@ impl Column {
     }
 }
 
+/// A non-negative length; invalid values become zero.
+#[track_caller]
 pub(crate) fn dimension(value: f32) -> f32 {
-    assert!(
-        value.is_finite() && value >= 0.0,
-        "dimensions must be finite and nonnegative"
-    );
-    value
+    super::sanitize::length("size", value)
 }
 
 /// Resolve shared widths without shrinking fixed/content columns below their minima.
@@ -99,10 +97,7 @@ pub(crate) fn resolve(
             let preferred = match c.width {
                 ColumnWidth::Fixed(n) => dimension(n),
                 ColumnWidth::Content => measured.get(i).copied().unwrap_or(0.0),
-                ColumnWidth::Remainder(n) => {
-                    assert!(n.is_finite() && n > 0.0);
-                    0.0
-                }
+                ColumnWidth::Remainder(_) => 0.0,
             };
             preferred.max(dimension(c.minimum))
         })
@@ -112,13 +107,15 @@ pub(crate) fn resolve(
     let weight: f64 = columns
         .iter()
         .map(|c| match c.width {
-            ColumnWidth::Remainder(n) => n as f64,
+            ColumnWidth::Remainder(n) if n.is_finite() && n > 0.0 => n as f64,
+            ColumnWidth::Remainder(_) => 1.0,
             _ => 0.0,
         })
         .sum();
     if weight > 0.0 {
         for (c, width) in columns.iter().zip(&mut widths) {
             if let ColumnWidth::Remainder(n) = c.width {
+                let n = if n.is_finite() && n > 0.0 { n } else { 1.0 };
                 *width += (spare as f64 * n as f64 / weight) as f32;
             }
         }

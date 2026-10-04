@@ -10,6 +10,8 @@ pub(super) struct OptionsState {
     dirty: bool,
     matches: Vec<usize>,
     folded: HashMap<Id, (String, String)>,
+    /// Two options share an id; reported by the caller on every pass.
+    pub(super) duplicates: bool,
 }
 impl OptionsState {
     pub(super) fn refresh<T>(&mut self, options: &[ComboBoxOption<T>]) -> bool {
@@ -25,10 +27,7 @@ impl OptionsState {
             return false;
         }
         let mut ids = HashSet::with_capacity(options.len());
-        assert!(
-            options.iter().all(|o| ids.insert(o.id)),
-            "duplicate ComboBox option ID"
-        );
+        self.duplicates = !options.iter().all(|o| ids.insert(o.id));
         self.folded.retain(|id, _| ids.contains(id));
         self.snapshot.truncate(options.len());
         for (index, option) in options.iter().enumerate() {

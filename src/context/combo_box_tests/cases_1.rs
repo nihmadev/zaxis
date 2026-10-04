@@ -299,3 +299,19 @@ fn generic_popup_is_not_window_restores_focus_and_disappears_with_owner() {
     assert!(c.popup.is_none());
     assert!(c.previous_hits.is_empty());
 }
+
+#[test]
+fn clicking_the_trigger_again_closes_the_popup() {
+    let mut c = setup();
+    let mut selected = Some(0);
+    let opts = options(10);
+    let r = draw(&mut c, &mut selected, &opts, false, false);
+    click(&mut c, r.rect.center());
+    draw(&mut c, &mut selected, &opts, false, false);
+    assert!(c.popup.is_some());
+    click(&mut c, r.rect.center());
+    draw(&mut c, &mut selected, &opts, false, false);
+    draw(&mut c, &mut selected, &opts, false, false);
+    assert!(c.popup.is_none());
+    assert!(!c.combo_boxes[&r.id].open);
+}

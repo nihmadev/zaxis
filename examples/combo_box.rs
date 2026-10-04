@@ -52,7 +52,7 @@ impl App for Demo {
                     ComboBox::new(&mut self.small, &self.options[..self.options.len().min(4)])
                         .id_source("disabled")
                         .label("disabled")
-                        .disabled(true),
+                        .enabled(false),
                 );
                 ui.muted("The next popup escapes a short ScrollArea.");
                 ScrollArea::vertical()
@@ -107,7 +107,7 @@ fn options() -> Vec<ComboBoxOption<usize>> {
                     format!("Region {i:02} / Регион {i:02}")
                 },
             )
-            .disabled(i == 3 || i == 81)
+            .enabled(i != 3 && i != 81)
         })
         .collect()
 }

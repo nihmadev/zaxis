@@ -43,6 +43,45 @@ impl Default for NumberStyle {
     }
 }
 
+impl NumberStyle {
+    /// Sizes and multipliers that are not finite and positive fall back to the defaults.
+    #[track_caller]
+    pub(crate) fn normalize(&mut self) {
+        use super::sanitize::positive;
+        let default = Self::default();
+        self.width = positive("NumberStyle::width", self.width).unwrap_or(default.width);
+        self.height = positive("NumberStyle::height", self.height).unwrap_or(default.height);
+        self.font_size =
+            positive("NumberStyle::font_size", self.font_size).unwrap_or(default.font_size);
+        let multiplier = |what, value: f64, fallback: f64| {
+            if value.is_finite() && value > 0.0 {
+                value
+            } else {
+                crate::context::invalid_value(
+                    what,
+                    format!("expected a finite value > 0, got {value}; using {fallback}"),
+                );
+                fallback
+            }
+        };
+        self.sensitivity = multiplier(
+            "NumberStyle::sensitivity",
+            self.sensitivity,
+            default.sensitivity,
+        );
+        self.shift_multiplier = multiplier(
+            "NumberStyle::shift_multiplier",
+            self.shift_multiplier,
+            default.shift_multiplier,
+        );
+        self.ctrl_multiplier = multiplier(
+            "NumberStyle::ctrl_multiplier",
+            self.ctrl_multiplier,
+            default.ctrl_multiplier,
+        );
+    }
+}
+
 pub(crate) struct NumberOptions<'a, T> {
     pub(crate) range: RangeInclusive<T>,
     pub(crate) step: T,
@@ -51,6 +90,9 @@ pub(crate) struct NumberOptions<'a, T> {
     pub(crate) prefix: String,
     pub(crate) suffix: String,
     pub(crate) enabled: bool,
+    pub(crate) status: super::SemanticStatus,
+    pub(crate) rounding: Option<CornerRadius>,
+    pub(crate) hover_style: Option<super::HoverStyle>,
     pub(crate) id: Option<Id>,
     pub(crate) source: &'static Location<'static>,
     pub(crate) style: Option<NumberStyle>,
@@ -67,6 +109,9 @@ impl<T: Numeric> NumberOptions<'_, T> {
             prefix: String::new(),
             suffix: String::new(),
             enabled: true,
+            status: Default::default(),
+            rounding: None,
+            hover_style: None,
             id: None,
             source,
             style: None,
@@ -87,25 +132,45 @@ macro_rules! number_builders {
             self.options.id = Some(Id::new(source));
             self
         }
-        /// Finite ascending bounds. Commits and gestures clamp; idle values are untouched.
+        /// Commits and gestures clamp to the bounds; idle values are untouched. Descending
+        /// bounds are swapped and non-finite ones are ignored.
+        #[track_caller]
         pub fn range(mut self, range: RangeInclusive<T>) -> Self {
-            assert!(
-                range.start().finite() && range.end().finite() && range.start() <= range.end(),
-                "numeric range must be finite and ascending"
-            );
-            self.options.range = range;
+            let (start, end) = (*range.start(), *range.end());
+            if !start.finite() || !end.finite() {
+                crate::context::invalid_value(
+                    "range",
+                    format!("expected finite bounds, got {start}..={end}; ignored"),
+                );
+            } else if start > end {
+                crate::context::invalid_value(
+                    "range",
+                    format!("expected ascending bounds, got {start}..={end}; ends swapped"),
+                );
+                self.options.range = end..=start;
+            } else {
+                self.options.range = range;
+            }
             self
         }
-        /// Positive step in the value's own type. Typed commits are not snapped.
+        /// Positive step in the value's own type; integers default to one. Typed commits
+        /// are not snapped. Anything not positive is ignored.
+        #[track_caller]
         pub fn step(mut self, step: T) -> Self {
-            assert!(step.positive(), "numeric step must be finite and positive");
-            self.options.step = step;
+            if step.positive() {
+                self.options.step = step;
+            } else {
+                crate::context::invalid_value(
+                    "step",
+                    format!("expected a finite step > 0, got {step}; ignored"),
+                );
+            }
             self
         }
-        /// Display precision for floats (0..=16), without rounding the stored number.
+        /// Display precision for floats, without rounding the stored number; at most 16.
+        /// Integers never show decimals.
         pub fn precision(mut self, precision: usize) -> Self {
-            assert!(precision <= 16);
-            self.options.precision = Some(precision);
+            self.options.precision = Some(precision.min(16));
             self
         }
         /// Display-only formatter. Editing always uses the exact, parseable number.
@@ -125,12 +190,28 @@ macro_rules! number_builders {
             self.options.enabled = enabled;
             self
         }
+        #[deprecated(note = "use `.enabled(!disabled)`; `enabled` is the one way to set a control's availability")]
         pub fn disabled(self, disabled: bool) -> Self {
             self.enabled(!disabled)
         }
+        /// Validation state: the border and a soft ring take the status color. Fields inherit
+        /// the status of an enclosing [`super::Field`] unless this is set.
+        pub fn status(mut self, status: crate::SemanticStatus) -> Self {
+            self.options.status = status;
+            self
+        }
+        pub fn corner_radius(mut self, radius: impl Into<crate::CornerRadius>) -> Self {
+            self.options.rounding = Some(radius.into());
+            self
+        }
+        pub fn hover_style(mut self, style: crate::HoverStyle) -> Self {
+            self.options.hover_style = Some(style);
+            self
+        }
+        #[track_caller]
         pub fn width(mut self, width: f32) -> Self {
-            assert!(width.is_finite() && width > 0.0);
-            self.options.width = Some(width);
+            self.options.width =
+                crate::components::sanitize::positive("width", width).or(self.options.width);
             self
         }
         pub fn style(mut self, style: NumberStyle) -> Self {
@@ -138,9 +219,16 @@ macro_rules! number_builders {
             self
         }
         /// Steps per logical pixel. The typed step determines the units.
+        #[track_caller]
         pub fn sensitivity(mut self, sensitivity: f64) -> Self {
-            assert!(sensitivity.is_finite() && sensitivity > 0.0);
-            self.options.sensitivity = Some(sensitivity);
+            if sensitivity.is_finite() && sensitivity > 0.0 {
+                self.options.sensitivity = Some(sensitivity);
+            } else {
+                crate::context::invalid_value(
+                    "sensitivity",
+                    format!("expected a finite value > 0, got {sensitivity}; ignored"),
+                );
+            }
             self
         }
     };

@@ -10,23 +10,29 @@ description: Exported types and method groups with direct links to their contrac
 | --- | --- |
 | `run`, `run_with_options`, `App`, `Frame`, `RunOptions`, `RunError` | [Desktop runner](./app.mdx) |
 | `Context`, `EventResponse`, `InputState` | [Context below](#context), [Input](./input.mdx), [Custom host](./integration.mdx) |
+| `Diagnostic`, `DiagnosticKind`, `DebugOverlay` | [Diagnostics](./diagnostics.mdx) |
 | `Id` | [IDs and retained state](./ids.mdx) |
-| `Ui`, `Widget`, `Response` | [Ui below](#ui), [Components](./components/index.mdx), [Input](./input.mdx) |
+| `Ui`, `Widget`, `Response`, `Sense` | [Ui below](#ui), [Components](./components/index.mdx), [Input](./input.mdx), [Custom widgets](./custom-widgets.mdx) |
+| `Field`, `Validation`, `SemanticStatus` | [Field and validation](./components/field.mdx) |
 | `Window` | [Panel builders and geometry](./components/window.mdx) |
 | `Grid`, `GridUi`, `GridRow`, `GridStyle`, `GridOutput`, `Column`, `ColumnWidth`, `Align` | [Shared column layout](./components/grid.mdx) |
 | `Table`, `TableBody`, `TableStyle`, `TableOutput`, `SortRequest`, `SortDirection` | [Data table composition](./components/table.mdx) |
 | `ScrollArea`, `ScrollAreaOutput`, `ScrollStyle` | [Scroll viewports and virtualization](./components/scroll-area.mdx) |
 | `Popup`, `PopupOutput` | [Overlay layers and dismissal](./components/popup.mdx) |
+| `Modal`, `ModalOutput`, `ModalAnchor`, `ModalStyle`, `CloseReason`, `Dialog`, `DialogAction`, `DialogOutput`, `Confirm`, `Confirmation` | [Modal dialogs, confirmations and sheets](./components/modal.mdx) |
 | `ComboBox`, `ComboBoxOption`, `ComboBoxStyle` | [Selection and filtering](./components/combo-box.mdx) |
+| `Tooltip`, `TooltipWidget`, `ContextMenu`, `ContextMenuWidget` | [Tooltip](./components/tooltip.mdx), [ContextMenu](./components/context-menu.mdx) |
 | `Text` | [Text builders and fonts](./components/text.mdx) |
 | `TextEdit` | [Single-line editing and IME](./components/text-edit.mdx) |
 | `Button` | [Button builders and activation](./components/button.mdx) |
 | `Checkbox` | [Boolean binding](./components/checkbox.mdx) |
+| `Switch` | [Animated on/off binding](./components/switch.mdx) |
+| `DragSource`, `DropTarget`, `DragOutput`, `DropOutput`, `Dropped`, `DragEnd`, `DragReason`, `DragStyle`, `DropZones`, `Insertion` | [Typed in-window drag and drop](./components/drag-and-drop.mdx) |
 | `Slider`, `SliderStatus` | [Numeric binding](./components/slider.mdx) |
 | `ColorPicker`, `ColorPickerType` | [Color selection](./components/color-picker.mdx) |
 | `Separator` | [Dividing lines](./components/separator.mdx) |
 | `Style` | [Theme fields and defaults](./style.mdx) |
-| `Animation`, `Interpolate`, `Easing`, `Tween`, `TweenOptions`, `Keyframes`, `Keyframe`, `Repeat`, `Procedural`, `Wake` | [Animation tracks and extension contracts](./animation.mdx) |
+| `Animation`, `Interpolate`, `Easing`, `Decay`, `DecayOptions`, `Oklab`, `Path`, `PathFollow`, `PathPose`, `Tween`, `TweenOptions`, `Keyframes`, `Keyframe`, `Repeat`, `Procedural`, `Wake` | [Animation tracks and extension contracts](./animation.mdx) |
 | `Animated`, `AnimationStatus`, `AnimationSample`, `AnimationOptions`, `MotionStyle` | [Animation state, scheduling and style](./animation.mdx) |
 | `Layout`, `Padding` | [Layout and insets](./layout.mdx) |
 | `Rect`, `RectShape`, `Shape`, `Border`, `CornerRadius`, `Color` | [Drawing](./drawing.mdx), [Color](./style.mdx#color) |
@@ -43,18 +49,22 @@ One context holds UI state for one native viewport.
 | Method | Returns / purpose |
 | --- | --- |
 | `Context::new()` / `default()` | Bundled font and default style |
-| `Context::with_font(FontArc)` | Custom font context |
+| `Context::with_font(FontArc)` | Custom single-weight font context |
+| `Context::with_fonts(FontFamily)` | Custom family with a file per weight; see [Text and fonts](./components/text.mdx#replace-the-font) |
 | `run(build: impl FnOnce(&mut Context))` | `bool`, currently always `true`; complete UI pass |
 | `run_at(Instant, build)`, `frame_time()`, `needs_repaint_at(Instant)` | Deterministic monotonic host clock |
 | `transition`, `transition_from`, `animate`, `animate_with` | [Retained visible animation channels](./animation.mdx) |
 | `sample_animation`, `animation_status`, `pause_animation`, `resume_animation`, `cancel_animation`, `finish_animation`, `restart_animation`, `restart_animation_with` | Animation sampling and controls |
+| `transition_smooth` | Velocity-preserving property transition |
+| `set_animation_rate`, `reverse_animation`, `seek_animation`, `animation_elapsed`, `animation_rate`, `animation_duration` | Playback rate, direction and scrubbing |
 | `on_window_event(&WindowEvent)` | `EventResponse`; process native input immediately |
 | `on_key_event(KeyCode, ElementState, bool)` | `EventResponse`; physical key bridge, with repeat flag; text/modifiers supplied separately |
 | `sync_ime(&Window)` | Enable and position native IME after a custom host UI pass |
 | `ime_cursor_area()` | Optional logical composition window anchor |
 | `request_focus(Id)`, `close_popup()` | Move widget focus; close overlay and restore focus |
+| `diagnostics()`, `set_diagnostic_handler(..)`, `set_debug_overlay(DebugOverlay)`, `debug_overlay()` | [Usage diagnostics and the debug overlay](./diagnostics.mdx) |
 | `on_text_event(&str)` | `EventResponse`; committed text bridge for TextEdit and editable color fields |
-| `input()` | `&InputState`; read accumulated input during the callback |
+| `input()` | `&InputState`; read accumulated input during the callback (idle outside an open modal) |
 | `cursor_icon()` | Native `winit::window::CursorIcon` for the hovered/captured region; applied automatically by the runner |
 | `style()` / `set_style(Style)` | `&Style` / replace style and request repaint |
 | `set_viewport(PhysicalSize<u32>, f64)` | Set physical size and DPI; request repaint on change |
@@ -80,24 +90,34 @@ Created by `Window::show`; construction fields are private.
 | Method | Returns / purpose |
 | --- | --- |
 | `add(impl Widget)` | `Response`; apply automatic follow-up repaint |
-| `add_enabled(bool, impl Widget)` | `Response`; conditionally enabled widget |
-| `add_enabled_ui(bool, build)` | Closure result; inherited enabled state for a group |
+| `interact(Rect, impl Hash, Sense)` | `Response` for custom geometry through the shared hit path; see [Custom widgets](./custom-widgets.mdx) |
+| `add_enabled_ui(bool, build)` | Closure result; the one way to disable a group (`.enabled(bool)` for one control) |
+| `add_enabled(bool, impl Widget)` | Deprecated; use `add_enabled_ui` or `.enabled` |
 | `is_enabled()` | `bool`; effective enabled state |
 | `label(text)` | `Response`; add `Text` |
 | `text_edit(&mut String)` | `Response`; add a single-line editor |
 | `muted(text)` | `Response`; add text in `Style::muted_text` |
+| `heading(text)`, `title(text)`, `small(text)`, `typography(role, text)` | `Response`; text at the theme's type scale |
+| `tooltip(Response, text)` | Attach a hint to a built response; `widget.tooltip(text)` does it in one expression |
+| `context_menu(Response, &items)` | `ContextMenuOutput`; `widget.context_menu(&items)` does it in one expression |
 | `button(text)` | `Response`; add `Button` |
-| `button_enabled(bool, text)` | `Response`; conditional button |
+| `button_enabled(bool, text)` | Deprecated; `Button::new(text).enabled(bool)` |
 | `selectable(bool, text)` | `Response`; selected button appearance |
 | `selectable_value(&mut T, T, text)` | `Response`; update selection and report `changed()` |
-| `tab_bar(&mut T, (T, label) iterator)` | `Vec<Response>`; equal-width tabs bound to a selection |
+| `tab_bar(&mut T, (T, label) iterator)` | `Vec<Response>`; tabs bound to a selection, scrolling horizontally when they do not fit |
 | `tab_pages(source, usize, Vec2, build)` | Fixed-size directed page transitions, latest pending selection |
 | `animation_id`, `transition`, `transition_from`, `animate`, `animate_with` | Scoped application animation channels |
 | `checkbox(&mut bool, text)` | `Response`; add `Checkbox` |
-| `checkbox_enabled(bool, &mut bool, text)` | `Response`; conditional checkbox |
-| `slider(&mut f32, RangeInclusive<f32>)` | `Response`; add `Slider` |
-| `slider_enabled(bool, &mut f32, range)` | `Response`; conditional slider |
-| `slider_labeled(&mut f32, range, text)` | `Response`; caption and value below track |
+| `checkbox_enabled(bool, &mut bool, text)` | Deprecated; `Checkbox::new(..).enabled(bool)` |
+| `switch(&mut bool, text)` | `Response`; add `Switch` |
+| `switch_enabled(bool, &mut bool, text)` | Deprecated; `Switch::new(..).enabled(bool)` |
+| `drag_source(Id, payload, build)` | `DragOutput<R>`; make content draggable |
+| `drop_target(Id, accept, build)` | `DropOutput<R, P>`; accept payloads of type `P` |
+| `dragging()`, `keep_drag_source(Id)` | Active source id; keep a virtualized source alive |
+| `slider(&mut T, RangeInclusive<T>)` | `Response`; add `Slider` for `f32` or any `Numeric` |
+| `slider_enabled(bool, &mut T, range)` | Deprecated; `Slider::new(..).enabled(bool)` |
+| `slider_labeled(&mut T, range, text)` | `Response`; caption and value below track |
+| `combo_box_values(&mut T, (T, label) iterator)` | `Response`; combo box bound to a value, ids from the values |
 | `color_picker(&mut Color, text)` | `Response`; expandable internal color editor |
 | `separator()` | `Response`; add horizontal `Separator` |
 | `horizontal(build)` | Closure result; nest a horizontal row |
@@ -112,9 +132,13 @@ Created by `Window::show`; construction fields are private.
 | `allocate_space(Vec2)` | `Rect`; reserve custom geometry |
 | `paint(impl Into<Shape>)` | Add cached vector shape or `RectShape` builder |
 
-`Widget::ui(self, &mut Ui<'_>) -> Response` consumes the widget. Component `Response`
-methods are `clicked(self)` and `changed(self)`; geometry and hover/press/focus fields
-are public. Use `Ui::add` to preserve automatic repaint behavior for custom widgets.
+`Widget::ui(self, &mut Ui<'_>) -> Response` consumes the widget. `Widget::tooltip(text)`
+and `Widget::context_menu(&items)` wrap any widget. `Response` is `Copy`; geometry and
+hover/press/focus fields are public and events (`clicked`, `double_clicked`,
+`secondary_clicked`, `drag_started`, `dragged`, `drag_delta`, `drag_stopped`,
+`gained_focus`, `lost_focus`, `changed`, `submitted`, `menu_selected`) are methods, see
+[Input](./input.mdx#response). Use `Ui::add` to preserve automatic repaint behavior for
+custom widgets.
 
 ## Public modules
 

@@ -66,25 +66,30 @@ impl Default for ComboBoxStyle {
     }
 }
 impl ComboBoxStyle {
-    pub(super) fn validate(&self) {
-        assert!([
-            self.width,
-            self.trigger_height,
-            self.label_height,
-            self.label_gap,
-            self.row_gap,
-            self.popup_gap
-        ]
-        .iter()
-        .all(|n| n.is_finite() && *n >= 0.0));
-        assert!(self.row_height.is_finite() && self.row_height > 0.0);
-        assert!(self.font_size.is_finite() && self.font_size > 0.0);
-        assert!(self.label_font_size.is_finite() && self.label_font_size > 0.0);
-        assert!(self.visible_rows > 0);
-        for padding in [self.trigger_padding, self.popup_padding] {
-            assert!([padding.left, padding.right, padding.top, padding.bottom]
-                .iter()
-                .all(|n| n.is_finite() && *n >= 0.0));
+    /// Out-of-range values are replaced as described in `components::sanitize`:
+    /// lengths become non-negative, sizes that must be positive fall back to the default.
+    #[track_caller]
+    pub(super) fn normalize(&mut self) {
+        use crate::components::sanitize::{length, positive};
+        let default = Self::default();
+        self.width = length("ComboBoxStyle::width", self.width);
+        self.trigger_height = length("ComboBoxStyle::trigger_height", self.trigger_height);
+        self.label_height = length("ComboBoxStyle::label_height", self.label_height);
+        self.label_gap = length("ComboBoxStyle::label_gap", self.label_gap);
+        self.row_gap = length("ComboBoxStyle::row_gap", self.row_gap);
+        self.popup_gap = length("ComboBoxStyle::popup_gap", self.popup_gap);
+        self.row_height =
+            positive("ComboBoxStyle::row_height", self.row_height).unwrap_or(default.row_height);
+        self.font_size =
+            positive("ComboBoxStyle::font_size", self.font_size).unwrap_or(default.font_size);
+        self.label_font_size = positive("ComboBoxStyle::label_font_size", self.label_font_size)
+            .unwrap_or(default.label_font_size);
+        self.visible_rows = self.visible_rows.max(1);
+        for padding in [&mut self.trigger_padding, &mut self.popup_padding] {
+            padding.left = length("ComboBoxStyle padding", padding.left);
+            padding.right = length("ComboBoxStyle padding", padding.right);
+            padding.top = length("ComboBoxStyle padding", padding.top);
+            padding.bottom = length("ComboBoxStyle padding", padding.bottom);
         }
     }
 }

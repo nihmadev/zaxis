@@ -41,7 +41,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
         if let Some(size) = self.font_size {
             style.font_size = size;
         }
-        style.validate();
+        style.normalize();
         self.enabled &= ui.enabled;
         let label = crate::components::visible_label(&self.label);
         let label_height = if label.is_empty() {
@@ -134,10 +134,18 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             )
             .value;
         if state.open || progress > 0.0 {
-            reveal |= options.refresh(self.options);
+            reveal |= options.refresh(&self.options);
+            if options.duplicates {
+                ui.context.report(
+                    crate::DiagnosticKind::IdCollision,
+                    Some(id),
+                    Some(rect),
+                    || "duplicate id: two ComboBox options share one id".into(),
+                );
+            }
         }
         let count = (if state.open || progress > 0.0 {
-            options.matching(self.options, &state.query).len()
+            options.matching(&self.options, &state.query).len()
         } else {
             0
         })
@@ -155,7 +163,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             .size(Vec2::new(rect.size().x, height))
             .gap(style.popup_gap)
             .padding(style.popup_padding)
-            .rounding(style.rounding)
+            .corner_radius(style.rounding)
             .fill(style.popup_fill)
             .border(style.popup_border)
             .return_focus(id);
@@ -185,7 +193,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                 }
                 reveal |= before != query;
             }
-            let indices = options.matching(self.options, &query);
+            let indices = options.matching(&self.options, &query);
             let enabled: Vec<_> = indices
                 .iter()
                 .copied()
@@ -318,8 +326,18 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             .iter()
             .find(|o| Some(&o.value) == self.selected.as_ref())
             .map_or(self.placeholder.as_str(), |o| o.label.as_str());
+        let status = ui.field_status(self.status);
         paint::trigger(
-            ui, response, label, allocation, caption, progress, &style, motion,
+            ui,
+            response,
+            label,
+            allocation,
+            caption,
+            progress,
+            &style,
+            motion,
+            status,
+            self.hover_style.or(ui.hover_style),
         );
         ui.context.combo_boxes.insert(id, state);
         response

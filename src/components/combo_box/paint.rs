@@ -5,8 +5,12 @@ use crate::{
 };
 
 fn text(ui: &mut Ui<'_>, id: Id, rect: Rect, caption: &str, size: f32, color: Color) {
-    let y = ui.context.centered_line_offset(caption, size);
-    let height = ui.context.measure_text(caption, size, f32::INFINITY).y;
+    let weight = ui.style().typography.weights.control;
+    let y = ui.context.centered_line_offset(caption, size, weight);
+    let height = ui
+        .context
+        .measure_text(caption, size, weight, f32::INFINITY)
+        .y;
     ui.context.paint(
         id,
         ui.window,
@@ -15,6 +19,7 @@ fn text(ui: &mut Ui<'_>, id: Id, rect: Rect, caption: &str, size: f32, color: Co
             text: caption.to_owned(),
             position: Vec2::new(rect.min.x, rect.center().y - height * 0.5 + y),
             size,
+            weight,
             wrap_width: f32::INFINITY,
             color,
         }],
@@ -38,6 +43,8 @@ pub(super) fn trigger(
     progress: f32,
     style: &ComboBoxStyle,
     _motion: TweenOptions,
+    status: crate::SemanticStatus,
+    hover: Option<crate::HoverStyle>,
 ) {
     let rect = response.rect;
     let effective = ui.style().clone();
@@ -53,12 +60,15 @@ pub(super) fn trigger(
     base.rounding = style.rounding;
     base.blur = 0.0;
     base.opacity = effective.opacity;
+    base.status = ui.status_color(status);
+    let mut state = crate::ControlState::from_response(response, progress > 0.0);
+    state.status = status;
     let appearance = ui.animate_control(
         response,
-        crate::HoverStyle::NONE,
-        false,
+        hover.unwrap_or(crate::HoverStyle::NONE),
+        hover.is_some(),
         style.trigger,
-        crate::ControlState::from_response(response, progress > 0.0),
+        state,
         base,
         style.trigger_fill,
     );
@@ -168,7 +178,7 @@ pub(super) fn option(
     });
     let effective = ui.style().clone();
     let mut base = crate::components::appearance::Appearance::new(
-        if selected || (response.enabled && (response.hovered || active)) {
+        if response.enabled && (response.hovered || active) {
             style.active_fill
         } else {
             Color::TRANSPARENT
@@ -176,17 +186,17 @@ pub(super) fn option(
         Border::NONE,
         if !enabled {
             style.disabled_text
-        } else if selected {
-            style.text
+        } else if response.hovered || active {
+            ui.style().on_accent
         } else {
-            style.muted_text
+            style.text
         },
     );
     base.rounding = style.rounding;
     base.opacity = effective.opacity;
     let mut state = crate::ControlState::from_response(response, selected);
     state.focus = active && response.enabled;
-    let appearance = ui.animate_control(
+    let mut appearance = ui.animate_control(
         response,
         crate::HoverStyle::NONE,
         false,
@@ -195,6 +205,9 @@ pub(super) fn option(
         base,
         style.active_fill,
     );
+    // The highlighted row is its own focus indicator: no outline or outer ring.
+    appearance.ring = None;
+    appearance.border = Border::NONE;
     let mut paint = Vec::new();
     appearance.paint_shadow(rect, appearance.rounding, &mut paint);
     appearance.paint_body(
@@ -219,21 +232,18 @@ pub(super) fn option(
     );
     if selected {
         let c = Vec2::new(rect.max.x - 10.0, rect.center().y);
+        let check = if response.enabled && (response.hovered || active) {
+            effective.on_accent
+        } else {
+            style.check_color
+        };
         ui.context.paint(
             id.with("check"),
             ui.window,
             ui.clip.intersect(rect),
             vec![
-                line(
-                    c + Vec2::new(-4.0, 0.0),
-                    c + Vec2::new(-1.0, 3.0),
-                    style.check_color,
-                ),
-                line(
-                    c + Vec2::new(-1.0, 3.0),
-                    c + Vec2::new(5.0, -3.0),
-                    style.check_color,
-                ),
+                line(c + Vec2::new(-4.0, 0.0), c + Vec2::new(-1.0, 3.0), check),
+                line(c + Vec2::new(-1.0, 3.0), c + Vec2::new(5.0, -3.0), check),
             ],
         );
     }

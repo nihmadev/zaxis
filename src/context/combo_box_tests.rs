@@ -34,7 +34,7 @@ fn draw(
                             .id_source("combo")
                             .label("Label")
                             .filterable(filter)
-                            .disabled(disabled),
+                            .enabled(!disabled),
                     ),
                 );
                 ui.button("Under popup");

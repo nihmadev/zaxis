@@ -1,4 +1,4 @@
-use zaxis::{vec2, App, Context, DragValue, Frame, NumberInput, Slider, Text, Window};
+use zaxis::{vec2, App, Context, DragValue, Frame, NumberInput, Slider, Window};
 
 struct Numbers {
     gain: f32,
@@ -15,7 +15,7 @@ impl App for Numbers {
             .default_size(vec2(540.0, 550.0))
             .min_size(vec2(510.0, 540.0))
             .show(context, |ui| {
-                ui.add(Text::new("Numbers").size(23.0));
+                ui.title("Numbers");
                 ui.checkbox(&mut self.enabled, "Enable editing");
                 ui.add_enabled_ui(self.enabled, |ui| {
                     ui.muted("Gain");
@@ -55,7 +55,7 @@ impl App for Numbers {
                     );
                     ui.muted("Exact u64 · beyond the precision of f64");
                     self.changes += usize::from(
-                        ui.add(NumberInput::new(&mut self.count).step(1).width(260.0))
+                        ui.add(NumberInput::new(&mut self.count).width(260.0))
                             .changed(),
                     );
                 });

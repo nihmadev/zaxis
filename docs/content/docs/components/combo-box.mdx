@@ -14,7 +14,7 @@ use zaxis::{ComboBox, ComboBoxOption};
 let options = [
     ComboBoxOption::new("eu", "europe", "Europe / Европа"),
     ComboBoxOption::new("us", "america", "America"),
-    ComboBoxOption::new("offline", "offline", "Unavailable").disabled(true),
+    ComboBoxOption::new("offline", "offline", "Unavailable").enabled(false),
 ];
 let mut selected = Some("europe");
 
@@ -31,7 +31,10 @@ if response.changed() {
 ```
 
 `ui.combo_box(&mut selected, &options)` is the short form without a caption or
-filter. Use `id_source` or `Ui::push_id` for dynamic/repeated controls.
+filter. For a plain enum or number, skip the option list:
+`ui.combo_box_values(&mut mode, [(Mode::Fast, "Fast"), (Mode::Exact, "Exact")])` binds
+the value directly and derives option ids from the values (`T: Hash`), like `tab_bar`.
+`ComboBox::from_pairs(&mut Option<T>, pairs)` is the builder form with every option. Use `id_source` or `Ui::push_id` for dynamic/repeated controls.
 `default_open` sets the initial state; interaction is retained by ID afterward.
 
 `changed()` is true only when an enabled option changes the bound value.

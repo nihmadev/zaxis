@@ -5,12 +5,22 @@ mod sealed {
     pub trait Sealed {}
 }
 
-/// Primitive integers and floats supported by [`super::NumberInput`] and [`super::DragValue`].
-/// The step has the same type as the value; fractional steps are only valid for floats.
+/// Primitive integers and floats supported by [`super::NumberInput`], [`super::DragValue`]
+/// and [`super::Slider`]. The step has the same type as the value; fractional steps are
+/// only valid for floats.
+///
+/// Controls derive their defaults from the type: integers step by one and show no
+/// decimals, so `Slider::new(&mut count, 0..=10)` needs no `.step(1).precision(0)`.
 pub trait Numeric: sealed::Sealed + Copy + PartialEq + PartialOrd + Display + FromStr {
     const MIN: Self;
     const MAX: Self;
     const ONE: Self;
+    /// Integers have a natural step of one and no fractional digits.
+    const INTEGER: bool;
+    /// Nearest `f64`; integers beyond 2^53 lose their low bits.
+    fn to_f64(self) -> f64;
+    /// Nearest value of this type, saturating; NaN becomes zero.
+    fn from_f64(value: f64) -> Self;
     fn finite(self) -> bool;
     fn positive(self) -> bool;
     fn normalized(self, min: Self, max: Self) -> Self;
@@ -66,6 +76,9 @@ macro_rules! integers {
             const MIN: Self = Self::MIN;
             const MAX: Self = Self::MAX;
             const ONE: Self = 1;
+            const INTEGER: bool = true;
+            fn to_f64(self) -> f64 { self as f64 }
+            fn from_f64(value: f64) -> Self { value.round() as Self }
             fn finite(self) -> bool { true }
             fn positive(self) -> bool { self > 0 }
             fn normalized(self, min: Self, max: Self) -> Self { self.clamp(min, max) }
@@ -90,6 +103,9 @@ macro_rules! signed {
             const MIN: Self = Self::MIN;
             const MAX: Self = Self::MAX;
             const ONE: Self = 1;
+            const INTEGER: bool = true;
+            fn to_f64(self) -> f64 { self as f64 }
+            fn from_f64(value: f64) -> Self { value.round() as Self }
             fn finite(self) -> bool { true }
             fn positive(self) -> bool { self > 0 }
             fn normalized(self, min: Self, max: Self) -> Self { self.clamp(min, max) }
@@ -129,6 +145,9 @@ macro_rules! floats {
             const MIN: Self = -Self::MAX;
             const MAX: Self = Self::MAX;
             const ONE: Self = 1.0;
+            const INTEGER: bool = false;
+            fn to_f64(self) -> f64 { self as f64 }
+            fn from_f64(value: f64) -> Self { value as Self }
             fn finite(self) -> bool { self.is_finite() }
             fn positive(self) -> bool { self.is_finite() && self > 0.0 }
             fn normalized(self, min: Self, max: Self) -> Self {

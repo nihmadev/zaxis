@@ -84,21 +84,8 @@ pub(super) fn show<T: Numeric>(
         .unwrap_or_else(|| ui.style().number.clone());
     style.width = options.width.unwrap_or(style.width);
     style.sensitivity = options.sensitivity.unwrap_or(style.sensitivity);
-    assert!(
-        style.width.is_finite()
-            && style.width > 0.0
-            && style.height.is_finite()
-            && style.height > 0.0
-            && style.font_size.is_finite()
-            && style.font_size > 0.0
-    );
-    assert!([
-        style.sensitivity,
-        style.shift_multiplier,
-        style.ctrl_multiplier
-    ]
-    .iter()
-    .all(|n| n.is_finite() && *n > 0.0));
+    style.rounding = options.rounding.unwrap_or(style.rounding);
+    style.normalize();
     let before = *value;
     let mut state = ui.context.numbers.remove(&id).unwrap_or_default();
     let was_editing = state.editing;
@@ -283,12 +270,16 @@ pub(super) fn show<T: Numeric>(
             .width(style.width)
             .height(style.height)
             .padding(style.padding)
-            .rounding(style.rounding)
+            .corner_radius(style.rounding)
             .font_size(style.font_size)
+            .status(options.status)
             .style(crate::TextEditStyle {
                 surface: style.surface,
                 ..Default::default()
             });
+        if let Some(hover) = options.hover_style {
+            editor = editor.hover_style(hover);
+        }
         editor.exact_id = Some(id);
         editor.select_all = select_all;
         editor.affixes = (options.prefix.clone(), options.suffix.clone());
@@ -327,7 +318,12 @@ pub(super) fn show<T: Numeric>(
         let inner = style.padding.inset(rect);
         let text_height = ui
             .context
-            .measure_text(&shown, style.font_size, f32::INFINITY)
+            .measure_text(
+                &shown,
+                style.font_size,
+                ui.style().typography.weights.body,
+                f32::INFINITY,
+            )
             .y;
         let effective = ui.style().clone();
         let mut base = crate::components::appearance::Appearance::new(
@@ -338,12 +334,18 @@ pub(super) fn show<T: Numeric>(
         base.rounding = style.rounding;
         base.blur = 0.0;
         base.opacity = effective.opacity;
+        let status = ui.field_status(options.status);
+        base.status = ui.status_color(status);
+        let mut control = crate::ControlState::from_response(response, false);
+        control.status = status;
         let appearance = ui.animate_control(
             response,
-            crate::HoverStyle::fill(style.hovered),
-            false,
+            options
+                .hover_style
+                .unwrap_or(crate::HoverStyle::fill(style.hovered)),
+            options.hover_style.is_some(),
             style.surface,
-            crate::ControlState::from_response(response, false),
+            control,
             base,
             style.hovered,
         );
@@ -374,6 +376,7 @@ pub(super) fn show<T: Numeric>(
                 text: shown,
                 position: Vec2::new(inner.min.x, inner.center().y - text_height * 0.5),
                 size: style.font_size,
+                weight: ui.style().typography.weights.body,
                 wrap_width: f32::INFINITY,
                 color: if options.enabled {
                     appearance.text_color
