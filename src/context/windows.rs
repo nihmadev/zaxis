@@ -91,6 +91,11 @@ impl Context {
     pub(super) fn top_window(&self, pointer: Vec2) -> Option<Id> {
         if let Some(popup) = &self.popup {
             if self.viewport().contains(pointer) {
+                if let Some((layer, _)) =
+                    popup.extra.iter().rev().find(|(_, r)| r.contains(pointer))
+                {
+                    return Some(*layer);
+                }
                 return Some(popup.id);
             }
         }

@@ -167,6 +167,9 @@ impl Popup {
                 .return_focus
                 .or_else(|| existing.and_then(|p| p.return_focus))
                 .or(ui.context.focused_widget);
+            // Extra panels (cascading submenus) belong to the popup across frames: hover
+            // routing during this pass needs the previous pass's rectangles.
+            let extra = existing.map(|p| p.extra.clone()).unwrap_or_default();
             let opening = existing.is_none();
             if ui.context.popup.as_ref().is_some_and(|p| p.id != id) {
                 ui.context.dismiss_popup(true);
@@ -182,6 +185,7 @@ impl Popup {
                 return_focus,
                 key_target: self.key_target,
                 last_frame: ui.context.frame,
+                extra,
             });
         }
         ui.context.push_popup_layer(id);

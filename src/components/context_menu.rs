@@ -9,7 +9,7 @@ use crate::{
 };
 
 mod cache;
-mod paint;
+pub(in crate::components) mod paint;
 
 /// A stable action ID is independent of its visible label. Separators have no ID.
 #[derive(Clone, Debug, PartialEq)]
@@ -21,6 +21,10 @@ pub struct ContextMenuItem {
     pub left_text: String,
     pub right_text: String,
     pub enabled: bool,
+    /// Draws a check mark in the icon column.
+    pub checked: bool,
+    /// Draws a chevron; set by cascading menus whose item opens a submenu.
+    pub(crate) submenu: bool,
 }
 
 impl ContextMenuItem {
@@ -33,6 +37,8 @@ impl ContextMenuItem {
             left_text: String::new(),
             right_text: String::new(),
             enabled: true,
+            checked: false,
+            submenu: false,
         }
     }
     pub fn separator() -> Self {
@@ -44,6 +50,8 @@ impl ContextMenuItem {
             left_text: String::new(),
             right_text: String::new(),
             enabled: false,
+            checked: false,
+            submenu: false,
         }
     }
     /// A font glyph or short symbol, in a dedicated aligned icon column.
@@ -70,6 +78,10 @@ impl ContextMenuItem {
         self.enabled = enabled;
         self
     }
+    pub fn checked(mut self, checked: bool) -> Self {
+        self.checked = checked;
+        self
+    }
 }
 
 /// Colors inherit the current UI theme; these overrides control menu proportions
@@ -88,7 +100,7 @@ impl ContextMenuStyle {
     /// Sizes that are not finite and positive fall back to the defaults; padding
     /// becomes non-negative.
     #[track_caller]
-    fn normalize(&mut self) {
+    pub(in crate::components) fn normalize(&mut self) {
         use super::sanitize::{length, positive};
         let default = Self::default();
         self.min_width =
@@ -245,23 +257,7 @@ impl<'a> ContextMenu<'a> {
                 }
             }
             let metrics = &cache.metrics;
-            let mut popup_style = style.popup;
-            popup_style.spacing = Some(0.0);
-            popup_style
-                .surface
-                .rounding
-                .get_or_insert(crate::CornerRadius::all(5.0));
-            popup_style.surface.shadow.get_or_insert(crate::Shadow {
-                color: crate::Color::rgba(0, 0, 0, 48),
-                offset: Vec2::new(0.0, 3.0),
-                blur_radius: 8.0,
-                spread: 0.0,
-            });
-            let foreground = ui.style().text_color.0;
-            popup_style.surface.border.get_or_insert(crate::Border::new(
-                1.0,
-                crate::Color::rgba(foreground[0], foreground[1], foreground[2], 22),
-            ));
+            let popup_style = paint::popup_style(ui, style);
             let mut popup = Popup::new(id, Rect::from_min_size(state.position, Vec2::ZERO))
                 .size(Vec2::new(
                     metrics.width + style.padding.size().x,

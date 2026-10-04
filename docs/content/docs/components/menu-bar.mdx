@@ -1,0 +1,51 @@
+---
+title: MenuBar
+icon: Menu
+description: Menu bar or hamburger menu with cascading submenus.
+---
+
+A row of titles (`File`, `Edit`, `View`) or, with `compact(true)`, one hamburger button
+whose panel lists the same titles as submenus. Panels cascade to the right, nest to any
+depth and flip to the left when the window has no room.
+
+```rust
+use zaxis::{MenuBar, MenuItem};
+
+let items = [
+    MenuItem::submenu("File", [
+        MenuItem::new("new", "New").shortcut("Ctrl+N"),
+        MenuItem::submenu("Open recent", [MenuItem::new("r1", "notes.txt")]),
+        MenuItem::separator(),
+        MenuItem::new("autosave", "Autosave").checked(self.autosave),
+    ]),
+    MenuItem::submenu("Help", [MenuItem::new("about", "About")]),
+];
+if let Some(id) = MenuBar::new("main-menu", &items).compact(true).show(ui).selected {
+    // Exactly one activation per gesture; the menu has already closed.
+}
+```
+
+`ui.menu_bar(source, &items)` is the one-expression form of the horizontal bar.
+
+- **Pointer:** a press opens a title; moving across the other titles switches the menu;
+  hovering a row with a chevron opens its submenu; a press on the open title, outside the
+  panels or Escape closes it.
+- **Keyboard:** Up/Down/Home/End move over enabled rows, Right or Enter enter a submenu,
+  Left leaves it or, on the first level, switches to the neighbouring title, Enter on an
+  action activates it.
+- **Items:** `MenuItem::new(id, text)` with a stable `Id`, `submenu(text, items)`,
+  `separator()`, `.shortcut(text)`, `.checked(bool)` and `.enabled(bool)`. Disabled rows
+  and titles are skipped by the keyboard and ignore presses. A top-level action in the bar
+  activates directly.
+- **Style:** `.style(ContextMenuStyle)` — menu bars share the proportions and appearance of
+  context menus.
+
+Shortcut captions and check marks are display state: the application owns the shortcut
+binding and toggles its own flags in response to `selected`.
+
+## Limitations
+
+- One menu bar is open at a time (it uses the context's single popup).
+- Submenus open immediately on hover, without a delay or a pointer-direction tolerance.
+- No icons, radio groups or custom widgets inside rows; no Alt-key mnemonics or `F10`
+  focus; no OS-native menu bar.

@@ -101,7 +101,8 @@ impl Context {
                     | KeyCode::End
                     | KeyCode::PageUp
                     | KeyCode::PageDown
-            )
+            ) || (matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight)
+                && self.popup.as_ref().is_some_and(|p| p.key_target.is_some()))
         }) {
             // Space/Home/End remain text editing keys when a filter has focus.
             let editing = self.focused_widget.is_some_and(|focus| {
@@ -117,6 +118,8 @@ impl Context {
                         | KeyCode::Enter
                         | KeyCode::PageUp
                         | KeyCode::PageDown
+                        | KeyCode::ArrowLeft
+                        | KeyCode::ArrowRight
                 )
             {
                 if state == ElementState::Pressed {
@@ -168,7 +171,9 @@ impl Context {
             }
             return true;
         }
-        let tab_input = self.focused_widget.is_some_and(|id| self.text_edit_tabs_previous.contains(&id))
+        let tab_input = self
+            .focused_widget
+            .is_some_and(|id| self.text_edit_tabs_previous.contains(&id))
             && !self.input.modifiers.shift_key();
         if focused_action == Some(HitAction::TextEdit) && (code != KeyCode::Tab || tab_input) {
             match state {

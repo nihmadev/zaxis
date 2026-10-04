@@ -5,15 +5,15 @@ use crate::{
     Border, Color, CornerRadius, Id, Rect, Shape, Vec2,
 };
 
-pub(super) struct Metrics {
-    pub width: f32,
-    pub height: f32,
+pub(in crate::components) struct Metrics {
+    pub(in crate::components) width: f32,
+    pub(in crate::components) height: f32,
     icon: f32,
     right: f32,
     font: f32,
     weight: crate::FontWeight,
 }
-pub(super) fn measure(
+pub(in crate::components) fn measure(
     ui: &mut Ui<'_>,
     items: &[ContextMenuItem],
     style: &ContextMenuStyle,
@@ -28,6 +28,7 @@ pub(super) fn measure(
         weight: ui.style().typography.weights.control,
     };
     let mut label_width: f32 = 0.0;
+    let (mut checks, mut submenus) = (false, false);
     for item in items {
         if item.id.is_none() {
             m.height += style.separator_height;
@@ -40,6 +41,8 @@ pub(super) fn measure(
                 ui.context.measure_text(s, font, m.weight, f32::INFINITY).x
             }
         };
+        checks |= item.checked;
+        submenus |= item.submenu;
         m.icon = m.icon.max(width(&item.icon));
         if !item.icon_shapes.is_empty() {
             m.icon = m.icon.max(14.0);
@@ -49,6 +52,12 @@ pub(super) fn measure(
         label_width =
             label_width.max(width(&item.text) + if left > 0.0 { left + 6.0 } else { 0.0 });
         m.height += style.row_height;
+    }
+    if checks {
+        m.icon = m.icon.max(14.0);
+    }
+    if submenus {
+        m.right = m.right.max(8.0);
     }
     if m.icon > 0.0 {
         m.icon = m.icon.max(14.0) + 6.0;
@@ -99,7 +108,7 @@ fn text(
     );
 }
 
-pub(super) fn row(
+pub(in crate::components) fn row(
     ui: &mut Ui<'_>,
     menu: Id,
     item: &ContextMenuItem,
@@ -263,5 +272,71 @@ pub(super) fn row(
         muted,
         true,
     );
+    if item.checked {
+        let c = Vec2::new(min + 7.0, rect.center().y);
+        let line = |from: Vec2, to: Vec2| {
+            Paint::Shape(Shape::Line {
+                start: c + from,
+                end: c + to,
+                width: 1.6,
+                color,
+            })
+        };
+        ui.context.paint(
+            id.with("check"),
+            ui.window,
+            ui.clip.intersect(rect),
+            vec![
+                line(Vec2::new(-4.0, 0.5), Vec2::new(-1.5, 3.0)),
+                line(Vec2::new(-1.5, 3.0), Vec2::new(4.0, -3.0)),
+            ],
+        );
+    }
+    if item.submenu {
+        let c = Vec2::new(max - 4.0, rect.center().y);
+        let line = |from: Vec2, to: Vec2| {
+            Paint::Shape(Shape::Line {
+                start: c + from,
+                end: c + to,
+                width: 1.4,
+                color: muted,
+            })
+        };
+        ui.context.paint(
+            id.with("chevron"),
+            ui.window,
+            ui.clip.intersect(rect),
+            vec![
+                line(Vec2::new(-2.5, -4.0), Vec2::new(2.0, 0.0)),
+                line(Vec2::new(2.0, 0.0), Vec2::new(-2.5, 4.0)),
+            ],
+        );
+    }
     (Some(response), response.clicked())
+}
+
+/// Popup surface shared by context menus and menu bars: no inner spacing, a small corner
+/// radius, a soft shadow and a hairline border derived from the text color.
+pub(in crate::components) fn popup_style(
+    ui: &Ui<'_>,
+    style: &ContextMenuStyle,
+) -> crate::PopupStyle {
+    let mut popup_style = style.popup;
+    popup_style.spacing = Some(0.0);
+    popup_style
+        .surface
+        .rounding
+        .get_or_insert(CornerRadius::all(5.0));
+    popup_style.surface.shadow.get_or_insert(crate::Shadow {
+        color: Color::rgba(0, 0, 0, 48),
+        offset: Vec2::new(0.0, 3.0),
+        blur_radius: 8.0,
+        spread: 0.0,
+    });
+    let foreground = ui.style().text_color.0;
+    popup_style.surface.border.get_or_insert(Border::new(
+        1.0,
+        Color::rgba(foreground[0], foreground[1], foreground[2], 22),
+    ));
+    popup_style
 }

@@ -27,6 +27,7 @@ pub mod icon_tabs;
 pub mod image;
 pub mod key_box;
 pub mod loader;
+pub mod menu_bar;
 pub mod modal;
 pub(crate) mod motion;
 mod moving;
@@ -86,6 +87,7 @@ pub use icon_tabs::IconTabs;
 pub use image::{Image, ImageFit, ImageOutput};
 pub use key_box::{KeyBinding, KeyBox, MouseBinding};
 pub use loader::Loader;
+pub use menu_bar::{MenuBar, MenuBarOutput, MenuItem};
 pub use modal::{
     CloseReason, Confirm, Confirmation, Dialog, DialogAction, DialogOutput, Modal, ModalAnchor,
     ModalOutput,

@@ -46,6 +46,7 @@ impl Context {
                 if self.popup.as_ref().is_some_and(|popup| {
                     self.input.pointer.is_some_and(|p| {
                         !popup.rect.contains(p)
+                            && !popup.extra.iter().any(|(_, rect)| rect.contains(p))
                             && (popup.key_target.is_none() || !popup.anchor.contains(p))
                     })
                 }) {

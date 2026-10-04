@@ -87,6 +87,9 @@ mod interact_tests;
 #[cfg(test)]
 mod layout_motion_tests;
 #[cfg(test)]
+#[path = "../tests/menu_bar/interaction.rs"]
+mod menu_bar_tests;
+#[cfg(test)]
 mod modal_tests;
 #[cfg(test)]
 mod monospace_tests;
@@ -203,6 +206,7 @@ pub struct Context {
     pub(crate) combo_boxes: HashMap<Id, crate::components::combo_box::ComboBoxState>,
     pub(crate) combo_input: HashMap<Id, Vec<KeyCode>>,
     pub(crate) context_menus: HashMap<Id, crate::components::context_menu::MenuState>,
+    pub(crate) menu_bars: HashMap<Id, crate::components::menu_bar::MenuBarState>,
     pub(crate) gestures: gesture::Gestures,
     pub(crate) diagnostics: Diagnostics,
     /// Status of the enclosing `Field`, inherited by field-like controls.

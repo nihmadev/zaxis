@@ -99,6 +99,7 @@ impl Context {
             combo_boxes: HashMap::new(),
             combo_input: HashMap::new(),
             context_menus: HashMap::new(),
+            menu_bars: HashMap::new(),
             gestures: Default::default(),
             diagnostics: Default::default(),
             field_status: Default::default(),

@@ -116,6 +116,8 @@ impl Context {
             .retain(|_, state| state.last_frame == self.frame);
         self.context_menus
             .retain(|_, state| state.last_frame == self.frame);
+        self.menu_bars
+            .retain(|_, state| state.last_frame == self.frame);
         self.effect_states
             .retain(|_, state| state.last_frame == self.frame);
         self.visual_meshes.retain(|id, _| self.seen.contains(id));

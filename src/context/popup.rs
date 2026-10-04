@@ -9,6 +9,9 @@ pub(crate) struct PopupState {
     pub return_focus: Option<Id>,
     pub key_target: Option<Id>,
     pub last_frame: u64,
+    /// Extra panels owned by this popup (cascading submenus): their layer and rect.
+    /// Presses inside them are not outside presses, and they win hover routing.
+    pub extra: Vec<(Id, Rect)>,
 }
 
 impl Context {
