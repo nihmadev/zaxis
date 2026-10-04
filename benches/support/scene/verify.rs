@@ -2,7 +2,19 @@ use super::*;
 impl Scene {
     /// Assertions run outside measured intervals; every interaction must actually work.
     pub fn verify(&self) {
+        if let Some(probe) = &self.dnd {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(probe) = &self.disclosure {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.modal {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.text_area {
             probe.verify(&self.context);
             return;
         }
@@ -212,6 +224,19 @@ impl Scene {
                         "changing scene reused stale geometry"
                     );
                 }
+            }
+            Case::TextWeights => {
+                if self.step > 0 {
+                    assert!(
+                        self.draw_data().revision > self.previous_revision,
+                        "changing scene reused stale geometry"
+                    );
+                }
+                // Four weights of a short caption fit the atlas without growing it.
+                assert!(
+                    self.draw_data().textures.len() <= 2,
+                    "weights multiplied atlas pages"
+                );
             }
             Case::Schedule => {
                 // A long GPU present can cross the deadline after Context::run.

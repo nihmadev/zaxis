@@ -14,7 +14,19 @@ impl Scene {
         self.previous_revision = self.draw_data().revision;
         self.previous_tessellations = self.context.cache_stats().tessellated_elements;
         self.input_verified = true;
+        if let Some(probe) = &mut self.dnd {
+            probe.input(&mut self.context, step);
+            return;
+        }
         if let Some(probe) = &mut self.disclosure {
+            probe.input(&mut self.context, step);
+            return;
+        }
+        if let Some(probe) = &mut self.modal {
+            probe.input(&mut self.context, step);
+            return;
+        }
+        if let Some(probe) = &mut self.text_area {
             probe.input(&mut self.context, step);
             return;
         }

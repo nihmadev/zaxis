@@ -112,6 +112,7 @@ pub struct Counters {
     pub geometry_full_rebuilds: u64,
     pub geometry_partial_updates: u64,
     pub geometry_bytes_copied: u64,
+    pub text_layouts_built: u64,
     pub presents: u64,
     pub geometry_uploads: u64,
     pub texture_uploads: u64,
@@ -154,6 +155,7 @@ impl Counters {
         self.geometry_full_rebuilds += delta.geometry_full_rebuilds;
         self.geometry_partial_updates += delta.geometry_partial_updates;
         self.geometry_bytes_copied += delta.geometry_bytes_copied;
+        self.text_layouts_built += delta.text_layouts_built;
     }
     pub fn cpu(before: CacheStats, after: CacheStats) -> Self {
         Self {
@@ -165,6 +167,7 @@ impl Counters {
             geometry_partial_updates: after.geometry_partial_updates
                 - before.geometry_partial_updates,
             geometry_bytes_copied: after.geometry_bytes_copied - before.geometry_bytes_copied,
+            text_layouts_built: after.text_layouts_built - before.text_layouts_built,
             ..Self::default()
         }
     }

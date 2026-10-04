@@ -1,8 +1,11 @@
 use super::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Case {
+    Dnd(crate::dnd::DndCase),
     Disclosure(crate::disclosure::DisclosureCase),
     Images(crate::images::ImageCase),
+    Modal(crate::modal::ModalCase),
+    TextArea(crate::text_area::TextAreaCase),
     Split(split::SplitCase),
     Cold,
     Cached,
@@ -40,6 +43,7 @@ pub enum Case {
     Lifecycle,
     Text,
     WrappedText,
+    TextWeights,
     Shapes,
     Blur0,
     Blur8,
@@ -70,7 +74,14 @@ pub enum Case {
 }
 
 impl Case {
-    pub const ALL: [Self; 101] = [
+    pub const ALL: [Self; 118] = [
+        Self::Dnd(crate::dnd::DndCase::Idle),
+        Self::Dnd(crate::dnd::DndCase::BeginEnd),
+        Self::Dnd(crate::dnd::DndCase::MoveTargets),
+        Self::Dnd(crate::dnd::DndCase::Autoscroll),
+        Self::Dnd(crate::dnd::DndCase::Tree),
+        Self::Dnd(crate::dnd::DndCase::Preview),
+        Self::Dnd(crate::dnd::DndCase::Lifecycle),
         Self::Disclosure(crate::disclosure::DisclosureCase::TreeCached),
         Self::Disclosure(crate::disclosure::DisclosureCase::TreeKeys),
         Self::Disclosure(crate::disclosure::DisclosureCase::TreeReveal),
@@ -79,6 +90,15 @@ impl Case {
         Self::Disclosure(crate::disclosure::DisclosureCase::TreeLifecycle),
         Self::Disclosure(crate::disclosure::DisclosureCase::CollapsingCached),
         Self::Disclosure(crate::disclosure::DisclosureCase::CollapsingToggle),
+        Self::Modal(crate::modal::ModalCase::Closed),
+        Self::Modal(crate::modal::ModalCase::Toggle),
+        Self::Modal(crate::modal::ModalCase::Steady),
+        Self::Modal(crate::modal::ModalCase::Large),
+        Self::TextArea(crate::text_area::TextAreaCase::Idle),
+        Self::TextArea(crate::text_area::TextAreaCase::Typing),
+        Self::TextArea(crate::text_area::TextAreaCase::Paste),
+        Self::TextArea(crate::text_area::TextAreaCase::Scroll),
+        Self::TextArea(crate::text_area::TextAreaCase::Resize),
         Self::Images(crate::images::ImageCase::Empty),
         Self::Images(crate::images::ImageCase::Warm),
         Self::Images(crate::images::ImageCase::ColdPng),
@@ -145,6 +165,7 @@ impl Case {
         Self::Lifecycle,
         Self::Text,
         Self::WrappedText,
+        Self::TextWeights,
         Self::Shapes,
         Self::Blur0,
         Self::Blur8,
@@ -175,8 +196,11 @@ impl Case {
     ];
     pub fn name(self) -> &'static str {
         match self {
+            Self::Dnd(case) => case.name(),
             Self::Disclosure(case) => case.name(),
             Self::Images(case) => case.name(),
+            Self::Modal(case) => case.name(),
+            Self::TextArea(case) => case.name(),
             Self::Split(case) => case.name(),
             Self::Cold => "cold_ui",
             Self::Cached => "cached_ui",
@@ -214,6 +238,7 @@ impl Case {
             Self::Lifecycle => "object_lifecycle",
             Self::Text => "text_dynamic",
             Self::WrappedText => "text_wrapped",
+            Self::TextWeights => "text_weights",
             Self::Shapes => "vector_shapes",
             Self::Blur0 => "blur_0",
             Self::Blur8 => "blur_8",
@@ -254,8 +279,11 @@ impl Case {
         )
     }
     pub fn interactive(self) -> bool {
-        matches!(self, Self::Split(c) if c.interactive())
+        matches!(self, Self::Dnd(c) if c.interactive())
+            || matches!(self, Self::Split(c) if c.interactive())
             || matches!(self, Self::Disclosure(c) if c.interactive())
+            || matches!(self, Self::Modal(c) if c.interactive())
+            || matches!(self, Self::TextArea(c) if c.interactive())
             || self.combo()
             || matches!(
                 self,

@@ -8,7 +8,19 @@ impl Scene {
     }
 
     fn build_once(&mut self) {
+        if let Some(probe) = &mut self.dnd {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(probe) = &mut self.disclosure {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.modal {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.text_area {
             probe.build(&mut self.context);
             return;
         }
@@ -100,6 +112,12 @@ impl Scene {
                                     Case::Text | Case::WrappedText => {
                                         let caption = format!("Row {i}: frame {step:06} · text wrapping and glyph cache λ");
                                         ui.add(Text::new(caption).size(12.0).wrap(*case == Case::WrappedText));
+                                    }
+                                    Case::TextWeights => {
+                                        // Four weights in one frame: four faces share the layout cache and atlas.
+                                        let weight = [FontWeight::REGULAR, FontWeight::MEDIUM, FontWeight::SEMIBOLD, FontWeight::BOLD][i % 4];
+                                        let caption = format!("Row {i}: frame {step:06} · text wrapping and glyph cache λ");
+                                        ui.add(Text::new(caption).size(12.0).weight(weight).wrap(false));
                                     }
                                     Case::Shapes => {
                                         let rect = ui.allocate_space(vec2(width - 6.0, 24.0));

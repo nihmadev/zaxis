@@ -10,8 +10,8 @@ use zaxis::winit::{
 };
 use zaxis::{
     vec2, Blur, Border, Button, Checkbox, Color, ColorPicker, ColorPickerType, Context,
-    CornerRadius, DrawCommand, DrawData, Padding, Rect, Response, Separator, Shape, Slider,
-    SliderStatus, Text, TextureId, TextureImage, Vec2, Vertex, Window,
+    CornerRadius, DrawCommand, DrawData, FontWeight, Padding, Rect, Response, Separator, Shape,
+    Slider, SliderStatus, Text, TextureId, TextureImage, Vec2, Vertex, Window,
 };
 
 #[path = "scene/build.rs"]
@@ -74,8 +74,11 @@ pub struct Scene {
     scroll: crate::scroll::Probe,
     combo: Option<crate::combo_box::Probe>,
     pub images: Option<crate::images::Probe>,
+    modal: Option<crate::modal::Probe>,
+    text_area: Option<crate::text_area::Probe>,
     split: Option<split::Probe>,
     disclosure: Option<crate::disclosure::Probe>,
+    dnd: Option<crate::dnd::Probe>,
 }
 
 impl Scene {
@@ -92,6 +95,16 @@ impl Scene {
         }
         let images = if let Case::Images(case) = case {
             Some(crate::images::Probe::new(&mut context, case, count))
+        } else {
+            None
+        };
+        let modal = if let Case::Modal(kind) = case {
+            Some(crate::modal::Probe::new(&mut context, kind, count))
+        } else {
+            None
+        };
+        let text_area = if let Case::TextArea(kind) = case {
+            Some(crate::text_area::Probe::new(&mut context, kind, count))
         } else {
             None
         };
@@ -134,6 +147,13 @@ impl Scene {
             scroll: crate::scroll::Probe::default(),
             combo: case.combo().then(|| crate::combo_box::Probe::new(count)),
             images,
+            modal,
+            text_area,
+            dnd: if let Case::Dnd(kind) = case {
+                Some(crate::dnd::Probe::new(kind, count))
+            } else {
+                None
+            },
             disclosure: if let Case::Disclosure(kind) = case {
                 Some(crate::disclosure::Probe::new(kind, count))
             } else {

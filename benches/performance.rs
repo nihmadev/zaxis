@@ -6,14 +6,20 @@
 mod combo_box;
 #[path = "support/disclosure.rs"]
 mod disclosure;
+#[path = "support/dnd.rs"]
+mod dnd;
 #[path = "support/images.rs"]
 mod images;
+#[path = "support/modal.rs"]
+mod modal;
 #[path = "support/report.rs"]
 mod report;
 #[path = "support/scene.rs"]
 mod scene;
 #[path = "support/scroll.rs"]
 mod scroll;
+#[path = "support/text_area.rs"]
+mod text_area;
 
 use report::{Counters, FailedCase, Geometry, Report, ResultRow, Samples};
 use scene::{Case, Scene};
