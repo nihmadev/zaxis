@@ -12,7 +12,7 @@ use zaxis::winit::{
     window::{Window as NativeWindow, WindowId},
 };
 use zaxis::{
-    vec2, Context, PresentationMode, RenderError, RenderStatus, Renderer, Separator, Text, Window,
+    vec2, Context, PresentationMode, RenderError, RenderStatus, Renderer, Separator, Window,
 };
 
 #[path = "../tests/support/gpu_cache.rs"]
@@ -223,14 +223,13 @@ fn show_ui(context: &mut Context, clicks: &mut u64, checked: &mut bool) {
         .default_size(vec2(410.0, 410.0))
         .min_size(vec2(270.0, 230.0))
         .show(context, |ui| {
-            ui.add(Text::new("A small desktop UI").size(23.0));
+            ui.title("A small desktop UI");
             ui.label("Immediate mode widgets, cached geometry, and an event-driven renderer.");
             ui.separator();
             if ui.button("Click me").clicked() { *clicks += 1; }
             ui.label(format!("Clicks: {clicks}"));
             ui.checkbox(checked, "Show checkmark");
             ui.add(Separator::new().thickness(2.0).inset(8.0).spacing(2.0));
-            let muted = ui.style().muted_text;
-            ui.add(Text::new("Drag the title bar or resize the lower-right corner. Tab focuses the button; Space or Enter clicks it.").size(14.0).color(muted));
+            ui.muted("Drag the title bar or resize the lower-right corner. Tab focuses the button; Space or Enter clicks it.");
         });
 }

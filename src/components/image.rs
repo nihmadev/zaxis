@@ -171,6 +171,14 @@ impl Widget for Image {
                     .clamp(0.0, 1.0)
         };
         let rect = ui.allocate_space(size);
+        if let ImageState::Error(error) = &state {
+            ui.context.report(
+                crate::DiagnosticKind::External,
+                Some(id),
+                Some(rect),
+                || format!("image failed: {error}"),
+            );
+        }
         let response = ui.response(id, rect, self.interactive);
         if self.interactive {
             ui.context.register_hit(HitRegion {

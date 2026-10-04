@@ -257,9 +257,9 @@ impl BlurRenderer {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("zaxis backdrop segment"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: renderer.msaa_view.as_ref().unwrap_or(&self.canvas.view),
+                view: &self.canvas.view,
                 depth_slice: None,
-                resolve_target: renderer.msaa_view.as_ref().map(|_| &self.canvas.view),
+                resolve_target: None,
                 ops: wgpu::Operations {
                     load,
                     store: wgpu::StoreOp::Store,

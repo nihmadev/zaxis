@@ -1,4 +1,4 @@
-//! wgpu backend with persistent buffers, texture versioning, MSAA, and surface recovery.
+//! wgpu backend with persistent buffers, texture versioning, and surface recovery.
 
 mod blur;
 #[cfg(test)]
@@ -13,6 +13,8 @@ mod init;
 #[cfg(test)]
 mod number_tests;
 mod pipeline;
+#[cfg(test)]
+mod probe_tests;
 #[cfg(test)]
 mod scroll_hint_tests;
 mod surface;
@@ -94,8 +96,6 @@ pub struct Renderer {
     scroll_hint_pipeline: wgpu::RenderPipeline,
     backdrop_pipeline: wgpu::RenderPipeline,
     blur: Option<blur::BlurRenderer>,
-    sample_count: u32,
-    msaa_view: Option<wgpu::TextureView>,
     uniform: wgpu::Buffer,
     viewport_group: wgpu::BindGroup,
     texture_layout: wgpu::BindGroupLayout,

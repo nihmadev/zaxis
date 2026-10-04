@@ -27,6 +27,8 @@ pub trait App {
 pub struct Frame<'a> {
     window: &'a Arc<Window>,
     close_requested: &'a mut bool,
+    device_resets: u64,
+    device_loss: Option<&'a str>,
 }
 
 impl Frame<'_> {
@@ -34,6 +36,17 @@ impl Frame<'_> {
     /// Arc into a background worker that needs to wake the sleeping event loop.
     pub fn window(&self) -> &Arc<Window> {
         self.window
+    }
+
+    /// How many times the runner has recreated the GPU renderer after a lost device.
+    /// Recovery is automatic; compare with the previous value to notice it.
+    pub fn device_resets(&self) -> u64 {
+        self.device_resets
+    }
+
+    /// The reason the GPU device was last lost, if it ever was.
+    pub fn last_device_loss(&self) -> Option<&str> {
+        self.device_loss
     }
 
     /// Exit after the current frame has been presented successfully.
@@ -48,6 +61,9 @@ impl Frame<'_> {
 pub struct RunOptions {
     pub window_attributes: WindowAttributes,
     pub presentation_mode: PresentationMode,
+    /// Replaces the bundled Inter family. System fonts and color emoji still
+    /// supply scripts the family lacks.
+    pub font_family: Option<crate::FontFamily>,
 }
 
 impl Default for RunOptions {
@@ -57,11 +73,19 @@ impl Default for RunOptions {
                 .with_title("zaxis")
                 .with_inner_size(LogicalSize::new(860.0, 560.0)),
             presentation_mode: PresentationMode::default(),
+            font_family: None,
         }
     }
 }
 
 impl RunOptions {
+    /// Use `family` for all text instead of the bundled Inter, without building
+    /// a custom host around [`Context::with_fonts`].
+    pub fn with_font_family(mut self, family: crate::FontFamily) -> Self {
+        self.font_family = Some(family);
+        self
+    }
+
     /// Request native rounded corners and the system shadow on Windows 11.
     /// Applies to undecorated windows as well. Maximized/snapped windows follow
     /// the OS policy. On other platforms this leaves window attributes unchanged.
@@ -112,7 +136,10 @@ pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunErr
         .map_err(RunError::EventLoop)?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut context = Context::new();
+    let mut context = options
+        .font_family
+        .clone()
+        .map_or_else(Context::new, Context::with_fonts);
     context.set_image_waker(move || {
         let _ = proxy.send_event(());
     });
@@ -123,6 +150,8 @@ pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunErr
         state: None,
         error: None,
         close_requested: false,
+        device_resets: 0,
+        device_loss: None,
     };
     let result = event_loop.run_app(&mut runner).map_err(RunError::EventLoop);
     runner.error.map_or(result, Err)
@@ -181,6 +210,8 @@ struct Runner<A> {
     state: Option<State>,
     error: Option<RunError>,
     close_requested: bool,
+    device_resets: u64,
+    device_loss: Option<String>,
 }
 
 impl<A: App> Runner<A> {
@@ -250,6 +281,8 @@ impl<A: App> Runner<A> {
                 let mut frame = Frame {
                     window: &state.window,
                     close_requested: &mut self.close_requested,
+                    device_resets: self.device_resets,
+                    device_loss: self.device_loss.as_deref(),
                 };
                 self.context
                     .run(|context| self.app.update(context, &mut frame));
@@ -267,7 +300,9 @@ impl<A: App> Runner<A> {
                     Ok(RenderStatus::Retry) => {
                         state.retry_at = Some(Instant::now() + Duration::from_millis(16))
                     }
-                    Err(RenderError::DeviceLost(_)) => {
+                    Err(RenderError::DeviceLost(reason)) => {
+                        self.device_resets += 1;
+                        self.device_loss = Some(reason);
                         state.renderer = pollster::block_on(Renderer::new_with_presentation_mode(
                             Arc::clone(&state.window),
                             state.renderer.presentation_mode(),

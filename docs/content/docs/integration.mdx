@@ -5,7 +5,8 @@ description: Connect Context and Renderer to a winit ApplicationHandler without 
 ---
 
 Use a custom host when you already own the event loop, need runtime presentation
-switching, or construct the context with a custom font. The complete runnable
+switching, or construct the context with custom fonts. The built-in runner
+also accepts a font family through `RunOptions::with_font_family`. The complete runnable
 reference is [examples/integration.rs](https://github.com/nihmadev/zaxis/blob/main/examples/integration.rs).
 
 ## Native resources
@@ -32,6 +33,9 @@ fn initialize(event_loop: &ActiveEventLoop)
 }
 ```
 
+To use your own fonts, build the context with `Context::with_fonts(FontFamily::new(regular)
+.with_weight(FontWeight::BOLD, bold))` instead of `Context::new()`; `Context::with_font(FontArc)`
+still takes a single regular face. See [Replace the font](./components/text.mdx#replace-the-font).
 This host uses `pollster = "1.0.1"` as a direct dependency. One `Context` is intended
 for one native viewport. Keep model and context outside disposable native resources
 if they must survive suspension.

@@ -148,6 +148,7 @@ fn main() -> Result<(), zaxis::RunError> {
                 .with_title("zaxis — Images")
                 .with_inner_size(zaxis::winit::dpi::LogicalSize::new(1060.0, 860.0)),
             presentation_mode: PresentationMode::Immediate,
+            ..Default::default()
         },
     )
 }

@@ -22,21 +22,7 @@ impl Renderer {
         window: Arc<Window>,
         presentation_mode: PresentationMode,
     ) -> Result<Self, RenderError> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
-            Box::new(Arc::clone(&window)),
-        ));
-        let surface = instance
-            .create_surface(Arc::clone(&window))
-            .map_err(RenderError::CreateSurface)?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-                ..Default::default()
-            })
-            .await
-            .map_err(RenderError::RequestAdapter)?;
+        let (instance, surface, adapter) = select_adapter(&window).await?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("zaxis device"),
@@ -45,6 +31,7 @@ impl Renderer {
                         | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS),
                 required_limits: wgpu::Limits::downlevel_defaults()
                     .using_resolution(adapter.limits()),
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
                 ..Default::default()
             })
             .await
@@ -89,15 +76,6 @@ impl Renderer {
             .first()
             .copied()
             .ok_or(RenderError::UnsupportedSurface)?;
-        let sample_count = if adapter
-            .get_texture_format_features(attachment_format)
-            .flags
-            .sample_count_supported(4)
-        {
-            4
-        } else {
-            1
-        };
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let (viewport_layout, uniform, viewport_group) = viewport::create_bindings(&device);
         let (texture_layout, sampler) = textures::create_bindings(&device);
@@ -107,7 +85,7 @@ impl Renderer {
             &viewport_layout,
             &texture_layout,
             attachment_format,
-            sample_count,
+            1,
             "fs_image_linear",
         );
         let pipeline = pipeline::create(
@@ -115,7 +93,7 @@ impl Renderer {
             &viewport_layout,
             &texture_layout,
             attachment_format,
-            sample_count,
+            1,
         );
         let vertices = create_buffer(&device, 256, wgpu::BufferUsages::VERTEX, "zaxis vertices");
         let backdrop_pipeline = pipeline::create_with_fragment(
@@ -123,7 +101,7 @@ impl Renderer {
             &viewport_layout,
             &texture_layout,
             attachment_format,
-            sample_count,
+            1,
             "fs_backdrop",
         );
         let scroll_hint_pipeline = pipeline::create_with_fragment(
@@ -131,7 +109,7 @@ impl Renderer {
             &viewport_layout,
             &texture_layout,
             attachment_format,
-            sample_count,
+            1,
             "fs_scroll_hint",
         );
         let indices = create_buffer(&device, 256, wgpu::BufferUsages::INDEX, "zaxis indices");
@@ -160,8 +138,6 @@ impl Renderer {
             backdrop_pipeline,
             scroll_hint_pipeline,
             blur: None,
-            sample_count,
-            msaa_view: None,
             uniform,
             viewport_group,
             texture_layout,
@@ -186,4 +162,44 @@ impl Renderer {
         }
         Ok(renderer)
     }
+}
+
+/// DX12 needs far less driver memory than Vulkan on Windows, so it is tried
+/// first. `WGPU_BACKEND` overrides the order; the default set is the fallback.
+async fn select_adapter(
+    window: &Arc<Window>,
+) -> Result<(wgpu::Instance, wgpu::Surface<'static>, wgpu::Adapter), RenderError> {
+    let explicit = std::env::var_os("WGPU_BACKEND").is_some();
+    let mut attempts = vec![wgpu::Backends::from_env().unwrap_or_default()];
+    if cfg!(windows) && !explicit {
+        attempts.insert(0, wgpu::Backends::DX12);
+    }
+    let mut failure = None;
+    for backends in attempts {
+        let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(
+            Arc::clone(window),
+        ));
+        descriptor.backends = backends;
+        let instance = wgpu::Instance::new(descriptor);
+        let surface = match instance.create_surface(Arc::clone(window)) {
+            Ok(surface) => surface,
+            Err(error) => {
+                failure = Some(RenderError::CreateSurface(error));
+                continue;
+            }
+        };
+        match instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(adapter) => return Ok((instance, surface, adapter)),
+            Err(error) => failure = Some(RenderError::RequestAdapter(error)),
+        }
+    }
+    Err(failure.expect("at least one backend set is tried"))
 }

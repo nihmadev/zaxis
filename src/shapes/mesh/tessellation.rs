@@ -121,6 +121,30 @@ impl Mesh {
                 if rect.is_empty() {
                     return;
                 }
+                // A stroked edge off the pixel grid is covered unevenly per side, which
+                // reads as one rounded and one jagged corner. Snap edges inward, the same
+                // way scissors round, so a snapped edge is never clipped away.
+                let (rect, border) = if border.color.0[3] > 0 && border.width > 0.0 {
+                    let min = |v: f32| (v * scale).ceil() / scale;
+                    let max = |v: f32| (v * scale).floor() / scale;
+                    let snapped = Rect::from_min_max(
+                        Vec2::new(min(rect.min.x), min(rect.min.y)),
+                        Vec2::new(max(rect.max.x), max(rect.max.y)),
+                    );
+                    let width = if border.width * scale >= 1.0 {
+                        // Ties go down so a 1.5 physical pixel stroke stays one pixel.
+                        ((border.width * scale - 0.25).round().max(1.0)) / scale
+                    } else {
+                        border.width
+                    };
+                    if snapped.is_empty() {
+                        (rect, border)
+                    } else {
+                        (snapped, Border { width, ..border })
+                    }
+                } else {
+                    (rect, border)
+                };
                 let radii = rounding.values(rect);
                 let half_pixel = 0.5 / scale;
                 let segments = radii.map(|r| arc_segments((r + half_pixel) * scale));

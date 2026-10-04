@@ -1,13 +1,19 @@
+//! Dumps zoomable frames of focused/hovered controls to target/probe for visual edge checks:
+//! cargo test --lib gpu_dump_control_frames -- --ignored --nocapture | grep -E "^(edit|combo)_" > target/probe/list.txt
+//! python scripts/probe_crop.py   (writes target/probe/sheet.png)
 use super::{pipeline, textures, viewport};
-use crate::{vec2, Context, DragValue, NumberInput, Rect, Response, Slider, TextureId, Window};
-use std::collections::HashMap;
+use crate::{vec2, ComboBox, ComboBoxOption, Context, Response, TextEdit, TextureId, Window};
+use std::{collections::HashMap, io::Write};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
+use winit::{
+    dpi::PhysicalPosition,
+    event::{DeviceId, WindowEvent},
+};
 
-/// Exercise real glyph atlases, shader blending and scissors, not only UI layout.
 #[test]
 #[ignore = "requires a graphics adapter"]
-fn gpu_numeric_fields_fit_at_multiple_dpi() {
+fn gpu_dump_control_frames() {
     pollster::block_on(async {
         let adapter = wgpu::Instance::default()
             .request_adapter(&Default::default())
@@ -18,7 +24,16 @@ fn gpu_numeric_fields_fit_at_multiple_dpi() {
         let (texture_layout, sampler) = textures::create_bindings(&device);
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let pipeline = pipeline::create(&device, &viewport_layout, &texture_layout, format, 1);
-        for scale in [1.0, 1.25, 2.0] {
+        for (variant, scale) in [
+            ("edit", 1.25f32),
+            ("edit", 1.5),
+            ("combo_focus", 1.25),
+            ("combo_focus", 1.5),
+            ("combo_hover", 1.25),
+            ("combo_hover", 1.5),
+            ("combo_open", 1.25),
+            ("combo_open", 1.5),
+        ] {
             let physical = PhysicalSize::new((512.0 * scale) as u32, (384.0 * scale) as u32);
             let mut context = Context::new();
             context.set_viewport(physical, f64::from(scale));
@@ -26,64 +41,46 @@ fn gpu_numeric_fields_fit_at_multiple_dpi() {
             style.motion.reduced_motion = true;
             style.text_edit_blink_interval = std::time::Duration::ZERO;
             context.set_style(style);
-            let mut gain = 0.65_f32;
-            let mut offset = -12.5_f64;
-            let mut count = 9_007_199_254_740_993_u64;
-            let mut invalid = 4.0_f64;
-            let mut responses: Vec<Response> = Vec::new();
-            for frame in 0..2 {
+            let options: Vec<_> = ["Work", "Personal", "Archive"]
+                .iter()
+                .enumerate()
+                .map(|(i, n)| ComboBoxOption::new(i as i32, i as i32, n.to_string()))
+                .collect();
+            let mut selected = Some(0);
+            let mut text = String::from("Quarterly report");
+            let mut response: Option<Response> = None;
+            for frame in 0..4 {
+                if frame == 2 && variant != "combo_hover" && variant != "combo_open" {
+                    context.request_focus(response.unwrap().id);
+                }
+                if frame == 2 && variant == "combo_hover" {
+                    let r = response.unwrap().rect.center();
+                    context.on_window_event(&WindowEvent::CursorMoved {
+                        device_id: DeviceId::dummy(),
+                        position: PhysicalPosition::new(
+                            f64::from(r.x * scale),
+                            f64::from(r.y * scale),
+                        ),
+                    });
+                }
                 context.run(|context| {
-                    Window::new("NumberInput & DragValue")
-                        .default_position(vec2(24.0, 24.0))
-                        .default_size(vec2(464.0, 330.0))
+                    Window::new("W")
+                        .default_position(vec2(24.0, 24.37))
+                        .default_size(vec2(410.0, 330.0))
                         .show(context, |ui| {
-                            responses.clear();
-                            ui.muted("Gain");
-                            ui.horizontal_aligned(crate::Align::Center, |ui| {
-                                ui.add(Slider::new(&mut gain, 0.0..=1.0).width(260.0));
-                                responses.push(
-                                    ui.add(
-                                        NumberInput::new(&mut gain)
-                                            .precision(2)
-                                            .suffix(" ×")
-                                            .width(120.0),
-                                    ),
-                                );
+                            response = Some(if variant == "edit" {
+                                ui.add(TextEdit::new(&mut text).id_source("e"))
+                            } else {
+                                ui.add(
+                                    ComboBox::new(&mut selected, &options)
+                                        .label("Category")
+                                        .id_source("c")
+                                        .default_open(variant == "combo_open")
+                                        .width(300.0),
+                                )
                             });
-                            ui.muted("Offset · drag or click to type");
-                            responses.push(
-                                ui.add(
-                                    DragValue::new(&mut offset)
-                                        .precision(2)
-                                        .suffix(" px")
-                                        .width(160.0),
-                                ),
-                            );
-                            responses.push(ui.add(NumberInput::new(&mut count).width(260.0)));
-                            responses.push(
-                                ui.add(
-                                    NumberInput::new(&mut offset)
-                                        .prefix("$ ")
-                                        .suffix(" kg")
-                                        .enabled(false)
-                                        .width(180.0),
-                                ),
-                            );
-                            responses.push(
-                                ui.add(
-                                    NumberInput::new(&mut invalid)
-                                        .id_source("invalid")
-                                        .width(160.0),
-                                ),
-                            );
                         });
                 });
-                if frame == 0 {
-                    context.request_focus(responses[4].id);
-
-                    // Focus selects the exact number; replace it with an incomplete draft.
-                    context.on_text_event("-");
-                }
             }
             let data = context.draw_data();
             let mut atlas = HashMap::new();
@@ -204,45 +201,35 @@ fn gpu_numeric_fields_fit_at_multiple_dpi() {
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             rx.recv().unwrap().unwrap();
             let pixels = readback.slice(..).get_mapped_range().unwrap();
-            for response in &responses[..4] {
-                assert_eq!(response.rect.size().y, 28.0);
-                check_band(&pixels, physical.width, response.rect, scale);
-            }
-            if scale == 1.25 {
-                image::save_buffer(
-                    "target/numbers.png",
-                    &pixels,
-                    physical.width,
-                    physical.height,
-                    image::ColorType::Rgba8,
-                )
-                .unwrap();
-            }
+            let r = response.unwrap().rect;
+            std::fs::create_dir_all("target/probe").unwrap();
+            let mut file =
+                std::fs::File::create(format!("target/probe/{variant}_{scale}.ppm")).unwrap();
+            write!(
+                file,
+                "P6
+{} {}
+255
+",
+                physical.width, physical.height
+            )
+            .unwrap();
+            let rgb: Vec<_> = pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .flat_map(|p| p[..3].iter().copied())
+                .collect();
+            file.write_all(&rgb).unwrap();
+            println!(
+                "{variant}_{scale} {} {} {} {}",
+                r.min.x * scale,
+                r.min.y * scale,
+                r.max.x * scale,
+                r.max.y * scale
+            );
             drop(pixels);
             readback.unmap();
         }
     });
-}
-fn check_band(pixels: &[u8], width: u32, rect: Rect, scale: f32) {
-    let mut first = u32::MAX;
-    let mut last = 0;
-    for y in (rect.min.y * scale).ceil() as u32..(rect.max.y * scale).floor() as u32 {
-        for x in
-            ((rect.min.x + 6.0) * scale).ceil() as u32..((rect.max.x - 28.0) * scale).floor() as u32
-        {
-            if pixels[((y * width + x) * 4) as usize] > 105 {
-                first = first.min(y);
-                last = last.max(y);
-            }
-        }
-    }
-    assert!(first < last, "missing text in {rect:?}");
-    assert!(
-        first as f32 >= rect.min.y * scale + 1.0 && (last as f32) < rect.max.y * scale - 1.0,
-        "clipped text in {rect:?}: {first}..{last} at {scale}"
-    );
-    assert!(
-        ((first + last) as f32 * 0.5 - rect.center().y * scale).abs() <= 2.0 * scale,
-        "uncentered glyph pixels in {rect:?}: {first}..{last} at {scale}"
-    );
 }

@@ -82,9 +82,9 @@ impl Renderer {
                     }
                 }),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: self.msaa_view.as_ref().unwrap_or(&view),
+                    view: &view,
                     depth_slice: None,
-                    resolve_target: self.msaa_view.as_ref().map(|_| &view),
+                    resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: f64::from(clear[0]),
@@ -92,11 +92,7 @@ impl Renderer {
                             b: f64::from(clear[2]),
                             a: f64::from(clear[3]),
                         }),
-                        store: if self.msaa_view.is_some() {
-                            wgpu::StoreOp::Discard
-                        } else {
-                            wgpu::StoreOp::Store
-                        },
+                        store: wgpu::StoreOp::Store,
                     },
                 })],
                 ..Default::default()

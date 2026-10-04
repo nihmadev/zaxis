@@ -36,12 +36,14 @@ fn open(app: impl App) -> Result<(), RunError> {
             .with_inner_size(LogicalSize::new(1024.0, 720.0))
             .with_min_inner_size(LogicalSize::new(640.0, 480.0)),
         presentation_mode: PresentationMode::Immediate,
+        ..Default::default()
     })
 }
 ```
 
-`RunOptions` contains `window_attributes: winit::window::WindowAttributes` and
-`presentation_mode: PresentationMode`. Defaults:
+`RunOptions` contains `window_attributes: winit::window::WindowAttributes`,
+`presentation_mode: PresentationMode` and `font_family: Option<FontFamily>`
+(`RunOptions::with_font_family`; `None` uses the bundled Inter). Defaults:
 
 | Setting | Value |
 | --- | --- |

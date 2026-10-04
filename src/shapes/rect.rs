@@ -29,6 +29,11 @@ impl Rect {
         self.max.x <= self.min.x || self.max.y <= self.min.y
     }
 
+    /// Both corners are finite numbers.
+    pub fn is_finite(self) -> bool {
+        self.min.is_finite() && self.max.is_finite()
+    }
+
     pub fn contains(self, point: Vec2) -> bool {
         point.x >= self.min.x
             && point.y >= self.min.y

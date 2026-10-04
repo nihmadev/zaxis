@@ -1,5 +1,6 @@
 ---
 title: Image
+icon: Image
 description: Built-in asynchronous local images, SVG and bounded resource caches.
 ---
 
@@ -39,7 +40,7 @@ decode again every frame.
 SVG uses CPU rasterization through [resvg](https://github.com/linebender/resvg), then
 the existing GPU texture backend. Parsed trees and raster variants are separate.
 viewBox, intrinsic size, paths, fills, strokes, transforms, gradients and clipping
-are handled by the SVG engine. Text uses only bundled Lato with its OFL license;
+are handled by the SVG engine. Text uses only bundled Inter with its OFL license;
 system fonts and linked fonts are not loaded. Filters, patterns and masks are explicitly
 rejected to bound intermediate raster allocations; clip paths are supported.
 Linked and data-URL images are disabled, no script execution or resource fetching

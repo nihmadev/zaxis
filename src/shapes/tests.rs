@@ -115,10 +115,16 @@ fn translucent_and_subpixel_borders_preserve_coverage_without_overlap() {
                 let depth = -1.0 + step as f32 * 0.1 + 0.017;
                 let actual = sample(&mesh, Vec2::new(80.137, depth));
                 let outer = (0.5 + depth * scale).clamp(0.0, 1.0);
+                // Strokes of at least one physical pixel snap to whole pixels.
+                let stroke = if width * scale >= 1.0 {
+                    (width * scale - 0.25).round().max(1.0) / scale
+                } else {
+                    width
+                };
                 let inner = if width == 24.0 {
                     0.0
                 } else {
-                    (0.5 + (depth - width) * scale).clamp(0.0, 1.0)
+                    (0.5 + (depth - stroke) * scale).clamp(0.0, 1.0)
                 };
                 let red = inner * 128.0 / 255.0;
                 let blue = (outer - inner) * 96.0 / 255.0;
