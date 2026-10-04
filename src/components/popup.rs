@@ -54,23 +54,29 @@ impl Popup {
         self.style = style;
         self
     }
+    #[track_caller]
     pub fn size(mut self, size: Vec2) -> Self {
-        assert!(size.is_finite() && size.min_element() >= 0.0);
-        self.size = size;
+        self.size = super::sanitize::size("Popup::size", size).unwrap_or(self.size);
         self
     }
+    #[track_caller]
     pub fn gap(mut self, gap: f32) -> Self {
-        assert!(gap.is_finite() && gap >= 0.0);
-        self.gap = Some(gap);
+        self.gap = super::sanitize::non_negative("Popup::gap", gap).or(self.gap);
         self
     }
     pub fn padding(mut self, padding: Padding) -> Self {
         self.padding = Some(padding);
         self
     }
-    pub fn rounding(mut self, rounding: CornerRadius) -> Self {
-        self.rounding = Some(rounding);
+    pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.rounding = Some(radius.into());
         self
+    }
+    #[deprecated(
+        note = "use `.corner_radius(..)`; one name for the corner radius of every component"
+    )]
+    pub fn rounding(self, rounding: CornerRadius) -> Self {
+        self.corner_radius(rounding)
     }
     pub fn fill(mut self, fill: Color) -> Self {
         self.fill = Some(fill);
@@ -96,10 +102,23 @@ impl Popup {
         build: impl FnOnce(&mut Ui<'_>) -> R,
     ) -> Option<PopupOutput<R>> {
         let id = Self::id(ui, self.source);
+        if !self.anchor.is_finite() {
+            // Without a usable anchor there is nothing to place the popup against.
+            if *open {
+                ui.context.report(
+                    crate::DiagnosticKind::PopupWithoutAnchor,
+                    Some(id),
+                    None,
+                    || "popup without anchor: the anchor rect is not finite".into(),
+                );
+            }
+            *open = false;
+            return None;
+        }
         if ui.context.dismissed_popups.remove(&id) {
             *open = false;
         }
-        if !ui.enabled {
+        if !ui.enabled || ui.context.modal_blocks_popup() {
             *open = false;
         }
         if !*open && ui.context.popup.as_ref().is_some_and(|p| p.id == id) {
@@ -121,6 +140,14 @@ impl Popup {
         let anchor_clip = ui.clip_rect().intersect(viewport);
         let (full, upward) = place(self.anchor, self.size, viewport, gap);
         if full.is_empty() {
+            if *open {
+                ui.context.report(
+                    crate::DiagnosticKind::PopupWithoutAnchor,
+                    Some(id),
+                    Some(self.anchor),
+                    || "popup without room: it cannot be placed next to its anchor".into(),
+                );
+            }
             *open = false;
             if ui.context.popup.as_ref().is_some_and(|p| p.id == id) {
                 ui.context.dismiss_popup(true);
@@ -157,7 +184,7 @@ impl Popup {
                 last_frame: ui.context.frame,
             });
         }
-        ui.context.popup_layers.push(id);
+        ui.context.push_popup_layer(id);
         if *open {
             ui.context.register_hit(HitRegion {
                 id: id.with("block"),

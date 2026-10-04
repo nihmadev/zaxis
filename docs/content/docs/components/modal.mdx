@@ -1,0 +1,165 @@
+---
+title: Modal
+icon: AppWindow
+description: Dialogs, confirmations and edge sheets that own all input until they close.
+---
+
+`Modal` is a popup-class layer that blocks everything under it. `Dialog` and
+`Confirm` are short forms on top of it. `open: bool` belongs to the application;
+the modal sets it to `false` when a close condition fires.
+
+```rust
+use zaxis::{Confirm, Confirmation, Dialog, DialogAction, Modal};
+
+// Confirmation: the answer is a value, returned once, on the pass it was given.
+let confirm = Confirm::new("delete")
+    .title("Delete the item?")
+    .description("This cannot be undone.")
+    .confirm_label("Delete")
+    .danger();
+if let Some(Confirmation::Confirmed) = confirm.show(ui, &mut delete_open) {
+    items.retain(|item| item.id != target);
+}
+
+// Dialog: title, description, scrolling body and a right-aligned action row.
+let output = Dialog::new("edit", "Edit item")
+    .action(DialogAction::new("Cancel"))
+    .action(DialogAction::new("Save").primary())
+    .show(ui, &mut edit_open, |ui| {
+        ui.text_edit(&mut name);
+    });
+if output.is_some_and(|dialog| dialog.action == Some(1)) {
+    save(&name);
+}
+
+// Anything else: arbitrary content with an ordinary `Ui`.
+Modal::new("sheet")
+    .anchor(zaxis::ModalAnchor::Right)
+    .width(320.0)
+    .show(ui, &mut sheet_open, |ui| {
+        ui.label("Summary");
+    });
+```
+
+Results are plain values; no closure is stored in `Context` and none runs outside
+a pass. `Modal::show` and `Dialog::show` return `None` once the modal has fully
+closed. `ModalOutput` carries the body result in `inner`, the surface `rect`,
+`default_action` and `closed: Option<CloseReason>`.
+
+## Closing
+
+Each condition is configured separately and reports its own reason, exactly once:
+
+| Reason | Cause | Builder |
+| --- | --- | --- |
+| `CloseReason::Escape` | Escape with no popup open above the modal | `dismiss_on_escape(bool)` |
+| `CloseReason::Overlay` | A click that starts and ends on the overlay | `dismiss_on_overlay(bool)` |
+| `CloseReason::CloseButton` | The corner close button | `close_button(bool)` |
+| `CloseReason::Action` | An action button, or `Ui::close_modal()` | — |
+
+Escape and overlay clicks are consumed even when they do not close, so they never
+reach the interface underneath. `Escape` closes the innermost layer first: a
+`ComboBox` or `ColorPicker` popup, then the modal.
+
+`Confirm` has alert-dialog semantics: no corner button and the overlay never
+closes it. `danger()` also disables Escape, so the dialog closes only by an
+explicit choice (`dismiss_on_escape(true)` brings Escape back, as `Cancelled`), puts
+initial focus on Cancel and makes Enter run Cancel. Without `danger()` focus starts
+on the confirming button and Escape cancels.
+
+`Dialog` actions close the dialog; `DialogOutput::action` is the index of the chosen
+action on that pass and `closed` is `Some(CloseReason::Action)`. Enter runs the action
+marked `default_action()` (the last by default) when focus is not in a control that
+handles Enter itself; a focused button simply activates.
+
+## Layers and blocking
+
+There is one layer system. Paint order, bottom to top:
+
+1. `Root` and `Window` panels
+2. ordinary `Popup`s (including `ComboBox`, `ColorPicker` and `ContextMenu`) opened
+   outside a modal
+3. the first modal, then everything opened inside it (its popups, context menus,
+   tooltips)
+4. the next modal in the stack, and so on
+5. tooltips and the drag preview, always topmost
+
+Layers are ordered by stack depth, not by call order, so `Modal::show` may be called
+before or after the interface it blocks.
+
+Input has the same single path as for popups: `Context::top_window` returns the
+newest open modal (or a popup inside it) for every point of the viewport, so hover,
+click, drag, wheel, cursor shape, tooltips, drag and drop and middle-button
+scrolling never reach lower layers. Specifically:
+
+* **Keyboard, text and IME** go only to the focused control inside the modal. Tab and
+  Shift+Tab cycle through its focusable controls and wrap around.
+* **Shortcuts.** While a modal is open, `Context::input()` called from application
+  code outside the modal reports idle input (no pointer, keys or text). Code inside
+  the modal's closures sees the real input.
+* **Opening cancels** an active pointer capture, drag and drop, `SplitPane` resize,
+  `Window` move, column resize, middle-button autoscroll and any open popup under
+  it, without changing the values they were editing. A popup under an open modal
+  cannot be reopened until the modal closes.
+* **The interface below keeps running** and drawing every pass with unchanged values.
+* **Native title bar.** `TitleBar` buttons are blocked like everything else; the drag
+  area and resize border keep moving and resizing the OS window.
+* **Stack.** Modals shown while another is open (typically inside its body) form a
+  stack: only the newest receives input, Escape closes one at a time and the overlay is
+  dimmed once, by the lowest modal.
+* A `Floating` `ColorPicker` is a `Window` and would be under the modal, so inside a
+  modal it is shown inline.
+
+When a modal closes, input is released immediately even while its exit animation
+still draws. The click that closed it is consumed by the overlay, so nothing below
+sees the press or release.
+
+## Focus
+
+On open focus moves to the first focusable control in the modal, or to the control
+passed to `Ui::modal_initial_focus(&response)`. The previously focused widget is
+saved and focus returns to it on close if it still exists and is focusable;
+otherwise focus is cleared. `Modal::return_focus(id)` overrides the saved widget.
+Focus cannot be moved below the modal, even with `Context::request_focus`.
+
+## Layout
+
+The surface is centered with `margin` to the viewport edges. Width is explicit
+(`width`) or follows the body between `min_width` and `max_width`; `Confirm` has no
+body and uses the full `max_width`. Height follows the content up to the viewport
+(or `max_height`). When it does not fit, only the body scrolls, through a normal
+`ScrollArea`; the header and the actions stay in place. On very small windows paddings
+shrink and, if the header and actions alone do not fit, the bottom (the actions) stays
+on screen and the top is cut. Resizing and DPI changes re-center without extra state.
+
+`ModalAnchor::{Left, Right, Top, Bottom}` makes the same surface a sheet attached to
+that edge; it slides in from the edge instead of scaling.
+
+## Style
+
+`Style::modal` (`ModalStyle`) and `StyleOverrides::modal`:
+
+| Field | Meaning |
+| --- | --- |
+| `overlay`, `overlay_blur` | Dimming color (with alpha) and optional backdrop blur sigma |
+| `surface` | Fill, border, shadow and corner radius (`SurfaceStyle`) |
+| `padding`, `gap`, `spacing` | Surface padding, space between header/body/actions, title–description and button gaps |
+| `min_width`, `max_width`, `margin` | Width limits and distance to the viewport edges |
+| `enter_scale`, `enter_offset` | Hidden pose of the fade/scale/lift animation |
+| `title`, `description` | `TypographyRole`s of the dialog texts |
+| `close_size` | Corner button size |
+
+The theme resolves these from palette tokens (light, dark and high contrast). A
+modal opened inside `Ui::with_theme` inherits the local style as a popup does.
+
+## Motion and lifecycle
+
+Open and close use the `motion.presence` options: a fade of the overlay and a fade,
+scale and lift of the surface (or a slide for sheets). Reduced motion applies the
+final state at once. The content stays mounted until the exit animation finishes but
+is inert; once it ends, the modal leaves no state, hit region, layer, window entry or
+animation behind. An open modal at rest requests no frames. A closed modal costs a
+hash and an animation lookup per pass.
+
+Content state is keyed by the stable `Id`s of the content, with the usual retained
+state rules for `TextEdit`, `ScrollArea` and `ComboBox`.
