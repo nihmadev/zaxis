@@ -32,7 +32,7 @@ ui.add(Switch::new(&mut wifi, "Wi-Fi")
 | `size(f32)` | Track height is `1.25 × font_size`, clamped to 10–128; width is `1.8 ×` height |
 | `rounding` / `corner_radius` | Fully rounded pill (`height / 2`) |
 | `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
-| `hover_style(HoverStyle)` | Theme hover preset for the track; see [Hover](../style.mdx#hover) |
+| `hover_style(HoverStyle)` | Theme hover preset for the track; see [Hover](../style.mdx#explicit-overrides-and-precedence) |
 | `style(SwitchStyle)` | Local override of `Style::switch` |
 
 `SwitchStyle` holds `track` and `thumb` `ControlStyle` states plus `width`, `height`,

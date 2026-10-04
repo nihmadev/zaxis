@@ -39,7 +39,7 @@ let response = ui.add(Slider::new(&mut volume, 0.0..=100.0)
 | `width(f32)` | 200 logical pixels; a value that is not finite and positive is ignored; limited by available width |
 | `status(SemanticStatus)` | `Normal`; `SliderStatus` is an alias of `SemanticStatus` |
 | `color(Color)` | Override the enabled status accent |
-| `hover_style(HoverStyle)` | Theme hover preset for the thumb; see [Hover](../style.mdx#hover) |
+| `hover_style(HoverStyle)` | Theme hover preset for the thumb; see [Hover](../style.mdx#explicit-overrides-and-precedence) |
 
 Track height is 28 logical pixels; a caption adds spacing and measured text height.
 The response rectangle covers the interactive track. The track is 6 pixels high and the thumb

@@ -34,7 +34,7 @@ ui.add(Checkbox::new(&mut sound, "Play sound")
 | `rounding(CornerRadius)` | Radius 4 on all corners |
 | `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
 | `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
-| `hover_style(HoverStyle)` | Theme hover preset for the square and caption; see [Hover](../style.mdx#hover) |
+| `hover_style(HoverStyle)` | Theme hover preset for the square and caption; see [Hover](../style.mdx#explicit-overrides-and-precedence) |
 
 The explicit side length uses the same clamp as the default. A nonempty label receives
 a gap of `min(max(Style::spacing, 0), 8)` and wraps by character within the remaining
