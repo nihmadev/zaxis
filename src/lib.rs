@@ -40,7 +40,7 @@ pub use components::{
     DropTarget, DropZones, Dropped, Insertion, PreviewKind, RowDrag, RowMove, TreeNodeDrag,
 };
 pub use components::{
-    Align, Blur, Button, ButtonVariant, Card, CardOutput, CardVariant, Checkbox,
+    Align, Badge, Blur, Button, ButtonVariant, Card, CardOutput, CardVariant, Checkbox,
     ColorPicker, ColorPickerType, Column, ColumnWidth, ComboBox, ComboBoxOption, ComboBoxStyle,
     ContextMenu, ContextMenuItem, ContextMenuOutput, ContextMenuStyle, ContextMenuWidget,
     DragValue, Field, Grid, GridOutput, GridRow, GridStyle, GridUi, Hover, HoverFill, HoverStyle,

@@ -3,6 +3,7 @@
 //! Each component owns its builders, rendering, and convenience methods on [`Ui`].
 
 pub(crate) mod appearance;
+pub mod badge;
 pub mod blur;
 pub mod button;
 mod button_variant;
@@ -55,6 +56,7 @@ pub mod ui;
 pub mod widget;
 pub mod window;
 
+pub use badge::Badge;
 pub use blur::Blur;
 pub use button::Button;
 pub use button_variant::ButtonVariant;
