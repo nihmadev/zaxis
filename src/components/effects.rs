@@ -11,6 +11,9 @@ pub(crate) struct EffectState {
     pub value: f32,
     pub position: Vec2,
     pub built_frame: u64,
+    /// Scroll content origin and scope `position` was measured against.
+    pub origin: Vec2,
+    pub scope: Option<Id>,
 }
 impl EffectState {
     pub(crate) fn new(frame: u64) -> Self {
@@ -20,6 +23,8 @@ impl EffectState {
             value: 0.0,
             position: Vec2::ZERO,
             built_frame: frame,
+            origin: Vec2::ZERO,
+            scope: None,
         }
     }
 }
@@ -36,6 +41,10 @@ pub struct Presence {
     pub exit_layout: bool,
     pub interactive_enter: bool,
     pub motion: Option<TweenOptions>,
+    /// Hidden pose angle in radians around `pivot`; turns to zero as it shows.
+    pub rotation: f32,
+    /// Animate the very first appearance. False snaps to the current state.
+    pub appear: bool,
 }
 impl Default for Presence {
     fn default() -> Self {
@@ -52,6 +61,8 @@ impl Presence {
             exit_layout: true,
             interactive_enter: true,
             motion: None,
+            rotation: 0.0,
+            appear: true,
         }
     }
     pub fn slide(offset: Vec2) -> Self {
@@ -64,19 +75,19 @@ impl Presence {
         self.fade = fade;
         self
     }
+    #[track_caller]
     pub fn offset(mut self, offset: Vec2) -> Self {
-        assert!(offset.is_finite());
-        self.offset = Some(offset);
+        self.offset = super::sanitize::finite_vec2("Presence::offset", offset).or(self.offset);
         self
     }
+    #[track_caller]
     pub fn scaling(mut self, scale: f32) -> Self {
-        assert!(scale.is_finite() && scale > 0.0);
-        self.scale = scale;
+        self.scale = super::sanitize::positive("Presence::scaling", scale).unwrap_or(self.scale);
         self
     }
+    #[track_caller]
     pub fn pivot(mut self, pivot: Vec2) -> Self {
-        assert!(pivot.is_finite());
-        self.pivot = pivot;
+        self.pivot = super::sanitize::finite_vec2("Presence::pivot", pivot).unwrap_or(self.pivot);
         self
     }
     pub fn exit_layout(mut self, keep: bool) -> Self {
@@ -89,6 +100,21 @@ impl Presence {
     }
     pub fn motion(mut self, motion: TweenOptions) -> Self {
         self.motion = Some(motion);
+        self
+    }
+    /// Spin from `angle` radians while entering and to it while leaving. Content
+    /// is not interactive while it is turned (input follows axis-aligned
+    /// geometry), so it becomes usable when the enter completes.
+    #[track_caller]
+    pub fn rotating(mut self, angle: f32) -> Self {
+        self.rotation =
+            super::sanitize::finite("Presence::rotating", angle).unwrap_or(self.rotation);
+        self
+    }
+    /// With `false`, a presence whose first pass is already visible starts shown
+    /// instead of animating in. Later changes animate as usual.
+    pub fn appear(mut self, animate: bool) -> Self {
+        self.appear = animate;
         self
     }
     pub fn show<R>(
@@ -105,14 +131,15 @@ impl Presence {
         let motion = self
             .motion
             .unwrap_or_else(|| ui.style().motion.presence.clone());
-        assert!(
-            motion.repeat == crate::Repeat::Once && !motion.auto_reverse,
-            "presence must be a finite forward transition"
-        );
+        let motion = super::sanitize::forward("Presence motion", motion);
         let pass = ui.context.animation_pass(!ui.clip_rect().is_empty());
         let progress = ui.context.animations.transition(
             id,
-            Some(0.0_f32),
+            Some(if visible && !self.appear {
+                1.0_f32
+            } else {
+                0.0
+            }),
             if visible { 1.0 } else { 0.0 },
             motion,
             pass,
@@ -120,15 +147,19 @@ impl Presence {
         if !visible && progress.value <= 0.0 {
             return None;
         }
-        let interactive = visible && (self.interactive_enter || progress.completed());
+        let turned = self.rotation != 0.0 && progress.value < 1.0;
+        let interactive = visible && !turned && (self.interactive_enter || progress.completed());
         let (inner, size, placement) = ui.measure_effect(id, interactive, build);
         let rect = Rect::from_min_size(ui.layout.cursor, size);
         let t = progress.value.clamp(0.0, 1.0);
-        let transform = Transform::around(
-            rect.min + size * self.pivot,
-            1.0 + (self.scale - 1.0) * (1.0 - t),
-            self.offset.unwrap_or(Vec2::ZERO) * (1.0 - t),
-        );
+        let pivot = rect.min + size * self.pivot;
+        let mut transform = Transform {
+            scale: 1.0 + (self.scale - 1.0) * (1.0 - t),
+            translation: Vec2::ZERO,
+            angle: self.rotation * (1.0 - t),
+        };
+        transform.translation =
+            pivot - transform.vector(pivot) + self.offset.unwrap_or(Vec2::ZERO) * (1.0 - t);
         // Parent clip stays fixed; descendant clips follow their geometry.
         let clip = ui.clip_rect();
         if transform.rect(rect).intersect(clip).is_empty() {
@@ -162,15 +193,26 @@ impl Ui<'_> {
         if self.flow.is_some() {
             return self.layout_item(|ui| ui.visual(source, transform, opacity, build));
         }
-        assert!(
-            transform.angle == 0.0
-                && transform.scale.is_finite()
-                && transform.scale > 0.0
-                && transform.translation.is_finite()
-                && opacity.is_finite()
-        );
+        let (transform, opacity) = if transform.angle.is_finite()
+            && transform.scale.is_finite()
+            && transform.scale > 0.0
+            && transform.translation.is_finite()
+            && opacity.is_finite()
+        {
+            (transform, opacity)
+        } else {
+            self.context
+                .report(crate::DiagnosticKind::InvalidValue, None, None, || {
+                    "Ui::visual: expected a finite transform with scale > 0 and a finite opacity; \
+                 using the identity transform"
+                        .into()
+                });
+            (crate::Transform::IDENTITY, 1.0)
+        };
+        // Input follows axis-aligned geometry: turned content is look-only.
+        let interactive = opacity > 0.0 && transform.angle == 0.0;
         let id = self.scope.with(("visual", Id::new(source)));
-        let (inner, size, placement) = self.measure_effect(id, opacity > 0.0, build);
+        let (inner, size, placement) = self.measure_effect(id, interactive, build);
         let rect = transform.rect(Rect::from_min_size(self.layout.cursor, size));
         if rect.intersect(self.clip_rect()).is_empty() {
             self.context.hide_placement_animations(&placement);
@@ -180,7 +222,7 @@ impl Ui<'_> {
             transform,
             opacity.clamp(0.0, 1.0),
             self.clip_rect(),
-            opacity > 0.0,
+            interactive,
         );
         self.allocate_space(size);
         inner
@@ -247,10 +289,7 @@ impl Ui<'_> {
         if self.flow.is_some() {
             return self.layout_item(|ui| ui.reveal_with(source, open, motion, build));
         }
-        assert!(
-            motion.repeat == crate::Repeat::Once && !motion.auto_reverse,
-            "reveal must be a finite forward transition"
-        );
+        let motion = super::sanitize::forward("reveal motion", motion);
         let id = self.scope.with(("reveal", Id::new(source)));
         let visible = !self.clip_rect().is_empty();
         let old_height = self.context.effect_states.get(&id).map_or(0.0, |s| s.value);

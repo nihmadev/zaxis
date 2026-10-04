@@ -73,6 +73,36 @@ by an animate/sample call on the same pass to mark the channel visible.
 `just_completed`. The completion flag is consumed by the first read, including
 multiple reads within a pass. Cancelling is distinct from completing.
 
+### Rate, direction and scrubbing
+
+A running or paused channel can change how its track time advances:
+
+| Call | Effect |
+| --- | --- |
+| `set_animation_rate(id, rate)` | Speed multiplier (`2.0` is twice as fast, negative plays backwards). Position is kept; zero or non-finite panics, use pause to stop |
+| `reverse_animation(id)` | Flips the sign of the rate from the current pose |
+| `seek_animation(id, elapsed)` | Jumps to track time. A paused channel shows the pose and stays paused; past the end it completes |
+| `animation_elapsed`, `animation_rate`, `animation_duration` | Read back track time, rate and exact length, e.g. to drive a scrubber |
+
+Playing backwards completes at the start pose (not `finish()`), with one completion
+event. Completed and cancelled channels hold no track and cannot be seeked or
+reversed; restart them, which also resets the rate to `1.0`. Wake-ups of sleeping
+stages are converted to wall time, so a half-speed `Delay` wakes at twice the
+remaining track time without polling.
+
+`MotionStyle::time_scale` multiplies the speed of every channel (`0.25` is slow
+motion for debugging). Changing it mid-flight does not jump; non-positive or
+non-finite values mean `1.0`. It scales animation channels only, not cursor
+blink, scrolling or other timers.
+
+### Testing tracks
+
+Tracks are pure functions of elapsed time. `zaxis::animation::testing` checks
+an application track at several frame rates without a window:
+`assert_exact_finish` (not complete at zero, exact `finish()` at every rate,
+exact end after a long suspension, repeatable samples), `assert_monotonic` and
+`frames`. For retained channels, drive `Context::run_at` with explicit instants.
+
 ## Keyframes and curves
 
 ```rust
@@ -91,19 +121,63 @@ point times return the original value. At least two strictly increasing points
 starting at zero are required; invalid input panics at construction. Keyframes
 support delay, repeat and auto-reverse with the same cycle rules as tweens.
 
-Built-in curves are `Linear`, `QuadIn/Out/InOut`, `CubicIn/Out/InOut`,
-`QuintIn/Out/InOut` and `SineIn/Out/InOut`. `Easing::custom` takes a reusable
-`Fn(f32) -> f32 + Send + Sync + 'static`, which can capture curve data. Input is
-clamped to [0, 1], output must be finite and may overshoot. Endpoints stay exact.
+Built-in curves are `Linear` and the In/Out/InOut forms of `Quad`, `Cubic`,
+`Quint`, `Sine`, `Expo`, `Circ`, `Back`, `Elastic` and `Bounce`. `In` and `InOut`
+are mirrors of each family's `Out` curve, so `In(t) + Out(1 - t) = 1` and `InOut`
+passes exactly through 0.5. `Back` and `Elastic` overshoot [0, 1] by design.
+`Circ` has a vertical tangent at one end.
+
+`Easing::cubic_bezier(x1, y1, x2, y2)` is the CSS timing function; `x1` and `x2`
+must lie in [0, 1] (time stays monotonic) while `y1` and `y2` may overshoot.
+`Easing::ease()` and `Easing::ease_in_out()` are the CSS presets.
+`Easing::steps(n)` makes `n` equal jumps at the end of each interval.
+
+`Easing::custom` takes a reusable `Fn(f32) -> f32 + Send + Sync + 'static`, which
+can capture curve data. Input is clamped to [0, 1], output must be finite and may
+overshoot. Endpoints stay exact for every curve.
+
+## Paths
+
+`Path::new(start)` builds a 2D path with `line_to`, `quad_to` and `cubic_to`;
+curves are flattened once into a polyline with cumulative arc length, so
+`point_at(fraction)` moves at **constant speed** however the control points are
+placed. `angle_at(fraction)` is the direction of travel in radians,
+`pose_at` returns both as a `PathPose`, `length()` is the total, and `points()` is
+the polyline for drawing it.
+
+`PathFollow::new(path, duration)` is an `Animation<PathPose>` with the tween
+builders `easing`, `delay`, `repeat` and `auto_reverse`; it completes exactly on
+the pose at the end. For a draw-on stroke animate a fraction and paint
+`path.trimmed(0.0, fraction)`, which returns the polyline between two fractions
+(corners included).
 
 ## Interpolation and external motion
 
 `Interpolate` supports `f32`, `f64`, `Vec2`, `Color`, `Border`, `CornerRadius`,
-`Shadow`, `Rect`, `Padding`, `Gradient`, arrays and pairs of supported types.
-RGB interpolates in **linear-light sRGB**, alpha linearly in **straight-alpha**
-space. Results are encoded to sRGB and rounded to bytes. For example, black to
-white at 50% is `Color::gray(188)`. Gradient direction is discrete and changes
-at its endpoint. Numeric interpolation allows custom-curve overshoot.
+`Shadow`, `Rect`, `Padding`, `Transform`, `Gradient`, arrays, pairs and triples of
+supported types, plus `Option<T>` and `Vec<T>`. `Some` to `Some` and equal-length
+vectors interpolate element-wise; appearing, disappearing or a changed length is
+discrete (the `from` state is kept until the end). `Color` RGB interpolates in
+**linear-light sRGB**, alpha linearly in **straight-alpha** space. Results are
+encoded to sRGB and rounded to bytes. For example, black to white at 50% is
+`Color::gray(188)`. Gradient direction is discrete and changes at its endpoint.
+Numeric interpolation allows custom-curve overshoot.
+
+`Oklab(color)` is a wrapper that blends in the perceptual Oklab space: black to
+white at 50% is mid grey (about 99) rather than 188, and saturated pairs such as
+blue to yellow keep their lightness instead of dipping through grey. Use
+`Tween<Oklab>` or `transition(.., Oklab(target), ..)` and read `.0` for the color.
+Endpoints are exact in both spaces.
+
+Structs whose fields are all supported implement the traits with a macro instead
+of by hand:
+
+```rust
+#[derive(Clone, Debug, PartialEq)]
+struct Pose { offset: Vec2, angle: f32 }
+zaxis::impl_interpolate!(Pose { offset, angle });
+zaxis::impl_spring_value!(Pose { offset, angle }); // for springs and Decay
+```
 
 Application value types implement `Interpolate: Clone + PartialEq + 'static`.
 Application effects implement `Animation<T>` with two methods:
@@ -202,6 +276,40 @@ the previous pass. Pass future deadlines to your event loop, and suppress wakeup
 while the viewport is hidden. Normal `Context::run` samples `Instant::now()` once.
 Do not mix a simulated clock with real-time `needs_repaint()`.
 
+## Momentum and velocity-preserving transitions
+
+`Decay::new(from, velocity)` is a fling: velocity (units per second) falls as
+`e^(-friction * t)` and the value glides toward a rest position it only
+approaches. It is analytic like the spring, so sampling cost is constant after any
+suspension, and it knows its destination up front:
+
+```rust
+use std::time::Duration;
+use zaxis::{Decay, DecayOptions};
+let fling = Decay::with_options(position, release_velocity,
+    DecayOptions::half_life(Duration::from_millis(350)));
+let rest = fling.rest();                // from + velocity / friction
+ui.context().restart_animation(id, fling);
+```
+
+Friction is per second (`DecayOptions::friction(4.0)` by default); `half_life`
+is the time for the speed to halve. The track completes once the remaining
+distance is under `distance_threshold` (0.01 by default), returns the exact rest
+position and reports an exact `duration()`. Because `rest()` is known, clamp or
+snap it before starting; to hit a chosen spot pass `velocity = (spot - from) *
+friction`. Values need `SpringValue` (`f32`, `f64`, `Vec2` or your own type).
+
+`transition` restarts its easing curve from zero speed on every retarget, which
+shows as a hitch when the target changes repeatedly mid-flight. `transition_smooth`
+(on `Context` and `Ui`, for `SpringValue + Interpolate` types) keeps the displayed
+velocity: the retargeted leg is a cubic Hermite curve of length `options.duration`
+that starts at the current value with the current speed and comes to rest at the
+new target. It ignores the easing curve for that leg (the speed is measured from
+the running track, including rate and `time_scale`); from rest, and for the first
+leg, the options apply unchanged. Equal targets never restart, and the first call
+snaps, exactly like `transition`. The leg can overshoot slightly when the old
+motion points away from the new target, which is the continuous behavior.
+
 ## Physical spring
 
 ```rust
@@ -239,6 +347,12 @@ Zero damping keeps oscillating unless initially within both rest thresholds;
 finish/cancel or stop building it to end that track. Thresholds default to 0.001
 distance units and 0.001 units/second. Once **both** are satisfied, the channel
 returns the exact target, zero velocity, one completion event and no deadline.
+
+Instead of frequency and ratio, `SpringOptions::duration_bounce(duration, bounce)`
+takes the period of one undamped oscillation and a bounce in (-1, 1): `0` is
+critically damped, positive values overshoot (`0.15` to `0.4` feel springy),
+negative values are overdamped. It is `frequency(1 / duration, 1 - bounce)` for
+non-negative bounce and `frequency(1 / duration, 1 / (1 + bounce))` otherwise.
 
 Retarget first samples position **and velocity at the pass time**. The new spring
 starts at that state. Equal targets never restart; option changes apply on the
@@ -320,7 +434,7 @@ Stable model IDs, never labels or current indexes, own the retained motion.
 Reordering during movement samples the displayed position before retargeting.
 New rows snap to their final allocation; deleted model IDs are cleaned at pass
 end; reinsertion after deletion starts fresh. Changed row sizes shift subsequent
-targets. Duplicate model/build IDs panic rather than silently share state.
+targets. Duplicate model/build IDs are reported as an `IdCollision` [diagnostic](./diagnostics.mdx).
 
 Always supply **full model membership**, including rows outside the virtual
 range. Build only visible rows and reserve skipped layout using your existing
@@ -344,6 +458,11 @@ remove its channel immediately. For per-use settings use `SelectionIndicator::ne
 with `orientation`, `motion`, `color` and `thickness`, then `show`.
 
 ## Busy indicators and change highlight
+
+`ui.skeleton(height)` (or `Skeleton::new(height).width(w).corner_radius(r).period(p)`) is
+a loading placeholder: a muted rounded block with a soft highlight sweeping across
+it. It is decorative and takes no input. Under reduced motion, when clipped or
+hidden, it is a static block and requests no frames.
 
 ```rust
 use zaxis::{Loader, Progress, ProgressState};
@@ -423,6 +542,15 @@ for a spring or infinite child. Explicit finish always applies the final child's
 finish value. Parallel returns children in insertion order and completes **after
 all children**. Empty Parallel completes immediately; an infinite child prevents
 normal completion. Stopped children do not add wakeups to the running group.
+
+`Parallel::at(offset, track)` starts a child `offset` after the group begins. Until
+then it holds its initial value and schedules one wake-up for the offset, never
+continuous frames; `with(track)` is `at(Duration::ZERO, track)`. `duration()`
+counts the offsets. `Sequence::mark("name")` names the current end of a sequence
+(every earlier stage needs a known length, otherwise it panics) and
+`Sequence::time_of("name")` reads it back, to place other tracks or to
+`seek_animation` to a named moment. Read marks before moving the sequence into a
+channel.
 
 Stagger returns `(Id, value)` pairs. Insert with composition elapsed time; existing
 IDs keep their original track/schedule. Reorder changes output order only. Delete

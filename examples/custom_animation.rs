@@ -2,8 +2,8 @@
 #![forbid(unsafe_code)]
 use std::time::{Duration, Instant};
 use zaxis::{
-    vec2, App, Border, Color, Context, Easing, Frame, Interpolate, Shape, SpringOptions,
-    SpringState, SpringValue, TweenOptions, Vec2, Window,
+    vec2, App, Border, Color, Context, Easing, Frame, Shape, SpringOptions, SpringState,
+    SpringValue, TweenOptions, Vec2, Window,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,43 +11,8 @@ struct Pose {
     offset: Vec2,
     angle: f32,
 }
-impl Interpolate for Pose {
-    fn interpolate(&self, to: &Self, t: f32) -> Self {
-        Self {
-            offset: self.offset.interpolate(&to.offset, t),
-            angle: self.angle.interpolate(&to.angle, t),
-        }
-    }
-}
-impl SpringValue for Pose {
-    fn zero() -> Self {
-        Self {
-            offset: Vec2::ZERO,
-            angle: 0.0,
-        }
-    }
-    fn add(&self, other: &Self) -> Self {
-        Self {
-            offset: self.offset + other.offset,
-            angle: self.angle + other.angle,
-        }
-    }
-    fn sub(&self, other: &Self) -> Self {
-        Self {
-            offset: self.offset - other.offset,
-            angle: self.angle - other.angle,
-        }
-    }
-    fn scale(&self, factor: f64) -> Self {
-        Self {
-            offset: self.offset * factor as f32,
-            angle: self.angle * factor as f32,
-        }
-    }
-    fn norm(&self) -> f64 {
-        (self.offset.length() as f64).hypot(self.angle as f64)
-    }
-}
+zaxis::impl_interpolate!(Pose { offset, angle });
+zaxis::impl_spring_value!(Pose { offset, angle });
 
 struct Demo {
     reverse: bool,

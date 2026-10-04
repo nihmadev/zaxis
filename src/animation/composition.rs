@@ -37,13 +37,35 @@ struct Stage<T> {
 pub struct Sequence<T> {
     initial: T,
     stages: Vec<Stage<T>>,
+    marks: Vec<(&'static str, Duration)>,
 }
 impl<T: Clone + 'static> Sequence<T> {
     pub fn new(initial: T) -> Self {
         Self {
             initial,
             stages: Vec::new(),
+            marks: Vec::new(),
         }
+    }
+    /// Name the current end of the sequence. Panics if an earlier stage has no
+    /// known length, because the time would be unspecified. Read it back with
+    /// [`Sequence::time_of`] to place other tracks (`Parallel::at`) or to
+    /// `seek_animation` to a named moment.
+    pub fn mark(mut self, label: &'static str) -> Self {
+        let at = self
+            .duration()
+            .expect("a mark needs every earlier stage to have a known length");
+        assert!(
+            self.marks.iter().all(|(name, _)| *name != label),
+            "duplicate sequence mark"
+        );
+        self.marks.push((label, at));
+        self
+    }
+    pub fn time_of(&self, label: &str) -> Option<Duration> {
+        self.marks
+            .iter()
+            .find_map(|(name, at)| (*name == label).then_some(*at))
     }
     pub fn then(mut self, track: impl Animation<T>) -> Self {
         let duration = track.duration();
@@ -121,7 +143,7 @@ impl<T: Clone + 'static> Animation<T> for Sequence<T> {
 /// Values in child order. Completes only when all children complete (empty is
 /// immediately complete); an infinite child keeps the composition running.
 pub struct Parallel<T> {
-    tracks: Vec<Box<dyn Animation<T>>>,
+    tracks: Vec<(Duration, Box<dyn Animation<T>>)>,
 }
 impl<T: Clone + 'static> Default for Parallel<T> {
     fn default() -> Self {
@@ -132,8 +154,13 @@ impl<T: Clone + 'static> Parallel<T> {
     pub fn new() -> Self {
         Self { tracks: Vec::new() }
     }
-    pub fn with(mut self, track: impl Animation<T>) -> Self {
-        self.tracks.push(Box::new(track));
+    pub fn with(self, track: impl Animation<T>) -> Self {
+        self.at(Duration::ZERO, track)
+    }
+    /// Start `track` `offset` after the group begins. Until then it holds its
+    /// initial value and only schedules a single wake-up, not frames.
+    pub fn at(mut self, offset: Duration, track: impl Animation<T>) -> Self {
+        self.tracks.push((offset, Box::new(track)));
         self
     }
 }
@@ -150,8 +177,12 @@ impl<T: Clone + 'static> Animation<Vec<T>> for Parallel<T> {
         let value = self
             .tracks
             .iter()
-            .map(|track| {
-                let sample = track.sample(elapsed);
+            .map(|(start, track)| {
+                let sample = if elapsed < *start {
+                    AnimationSample::after(track.sample(Duration::ZERO).value, *start - elapsed)
+                } else {
+                    track.sample(elapsed - *start)
+                };
                 if !sample.completed {
                     wake = combine_wake(wake, sample.wake);
                 }
@@ -165,12 +196,17 @@ impl<T: Clone + 'static> Animation<Vec<T>> for Parallel<T> {
         }
     }
     fn finish(&self) -> Vec<T> {
-        self.tracks.iter().map(|track| track.finish()).collect()
+        self.tracks
+            .iter()
+            .map(|(_, track)| track.finish())
+            .collect()
     }
     fn duration(&self) -> Option<Duration> {
         self.tracks
             .iter()
-            .try_fold(Duration::ZERO, |max, t| Some(max.max(t.duration()?)))
+            .try_fold(Duration::ZERO, |max, (start, t)| {
+                Some(max.max(start.saturating_add(t.duration()?)))
+            })
     }
 }
 

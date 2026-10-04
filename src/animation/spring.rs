@@ -52,6 +52,39 @@ impl SpringValue for Vec2 {
     }
 }
 
+/// Implement [`SpringValue`] for a struct whose named fields are all
+/// `SpringValue`s. The norm is the Euclidean norm of the field norms.
+///
+/// ```
+/// use zaxis::{impl_spring_value, SpringValue, Vec2};
+/// #[derive(Clone, PartialEq)]
+/// struct Pose { offset: Vec2, angle: f32 }
+/// impl_spring_value!(Pose { offset, angle });
+/// assert_eq!(Pose::zero().angle, 0.0);
+/// ```
+#[macro_export]
+macro_rules! impl_spring_value {
+    ($ty:ty { $($field:ident),+ $(,)? }) => {
+        impl $crate::SpringValue for $ty {
+            fn zero() -> Self {
+                Self { $($field: $crate::SpringValue::zero()),+ }
+            }
+            fn add(&self, other: &Self) -> Self {
+                Self { $($field: $crate::SpringValue::add(&self.$field, &other.$field)),+ }
+            }
+            fn sub(&self, other: &Self) -> Self {
+                Self { $($field: $crate::SpringValue::sub(&self.$field, &other.$field)),+ }
+            }
+            fn scale(&self, factor: f64) -> Self {
+                Self { $($field: $crate::SpringValue::scale(&self.$field, factor)),+ }
+            }
+            fn norm(&self) -> f64 {
+                (0.0_f64 $(+ $crate::SpringValue::norm(&self.$field).powi(2))+).sqrt()
+            }
+        }
+    };
+}
+
 /// k*x + c*v + m*a = 0. Default is critical damping, without bounce.
 /// k=0 snaps to target. Invalid/nonfinite parameters panic. c=0 oscillates
 /// indefinitely unless initially at rest or explicitly finished/cancelled.
@@ -81,6 +114,24 @@ impl SpringOptions {
             distance_threshold: 0.001,
             velocity_threshold: 0.001,
         }
+    }
+    /// SwiftUI-style: `duration` is the period of one undamped oscillation (how
+    /// long the spring takes to reach its target the first time, roughly a
+    /// quarter of the way through the cycle later), `bounce` runs from -1
+    /// (heavily overdamped) through 0 (critical, no overshoot) to 1 (never
+    /// settles). Typical bouncy springs use 0.15 to 0.4.
+    pub fn duration_bounce(duration: Duration, bounce: f64) -> Self {
+        assert!(!duration.is_zero(), "spring duration must be positive");
+        assert!(
+            bounce.is_finite() && bounce > -1.0 && bounce < 1.0,
+            "spring bounce must be within (-1, 1)"
+        );
+        let ratio = if bounce >= 0.0 {
+            1.0 - bounce
+        } else {
+            1.0 / (1.0 + bounce)
+        };
+        Self::frequency(1.0 / duration.as_secs_f64(), ratio)
     }
     pub fn thresholds(mut self, distance: f64, velocity: f64) -> Self {
         self.distance_threshold = distance;

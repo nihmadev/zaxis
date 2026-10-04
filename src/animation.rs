@@ -6,17 +6,24 @@
 //! See the animation guide and `custom_animation` example for external types.
 
 mod composition;
+mod curves;
+mod decay;
 mod easing;
 mod effects;
+mod hermite;
 mod interpolate;
+mod path;
 mod spring;
 pub(crate) mod state;
+pub mod testing;
 mod timeline;
 
 pub use composition::{Delay, Parallel, Sequence, Stagger};
+pub use decay::{Decay, DecayOptions};
 pub use easing::Easing;
 pub use effects::{Pulse, Rotation};
-pub use interpolate::Interpolate;
+pub use interpolate::{Interpolate, Oklab};
+pub use path::{Path, PathFollow, PathPose};
 pub use spring::{Spring, SpringOptions, SpringState, SpringValue};
 pub use timeline::{Keyframe, Keyframes, Repeat, Tween, TweenOptions};
 
@@ -159,6 +166,9 @@ pub struct MotionStyle {
     pub loader_stroke: f32,
     pub cycle_period: Duration,
     pub indicator_thickness: f32,
+    /// Global speed of every animation channel: 0.25 for slow motion while
+    /// debugging, 2.0 for double speed. Non-positive or non-finite values mean 1.
+    pub time_scale: f32,
 }
 
 impl Default for MotionStyle {
@@ -178,6 +188,7 @@ impl Default for MotionStyle {
             loader_stroke: 2.0,
             cycle_period: Duration::from_millis(1200),
             indicator_thickness: 2.0,
+            time_scale: 1.0,
         }
     }
 }

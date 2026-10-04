@@ -40,6 +40,31 @@ impl<T: Clone + 'static> Entry for Slot<T> {
             Control::Finish if self.track.is_some() => {
                 self.complete(self.track.as_ref().unwrap().finish())
             }
+            Control::Seek(to) if self.track.is_some() => {
+                self.elapsed = to;
+                self.started = now;
+                self.sampled_at = None;
+                if self.status == AnimationStatus::Paused {
+                    // A paused channel is not evaluated; show the scrubbed pose now.
+                    let sample = self.track.as_ref().unwrap().sample(to);
+                    if sample.completed {
+                        self.complete(sample.value);
+                    } else {
+                        self.value = sample.value;
+                        self.wake = sample.wake;
+                    }
+                } else {
+                    self.evaluate(now, false);
+                }
+            }
+            Control::Rate(rate) if self.track.is_some() => {
+                self.rebase(now);
+                self.rate = rate;
+            }
+            Control::Reverse if self.track.is_some() => {
+                self.rebase(now);
+                self.rate = -self.rate;
+            }
             _ => {}
         }
         self.deadline = None;
@@ -47,5 +72,14 @@ impl<T: Clone + 'static> Entry for Slot<T> {
     }
     fn reduce_motion(&mut self, now: Instant) {
         self.evaluate(now, true);
+    }
+    fn elapsed(&self, now: Instant) -> Duration {
+        self.elapsed_at(now)
+    }
+    fn rate(&self) -> f64 {
+        self.rate
+    }
+    fn duration(&self) -> Option<Duration> {
+        self.track.as_ref().and_then(|track| track.duration())
     }
 }

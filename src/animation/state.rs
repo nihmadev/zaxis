@@ -24,6 +24,9 @@ trait Entry {
     fn status(&self) -> AnimationStatus;
     fn control(&mut self, action: Control, now: Instant);
     fn reduce_motion(&mut self, now: Instant);
+    fn elapsed(&self, now: Instant) -> Duration;
+    fn rate(&self) -> f64;
+    fn duration(&self) -> Option<Duration>;
 }
 
 #[derive(Clone, Copy)]
@@ -32,6 +35,9 @@ pub(crate) enum Control {
     Resume,
     Cancel,
     Finish,
+    Seek(Duration),
+    Rate(f64),
+    Reverse,
 }
 
 struct Slot<T> {
@@ -48,6 +54,20 @@ struct Slot<T> {
     continuous: bool,
     last_frame: u64,
     completion: bool,
+    /// Per-channel playback rate; negative plays backwards.
+    rate: f64,
+    /// Global `MotionStyle::time_scale` last folded into `elapsed`.
+    scale: f64,
+}
+
+/// Saturating `d * factor` for nonnegative factors.
+fn scale_duration(d: Duration, factor: f64) -> Duration {
+    let secs = d.as_secs_f64() * factor;
+    if secs.is_finite() && secs < 1.0e9 {
+        Duration::from_secs_f64(secs.max(0.0))
+    } else {
+        Duration::MAX
+    }
 }
 
 impl<T: Clone + 'static> Slot<T> {
@@ -77,15 +97,33 @@ impl<T: Clone + 'static> Slot<T> {
             continuous: false,
             last_frame: 0,
             completion: false,
+            rate: 1.0,
+            scale: 1.0,
         }
+    }
+    fn speed(&self) -> f64 {
+        self.rate * self.scale
     }
     fn elapsed_at(&self, now: Instant) -> Duration {
         if self.status == AnimationStatus::Running {
-            self.elapsed
-                .saturating_add(now.saturating_duration_since(self.started))
+            let moved = scale_duration(
+                now.saturating_duration_since(self.started),
+                self.speed().abs(),
+            );
+            if self.speed() >= 0.0 {
+                self.elapsed.saturating_add(moved)
+            } else {
+                self.elapsed.saturating_sub(moved)
+            }
         } else {
             self.elapsed
         }
+    }
+    /// Fold the time run so far into `elapsed` before the speed changes.
+    fn rebase(&mut self, now: Instant) {
+        self.elapsed = self.elapsed_at(now);
+        self.started = now;
+        self.sampled_at = None;
     }
     fn complete(&mut self, value: T) {
         self.value = value;
@@ -104,9 +142,11 @@ impl<T: Clone + 'static> Slot<T> {
         if self.status != AnimationStatus::Running || self.sampled_at == Some(now) {
             return;
         }
-        let sample = self.track.as_ref().unwrap().sample(self.elapsed_at(now));
+        let elapsed = self.elapsed_at(now);
+        let sample = self.track.as_ref().unwrap().sample(elapsed);
         self.sampled_at = Some(now);
-        if sample.completed {
+        // Playing backwards ends at the start pose, not at the finish value.
+        if sample.completed || (self.speed() < 0.0 && elapsed.is_zero()) {
             self.complete(sample.value);
         } else {
             self.value = sample.value;
@@ -120,7 +160,12 @@ impl<T: Clone + 'static> Slot<T> {
         visible: bool,
         reduced: bool,
         interval: Duration,
+        scale: f64,
     ) -> Animated<T> {
+        if self.scale != scale {
+            self.rebase(now);
+            self.scale = scale;
+        }
         self.evaluate(now, reduced);
         self.last_frame = frame;
         if self.status == AnimationStatus::Running && visible {
@@ -129,7 +174,8 @@ impl<T: Clone + 'static> Slot<T> {
             let delay = match self.wake {
                 Wake::NextFrame => interval.max(Duration::from_millis(1)),
                 Wake::After(delay) if delay.is_zero() => interval.max(Duration::from_millis(1)),
-                Wake::After(delay) => delay,
+                // Track time to wall time: a slower channel waits longer.
+                Wake::After(delay) => scale_duration(delay, 1.0 / self.speed().abs()),
             };
             // A custom zero wake cannot turn an Immediate host into a busy loop.
             self.deadline = now.checked_add(delay);
@@ -142,6 +188,27 @@ impl<T: Clone + 'static> Slot<T> {
     }
 }
 
+impl<T: super::SpringValue> Slot<T> {
+    /// Current rate of change in units per second of wall time, from a short
+    /// forward difference of the track. Zero when nothing is moving.
+    fn velocity(&self, now: Instant) -> T {
+        let Some(track) = self
+            .track
+            .as_ref()
+            .filter(|_| self.status == AnimationStatus::Running)
+        else {
+            return T::zero();
+        };
+        let at = self.elapsed_at(now);
+        let step = Duration::from_millis(2);
+        let (a, b) = (
+            track.sample(at).value,
+            track.sample(at.saturating_add(step)).value,
+        );
+        b.sub(&a).scale(self.speed() / step.as_secs_f64())
+    }
+}
+
 /// Sampling parameters are fixed for the whole Context pass.
 #[derive(Clone, Copy)]
 pub(crate) struct Pass {
@@ -150,81 +217,10 @@ pub(crate) struct Pass {
     pub visible: bool,
     pub reduced: bool,
     pub interval: Duration,
+    pub scale: f64,
 }
 
 impl Animations {
-    pub(crate) fn spring<T: super::SpringValue>(
-        &mut self,
-        id: Id,
-        initial: Option<super::SpringState<T>>,
-        target: T,
-        options: super::SpringOptions,
-        pass: Pass,
-    ) -> Animated<super::SpringState<T>> {
-        self.observed.push(id);
-        self.entries.entry(id).or_insert_with(|| {
-            if initial.is_none() {
-                let rest = super::SpringState {
-                    value: target.clone(),
-                    velocity: T::zero(),
-                };
-                Box::new(Slot::new(
-                    rest.clone(),
-                    Some(rest),
-                    None,
-                    AnimationOptions::default(),
-                    pass.now,
-                ))
-            } else {
-                let initial = initial.unwrap_or(super::SpringState {
-                    value: target.clone(),
-                    velocity: T::zero(),
-                });
-                let track =
-                    super::Spring::with_options(initial.value.clone(), target.clone(), options)
-                        .velocity(initial.velocity.clone());
-                let slot = Slot::new(
-                    initial,
-                    Some(super::SpringState {
-                        value: target.clone(),
-                        velocity: T::zero(),
-                    }),
-                    Some(Box::new(track)),
-                    AnimationOptions::default(),
-                    pass.now,
-                );
-                Box::new(slot)
-            }
-        });
-        let slot = self.slot::<super::SpringState<T>>(id).unwrap();
-        if slot
-            .target
-            .as_ref()
-            .is_none_or(|state| state.value != target)
-        {
-            slot.evaluate(pass.now, pass.reduced);
-            let from = slot.value.clone();
-            let track = super::Spring::with_options(from.value.clone(), target.clone(), options)
-                .velocity(from.velocity.clone());
-            *slot = Slot::new(
-                from,
-                Some(super::SpringState {
-                    value: target,
-                    velocity: T::zero(),
-                }),
-                Some(Box::new(track)),
-                AnimationOptions::default(),
-                pass.now,
-            );
-        }
-        slot.read(
-            pass.now,
-            pass.frame,
-            pass.visible,
-            pass.reduced,
-            pass.interval,
-        )
-    }
     pub(crate) fn remove(&mut self, id: Id) {
         self.entries.remove(&id);
     }
@@ -250,52 +246,6 @@ impl Animations {
                 .downcast_mut::<Slot<T>>()
                 .expect("animation channel type changed: use a distinct Id or restart_animation")
         })
-    }
-    pub(crate) fn transition<T: Interpolate>(
-        &mut self,
-        id: Id,
-        initial: Option<T>,
-        target: T,
-        options: TweenOptions,
-        pass: Pass,
-    ) -> Animated<T> {
-        self.observed.push(id);
-        self.entries.entry(id).or_insert_with(|| {
-            let from = initial.unwrap_or_else(|| target.clone());
-            let track: Option<Box<dyn Animation<T>>> = (from != target).then(|| {
-                Box::new(Tween::with_options(
-                    from.clone(),
-                    target.clone(),
-                    options.clone(),
-                )) as _
-            });
-            Box::new(Slot::new(
-                from,
-                Some(target.clone()),
-                track,
-                AnimationOptions::default(),
-                pass.now,
-            ))
-        });
-        let slot = self.slot::<T>(id).unwrap();
-        if slot.target.as_ref() != Some(&target) {
-            slot.evaluate(pass.now, pass.reduced);
-            let from = slot.value.clone();
-            *slot = Slot::new(
-                from.clone(),
-                Some(target.clone()),
-                Some(Box::new(Tween::with_options(from, target, options))),
-                AnimationOptions::default(),
-                pass.now,
-            );
-        }
-        slot.read(
-            pass.now,
-            pass.frame,
-            pass.visible,
-            pass.reduced,
-            pass.interval,
-        )
     }
     pub(crate) fn animate<T: Clone + 'static, A: Animation<T>>(
         &mut self,
@@ -349,6 +299,7 @@ impl Animations {
                 pass.visible,
                 pass.reduced,
                 pass.interval,
+                pass.scale,
             )
         })
     }
@@ -359,6 +310,15 @@ impl Animations {
         } else {
             false
         }
+    }
+    pub(crate) fn elapsed(&self, id: Id, now: Instant) -> Option<Duration> {
+        self.entries.get(&id).map(|entry| entry.elapsed(now))
+    }
+    pub(crate) fn rate(&self, id: Id) -> Option<f64> {
+        self.entries.get(&id).map(|entry| entry.rate())
+    }
+    pub(crate) fn duration(&self, id: Id) -> Option<Duration> {
+        self.entries.get(&id).and_then(|entry| entry.duration())
     }
     pub(crate) fn status(&self, id: Id) -> Option<AnimationStatus> {
         self.entries.get(&id).map(|entry| entry.status())
@@ -389,3 +349,4 @@ impl Animations {
 }
 
 mod entry;
+mod transitions;

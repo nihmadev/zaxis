@@ -51,6 +51,14 @@ impl Context {
             visible,
             reduced: self.style.motion.reduced_motion,
             interval: self.style.motion.frame_interval,
+            scale: {
+                let scale = f64::from(self.style.motion.time_scale);
+                if scale.is_finite() && scale > 0.0 {
+                    scale
+                } else {
+                    1.0
+                }
+            },
         }
     }
 
@@ -75,6 +83,30 @@ impl Context {
         options: TweenOptions,
     ) -> Animated<T> {
         self.transition_visible(id, Some(initial), target, options, true)
+    }
+    /// Like `transition`, but retargeting a running transition keeps its current
+    /// velocity instead of restarting the easing curve from zero speed, so
+    /// repeated changes of mind never produce a visible hitch. The retargeted
+    /// leg lasts `options.duration` and ignores easing; from rest the options
+    /// apply unchanged. Needs vector arithmetic: `f32`, `f64`, `Vec2` or an
+    /// application `SpringValue`.
+    pub fn transition_smooth<T: crate::SpringValue + Interpolate>(
+        &mut self,
+        id: Id,
+        target: T,
+        options: TweenOptions,
+    ) -> Animated<T> {
+        self.transition_smooth_visible(id, target, options, true)
+    }
+    pub(crate) fn transition_smooth_visible<T: crate::SpringValue + Interpolate>(
+        &mut self,
+        id: Id,
+        target: T,
+        options: TweenOptions,
+        visible: bool,
+    ) -> Animated<T> {
+        self.animations
+            .transition_smooth(id, None, target, options, self.animation_pass(visible))
     }
     pub(crate) fn transition_visible<T: Interpolate>(
         &mut self,
@@ -141,6 +173,43 @@ impl Context {
     pub fn cancel_animation(&mut self, id: Id) -> bool {
         self.animations
             .control(id, Control::Cancel, self.frame_time)
+    }
+    /// Jump a running or paused channel to `elapsed` track time. A paused
+    /// channel shows the scrubbed pose immediately and stays paused; a position
+    /// past the end completes the channel. Completed and cancelled channels
+    /// hold no track, so they cannot be seeked: restart them instead.
+    pub fn seek_animation(&mut self, id: Id, elapsed: std::time::Duration) -> bool {
+        self.animations
+            .control(id, Control::Seek(elapsed), self.frame_time)
+    }
+    /// Playback rate of one channel (1.0 by default, 2.0 twice as fast,
+    /// negative backwards). Playing backwards completes at the start pose.
+    /// Position is preserved; restarting resets the rate. Zero or non-finite
+    /// rates panic: use `pause_animation` to stop a channel.
+    pub fn set_animation_rate(&mut self, id: Id, rate: f64) -> bool {
+        assert!(
+            rate.is_finite() && rate != 0.0,
+            "animation rate must be finite and nonzero"
+        );
+        self.animations
+            .control(id, Control::Rate(rate), self.frame_time)
+    }
+    /// Flip the direction of a running or paused channel from its current pose.
+    pub fn reverse_animation(&mut self, id: Id) -> bool {
+        self.animations
+            .control(id, Control::Reverse, self.frame_time)
+    }
+    /// Track time reached by the channel, including the effect of rate and
+    /// `MotionStyle::time_scale`. Useful to drive a scrubber.
+    pub fn animation_elapsed(&self, id: Id) -> Option<std::time::Duration> {
+        self.animations.elapsed(id, self.frame_time)
+    }
+    pub fn animation_rate(&self, id: Id) -> Option<f64> {
+        self.animations.rate(id)
+    }
+    /// Exact length of the active track, when it has one.
+    pub fn animation_duration(&self, id: Id) -> Option<std::time::Duration> {
+        self.animations.duration(id)
     }
     /// Apply the exact final value and emit completion once, including when paused.
     pub fn finish_animation(&mut self, id: Id) -> bool {

@@ -180,7 +180,7 @@ fn color_picker_reverse_reveal_clips_hits_and_reduced_motion_keeps_final_state()
     ctx.set_style(style);
     click(&mut ctx);
     let open = draw(&mut ctx, &mut color, 242);
-    assert_eq!(open.rect.size().y, 220.0);
+    assert_eq!(open.rect.size().y, 230.0);
     assert_eq!(ctx.next_repaint(), None);
     draw(&mut ctx, &mut color, 243);
     assert!(!ctx.needs_repaint_at(start + ms(10_000)));

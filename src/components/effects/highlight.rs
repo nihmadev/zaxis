@@ -28,10 +28,7 @@ impl Ui<'_> {
         accent: crate::Color,
         release: TweenOptions,
     ) {
-        assert!(
-            release.repeat == crate::Repeat::Once && !release.auto_reverse,
-            "highlight release must be finite"
-        );
+        let release = crate::components::sanitize::forward("highlight release", release);
         let id = self.scope.with(("highlight", Id::new(source)));
         let mut state = self.context.effect_states.remove(&id).unwrap_or_else(|| {
             let mut state = EffectState::new(self.context.frame);

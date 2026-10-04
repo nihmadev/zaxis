@@ -1,5 +1,5 @@
-use super::{effects::EffectState, Ui};
-use crate::{Id, Rect, Transform, TweenOptions, Vec2};
+use super::Ui;
+use crate::{Id, Rect, TweenOptions, Vec2};
 use std::{collections::HashSet, hash::Hash};
 
 /// Opt-in visual placement. Supply full MODEL membership, even with virtual rows.
@@ -8,6 +8,13 @@ use std::{collections::HashSet, hash::Hash};
 pub struct Reorder {
     id: Id,
     motion: Option<TweenOptions>,
+}
+/// Result of [`ReorderUi::item_presence`].
+pub struct RowPresence<R> {
+    /// The closure's result while the row is still on screen.
+    pub inner: Option<R>,
+    /// The exit has finished: remove the item from the model.
+    pub exited: bool,
 }
 pub struct ReorderUi<'a, 'b> {
     ui: &'a mut Ui<'b>,
@@ -46,9 +53,10 @@ impl SelectionIndicator {
         self.color = Some(color);
         self
     }
+    #[track_caller]
     pub fn thickness(mut self, thickness: f32) -> Self {
-        assert!(thickness.is_finite() && thickness >= 0.0);
-        self.thickness = Some(thickness);
+        self.thickness =
+            super::sanitize::non_negative("Reorder::thickness", thickness).or(self.thickness);
         self
     }
     pub fn show(
@@ -131,7 +139,14 @@ impl Reorder {
         let mut members = HashSet::new();
         let hidden_pass = ui.context.animation_pass(false);
         for member in model {
-            assert!(members.insert(member), "duplicate reorder model ID");
+            if !members.insert(member) {
+                ui.context.report(
+                    crate::DiagnosticKind::IdCollision,
+                    Some(member),
+                    None,
+                    || "duplicate id: the reorder model lists an id twice".into(),
+                );
+            }
             let key = id.with(member);
             if let Some(state) = ui.context.effect_states.get_mut(&key) {
                 state.last_frame = ui.context.frame;
@@ -151,59 +166,42 @@ impl<'a, 'b> ReorderUi<'a, 'b> {
     pub fn ui(&mut self) -> &mut Ui<'b> {
         self.ui
     }
+    /// A row that also fades (or slides, scales, rotates) in and out through
+    /// `presence`. While `present` is false the row plays its exit and keeps its
+    /// space; when it has finished, `exited` is true and the application should
+    /// drop the item from its model, after which the rows below glide up into
+    /// the gap. New items enter with the same motion at their final place while
+    /// the rows after them glide down.
+    ///
+    /// Items present when the list first appears fade in too; pass
+    /// `Presence::appear(false)` for those so only later arrivals animate.
+    pub fn item_presence<R>(
+        &mut self,
+        member: Id,
+        present: bool,
+        presence: super::Presence,
+        build: impl FnOnce(&mut Ui<'_>) -> R,
+    ) -> RowPresence<R> {
+        let mut shown = None;
+        self.item(member, |ui| {
+            shown = presence.show(ui, "row", present, build);
+        });
+        RowPresence {
+            exited: !present && shown.is_none(),
+            inner: shown,
+        }
+    }
     pub fn item<R>(&mut self, member: Id, build: impl FnOnce(&mut Ui<'_>) -> R) -> R {
-        assert!(
-            self.members.contains(&member) && self.built.insert(member),
-            "row must have a unique model ID"
-        );
+        if !self.members.contains(&member) || !self.built.insert(member) {
+            self.ui.context.report(
+                crate::DiagnosticKind::IdCollision,
+                Some(member),
+                None,
+                || "duplicate or unknown id: each reorder row needs one unique model id".into(),
+            );
+        }
         let key = self.id.with(member);
-        let (inner, size, placement) = self.ui.measure_effect(key, true, build);
-        let rect = Rect::from_min_size(self.ui.layout.cursor, size);
-        // Normalize by scroll CONTENT origin: viewport scrolling never retargets.
-        let origin = self.ui.content_origin();
-        let target = rect.min - origin;
-        let virtual_return = self
-            .ui
-            .context
-            .effect_states
-            .get(&key)
-            .is_some_and(|s| s.built_frame + 1 < self.ui.context.frame);
-        if virtual_return {
-            self.ui.context.remove_animation(key);
-        }
-        let old = if virtual_return {
-            None
-        } else {
-            self.ui.context.effect_states.get(&key).map(|s| s.position)
-        };
-        let motion =
-            self.ui
-                .context
-                .transition_visible(key, old, target, self.motion.clone(), false);
-        let delta = motion.value - target;
-        let visible = !rect
-            .translate(delta)
-            .intersect(self.ui.clip_rect())
-            .is_empty()
-            || !rect.intersect(self.ui.clip_rect()).is_empty();
-        if visible {
-            let pass = self.ui.context.animation_pass(true);
-            self.ui.context.animations.read::<Vec2>(key, pass);
-        } else {
-            self.ui.context.hide_placement_animations(&placement);
-        }
-        let mut state = EffectState::new(self.ui.context.frame);
-        state.position = motion.value;
-        self.ui.context.effect_states.insert(key, state);
-        self.ui.context.place_visual(
-            placement,
-            Transform::translation(delta),
-            1.0,
-            self.ui.clip_rect(),
-            true,
-        );
-        self.ui.allocate_space(size);
-        inner
+        self.ui.moving_item(key, self.motion.clone(), build)
     }
 }
 impl Ui<'_> {

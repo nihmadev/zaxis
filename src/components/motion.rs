@@ -29,6 +29,20 @@ impl Ui<'_> {
             !self.clip_rect().is_empty(),
         )
     }
+    /// See [`crate::Context::transition_smooth`].
+    pub fn transition_smooth<T: crate::SpringValue + crate::Interpolate>(
+        &mut self,
+        source: impl Hash,
+        target: T,
+        options: crate::TweenOptions,
+    ) -> crate::Animated<T> {
+        self.context.transition_smooth_visible(
+            self.animation_id(source),
+            target,
+            options,
+            !self.clip_rect().is_empty(),
+        )
+    }
     pub fn transition_from<T: crate::Interpolate>(
         &mut self,
         source: impl Hash,
