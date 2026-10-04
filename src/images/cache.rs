@@ -114,6 +114,10 @@ pub(crate) struct ImageCache {
     inflight_bytes: usize,
     placeholder: Arc<Vec<u8>>,
     pub(crate) state_changed: bool,
+    /// Advances whenever an image's observable state may have changed: published worker
+    /// results, reloads, releases and failures. Windows sharing the cache compare it to
+    /// the value they last drew with to learn that they need another frame.
+    epoch: u64,
 }
 impl ImageCache {
     pub fn new(owner: u64, ids: TextureIds) -> Self {
@@ -135,6 +139,7 @@ impl ImageCache {
             inflight_bytes: 0,
             placeholder: Arc::new(vec![180, 180, 180, 32]),
             state_changed: false,
+            epoch: 0,
         }
     }
     fn key(&self, source: &Source) -> Key {

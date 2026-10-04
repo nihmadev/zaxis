@@ -1,7 +1,7 @@
 //! Paint descriptions, tessellation, and per-element mesh caching.
 
 use super::{geometry::Element, Context, Id};
-use crate::{shapes::Mesh, Color, CornerRadius, FontWeight, Rect, Shape, Vec2};
+use crate::{shapes::Mesh, text::TextFont, Color, CornerRadius, FontWeight, Rect, Shape, Vec2};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,13 +42,14 @@ pub(crate) enum Paint {
         wrap_width: f32,
         color: Color,
     },
-    /// A paragraph of a multi-line field: like `Text`, shaped with an explicit tab width
-    /// so painting reads the same cached layout as the field's position queries.
+    /// Text shaped with explicit options: a tab width and a family or figure style. A
+    /// multi-line field paints its paragraphs with it, so painting reads the same cached
+    /// layout as the field's position queries. Plain text keeps using `Text`.
     Paragraph {
         text: String,
         position: Vec2,
         size: f32,
-        weight: FontWeight,
+        font: TextFont,
         wrap_width: f32,
         tab: u16,
         color: Color,
@@ -215,7 +216,7 @@ impl Context {
             } = primitive
             {
                 if !rect.intersect(clip).is_empty() {
-                    self.images.request(
+                    self.images.lock().request(
                         *handle,
                         rect.size() / uv.size().max(Vec2::splat(0.001))
                             * self.scale
@@ -288,7 +289,7 @@ impl Context {
                     text,
                     position,
                     size,
-                    weight,
+                    font,
                     wrap_width,
                     tab,
                     ..
@@ -296,7 +297,7 @@ impl Context {
                     text,
                     *position,
                     *size,
-                    *weight,
+                    *font,
                     *wrap_width,
                     *tab,
                     delta,
@@ -417,7 +418,7 @@ impl Context {
                         text,
                         position,
                         size,
-                        weight,
+                        font,
                         wrap_width,
                         tab,
                         color,
@@ -426,7 +427,7 @@ impl Context {
                         text,
                         *position,
                         *size,
-                        *weight,
+                        *font,
                         *wrap_width,
                         *tab,
                         *color,

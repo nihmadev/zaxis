@@ -124,6 +124,7 @@ impl Context {
                     self.text_click = None;
                     self.keyboard_active = None;
                     self.set_focus(None);
+                    self.ime_composing = false;
                     self.input.pointer = None;
                 }
                 true

@@ -1,8 +1,10 @@
 use super::*;
 
 impl ImageCache {
-    pub fn begin_frame(&mut self, frame: u64, now: Instant) {
-        self.frame = frame;
+    /// Start a pass of any window. The frame counter is the cache's own and advances once per
+    /// pass of any context sharing it, so "used this frame" means "by the running window".
+    pub fn begin_frame(&mut self, now: Instant) {
+        self.frame += 1;
         self.now = now;
         for e in self.entries.values_mut() {
             e.wanted = [0; 2];
@@ -11,6 +13,7 @@ impl ImageCache {
         // Results are atomically published only at the start of a UI pass.
         for result in self.workers.drain() {
             let start = Instant::now();
+            self.epoch += 1;
             self.metrics.pending_jobs -= 1;
             self.inflight_bytes = self.inflight_bytes.saturating_sub(result.reserved);
             let counted = |stage| result.timings.iter().any(|t| t.stage == stage);
@@ -214,6 +217,7 @@ impl ImageCache {
             }
             self.keys.retain(|_, id| *id != h.id);
         }
+        self.epoch += 1;
         let generation = self.generation();
         let e = self
             .entries
@@ -256,6 +260,7 @@ impl ImageCache {
         if h.owner != self.owner {
             return;
         }
+        self.epoch += 1;
         self.entries.remove(&h.id);
         self.keys.retain(|_, id| *id != h.id);
     }
@@ -322,5 +327,17 @@ impl ImageCache {
                 self.metrics.evictions += 1;
             }
         }
+    }
+}
+
+impl ImageCache {
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+    /// Whether a failure or limit change was recorded since the last call; counts as a change.
+    pub fn take_state_changed(&mut self) -> bool {
+        let changed = std::mem::take(&mut self.state_changed);
+        self.epoch += u64::from(changed);
+        changed
     }
 }

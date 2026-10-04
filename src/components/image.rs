@@ -116,7 +116,7 @@ impl Image {
         self
     }
     pub fn show(mut self, ui: &mut Ui<'_>) -> ImageOutput {
-        let handle = ui.context.images.resolve(self.source.clone());
+        let handle = ui.context.images.lock().resolve(self.source.clone());
         let state = match &handle {
             Ok(h) => ui.context.image_state(*h),
             Err(e) => ImageState::Error(e.clone()),
@@ -134,7 +134,7 @@ impl Widget for Image {
             Some(id) => ui.scope.with(("image", id)),
             None => ui.next_id("image"),
         };
-        let handle = ui.context.images.resolve(self.source);
+        let handle = ui.context.images.lock().resolve(self.source);
         let state = match &handle {
             Ok(h) => ui.context.image_state(*h),
             Err(e) => ImageState::Error(e.clone()),
@@ -195,6 +195,7 @@ impl Widget for Image {
         }
         if let Ok(handle) = handle {
             let (paint_rect, uv) = fit(rect, intrinsic, uv, self.fit);
+            let texture = ui.context.images.lock().texture(handle, self.filter).unwrap();
             // Always carry demand through placement/scroll/visual materialization.
             // Invisible sources don't enqueue jobs; suppressed placeholders still load.
             ui.context.paint(
@@ -212,7 +213,7 @@ impl Widget for Image {
                         0.0
                     },
                     handle,
-                    texture: ui.context.images.texture(handle, self.filter).unwrap(),
+                    texture,
                     hidden: !self.placeholder && !state.is_ready(),
                 }],
             );

@@ -48,7 +48,7 @@ impl Context {
     /// Check a deterministic host clock, matching `run_at`.
     pub fn needs_repaint_at(&self, now: Instant) -> bool {
         self.dirty
-            || self.images.has_results()
+            || self.shared_state_changed()
             || self.next_repaint().is_some_and(|time| time <= now)
     }
     /// A visible continuous track or active middle-button scrolling wants the next presented frame. Vsync hosts

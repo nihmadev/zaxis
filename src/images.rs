@@ -19,7 +19,7 @@ use std::sync::{
     Arc,
 };
 
-/// Per-context allocator shared by the text atlas and image cache.
+/// Allocator shared by the text atlas and image cache of one set of shared resources.
 #[derive(Clone)]
 pub(crate) struct TextureIds(Arc<AtomicU64>);
 impl Default for TextureIds {
@@ -30,5 +30,19 @@ impl Default for TextureIds {
 impl TextureIds {
     pub(crate) fn next(&self) -> TextureId {
         TextureId(self.0.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// The image cache of one set of [`SharedResources`](crate::SharedResources): every window
+/// of an application decodes, rasterizes and keeps each image once.
+#[derive(Clone)]
+pub(crate) struct SharedImages(Arc<std::sync::Mutex<ImageCache>>);
+impl SharedImages {
+    pub(crate) fn new(ids: TextureIds) -> Self {
+        let owner = crate::protocol::next_source();
+        Self(Arc::new(std::sync::Mutex::new(ImageCache::new(owner, ids))))
+    }
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, ImageCache> {
+        self.0.lock().expect("image cache mutex")
     }
 }

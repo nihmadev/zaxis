@@ -26,12 +26,13 @@ impl Context {
         {
             self.next_repaint = None;
         }
+        self.sync_appearance();
         // Clear before the callback so repaint requests made by widgets survive it.
         self.dirty = false;
         self.ime_area = None;
         self.frame += 1;
         self.sample_theme_palette();
-        self.images.begin_frame(self.frame, self.frame_time);
+        self.images.lock().begin_frame(self.frame_time);
         self.text.begin_frame();
         self.stats.ui_passes += 1;
         self.elements.clear();
@@ -99,13 +100,15 @@ impl Context {
         self.hits.retain(|h| !h.rect.intersect(h.clip).is_empty());
         self.scrolling.finish_frame(self.frame);
         self.finish_auto_scroll();
-        if let Some(deadline) = self.images.finish_frame() {
+        let settle = self.images.lock().finish_frame();
+        if let Some(deadline) = settle {
             self.request_repaint_after(deadline.saturating_duration_since(self.frame_time));
         }
-        if std::mem::take(&mut self.images.state_changed) {
+        if self.images.lock().take_state_changed() {
             self.request_repaint();
         }
         self.rebuild_geometry();
+        self.images_epoch = self.images.lock().epoch();
         self.text.end_frame();
         self.animations.finish_pass(self.frame);
         self.tab_pages

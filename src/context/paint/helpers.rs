@@ -67,6 +67,39 @@ pub(super) fn paint_translation(old: &[Paint], new: &[Paint], scale: f32) -> Opt
     Some(delta)
 }
 impl Paint {
+    /// Text in `font`. Plain proportional text at the default tab stays `Text`, so its cache
+    /// entries and translation fast paths are unchanged; anything else is a `Paragraph`.
+    pub(crate) fn text(
+        text: String,
+        position: Vec2,
+        size: f32,
+        font: crate::text::TextFont,
+        wrap_width: f32,
+        tab: u16,
+        color: crate::Color,
+    ) -> Self {
+        if font.is_plain() && tab == crate::text::DEFAULT_TAB {
+            Self::Text {
+                text,
+                position,
+                size,
+                weight: font.weight,
+                wrap_width,
+                color,
+            }
+        } else {
+            Self::Paragraph {
+                text,
+                position,
+                size,
+                font,
+                wrap_width,
+                tab,
+                color,
+            }
+        }
+    }
+
     fn origin(&self) -> Vec2 {
         match self {
             Self::Visual {

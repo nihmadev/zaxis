@@ -1,6 +1,7 @@
 use super::*;
 
-/// Limits are per Context. Worker scratch is additional to the retained CPU budget.
+/// Limits belong to the shared resources: every window of an application uses the same
+/// ones. Worker scratch is additional to the retained CPU budget.
 #[derive(Clone, Debug)]
 pub struct ImageLimits {
     pub max_encoded_bytes: usize,

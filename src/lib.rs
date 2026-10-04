@@ -29,7 +29,11 @@ pub use animation::{
     PathFollow, PathPose, Procedural, Pulse, Repeat, Rotation, Sequence, Spring, SpringOptions,
     SpringState, SpringValue, Stagger, Tween, TweenOptions, Wake,
 };
-pub use app::{run, run_with_options, App, Frame, RunError, RunOptions};
+pub use app::{
+    run, run_with_options, App, AppStats, CloseRequested, CloseSource, ExitPolicy, Frame,
+    GlobalShortcut, OpenOutcome, RunError, RunOptions, WindowError, WindowInfo, WindowKey,
+    WindowOptions, WindowPlan, WindowStatus, Windows,
+};
 pub use components::theme::*;
 pub use components::{
     move_item, DragEffect, DragEnd, DragOutput, DragReason, DragSource, DragStyle, DropOutput,
@@ -58,6 +62,7 @@ pub use components::{
 };
 pub use context::{
     CacheStats, Context, DebugOverlay, Diagnostic, DiagnosticKind, EventResponse, Id, InputState,
+    SharedResources,
 };
 pub use glam::{vec2, Vec2};
 pub use images::{
@@ -74,7 +79,7 @@ pub use shapes::{
     Border, Color, CornerRadius, Gradient, GradientDirection, Rect, RectShape, Shadow, Shape,
     Transform,
 };
-pub use text::{FontFamily, FontWeight};
+pub use text::{FontFamily, FontWeight, MonospaceMetrics, TextFamily};
 #[cfg(feature = "bundled-icons")]
 pub use z_icons as icons;
 // Integrations are always available; zaxis has no optional backend features.

@@ -1,6 +1,6 @@
 //! Context construction and unique draw-data sources.
 
-use super::{CacheStats, Context, InputState};
+use super::{CacheStats, Context, InputState, SharedResources};
 use crate::{text::TextSystem, DrawData, FontFamily, Vec2};
 use ab_glyph::{Font, FontArc};
 use std::collections::{HashMap, HashSet};
@@ -25,9 +25,20 @@ impl Context {
 
     /// Replace the default font with a family of per-weight font files. System
     /// fonts still supply scripts the family lacks, followed by color emoji.
+    /// The context gets resources of its own; use [`Context::with_shared`] for windows
+    /// that should share them.
     pub fn with_fonts(family: FontFamily) -> Self {
+        Self::build(SharedResources::with_fonts(family))
+    }
+
+    /// Like [`Context::with_fonts`] with an explicit monospace family, which stays
+    /// independent of the main one. `None` selects the system's generic monospace font.
+    pub fn with_font_families(family: FontFamily, monospace: Option<FontFamily>) -> Self {
+        Self::build(SharedResources::with_font_families(family, monospace))
+    }
+
+    pub(super) fn build(shared: SharedResources) -> Self {
         let draw_data = DrawData::default();
-        let ids = crate::images::TextureIds::default();
         Self {
             native_chrome: None,
             input: InputState {
@@ -48,8 +59,16 @@ impl Context {
             frame_time: std::time::Instant::now(),
             in_pass: false,
             animations: Default::default(),
-            text: TextSystem::with_allocator(family, ids.clone()),
-            images: crate::images::ImageCache::new(draw_data.source, ids),
+            text: TextSystem::with_store(
+                shared.font_family().clone(),
+                shared.monospace_family().cloned(),
+                shared.glyphs(),
+            ),
+            images: shared.images().clone(),
+            shared,
+            appearance_seen: 0,
+            images_epoch: 0,
+            shows_images: false,
             image_visual_scale: 1.0,
             cache: HashMap::new(),
             visual_meshes: HashMap::new(),

@@ -195,11 +195,12 @@ impl Context {
         self.draw_data.scale_factor = self.scale;
         self.draw_data.textures = self.text.textures();
         let active = self.draw_data.commands.iter().map(|c| c.texture).collect();
-        let (images, options) = self.images.payloads(&active);
+        let (images, options) = self.images.lock().payloads(&active);
+        self.shows_images = !images.is_empty();
         self.draw_data.textures.extend(images);
         self.draw_data.texture_options = options;
-        self.draw_data.texture_budget_bytes = self.images.limits.gpu_cache_bytes;
-        self.draw_data.texture_binding_budget = self.images.limits.max_gpu_bindings;
+        self.draw_data.texture_budget_bytes = self.images.lock().limits.gpu_cache_bytes;
+        self.draw_data.texture_binding_budget = self.images.lock().limits.max_gpu_bindings;
         self.previous_elements = keys;
     }
 }
