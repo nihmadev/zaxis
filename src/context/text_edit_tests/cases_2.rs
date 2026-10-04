@@ -35,7 +35,7 @@ fn double_click_word_drag_and_triple_click_line() {
     let mut b = String::new();
     let r = draw(&mut c, &mut a, &mut b, true, false);
     let start = r[0].rect.min + vec2(c.style.text_edit_padding.left, 10.0);
-    let points = c.text_carets(&a, c.style.text_edit_font_size);
+    let points = c.text_carets(&a, c.style.text_edit_font_size, crate::FontWeight::REGULAR);
     let p = |byte| {
         start
             + vec2(

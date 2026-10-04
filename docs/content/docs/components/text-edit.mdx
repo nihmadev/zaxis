@@ -1,7 +1,7 @@
 ---
 title: TextEdit
 icon: Type
-description: Single-line Unicode editing, selection, clipboard, and native IME composition.
+description: Single-line and multi-line Unicode editing, selection, clipboard, scrolling, and native IME composition.
 ---
 
 ```rust
@@ -17,7 +17,8 @@ if response.lost_focus() { /* focus left this field */ }
 ```
 
 `ui.text_edit(&mut text)` is the short form. The application owns the string;
-edits update it immediately. Enter does not insert a newline or clear focus.
+edits update it immediately. In the default single-line mode Enter does not insert a
+newline or clear focus; see [Multi-line mode](#multi-line-mode) for `ui.text_area`.
 The three response flags are independent and can be true in the same pass.
 Each schedules a follow-up redraw, so earlier widgets observe model changes made
 by change, submit, or blur handlers.
@@ -41,11 +42,14 @@ disabled fields cannot focus or edit. `clicked()` is not used for text editing.
 | `selection_color(Color)` | `Style::text_edit_selection` |
 | `enabled(bool)` / `disabled(bool)` | Enabled by default; composes with parent groups |
 | `read_only(bool)` | False; blocks mutations and IME, retains copying |
+| `max_chars(usize)` | Unlimited; counts Unicode scalar values, cuts typed or pasted text between graphemes, never truncates text the application sets |
 
 Repeated or reorderable fields should use `id_source` or `Ui::push_id` with stable
 model identities. Cursor, selection, scroll offset, blink timing and composition are
 retained by ID. External changes clamp the selection to valid grapheme boundaries
 and cancel the displayed composition and undo history; they do not report `changed()`.
+The field detects them by fingerprinting the string (length and a 64-bit hash) on every
+pass it is built, which costs time proportional to the text but never copies it.
 
 ## Editing
 
@@ -73,15 +77,17 @@ font metrics, kerning and missing-glyph fallback as the text renderer.
 | Enter | Set `submitted()` |
 | Tab / Shift+Tab | Move focus to the next / previous enabled control |
 
-History retains up to 100 undo steps per field. Consecutive single-grapheme typing
+History stores each edit as a replacement (position, removed and inserted text), so a step
+costs the size of the change. It retains up to 200 steps and 8 MiB of text per field; the
+newest step is always kept. Consecutive single-grapheme typing
 within one second is grouped; navigation, selection, focus changes, deletion,
 paste and IME composition break the group. New edits after undo discard redo.
 Read-only fields retain their history but cannot undo or redo until editable.
 
 Command is also accepted for undo/redo, clipboard and word shortcuts on macOS. Keyboard
-repeats are supported. Control characters, including newlines and tabs, are removed
-from inserted or pasted text. Existing control characters in an externally supplied
-string display as spaces without mutating the bound value. Clipboard failures leave
+repeats are supported. In single-line mode control characters, including newlines and tabs,
+are removed from inserted or pasted text, and existing control characters in an externally
+supplied string display as spaces without mutating the bound value. Clipboard failures leave
 the string unchanged; failed copying never deletes a cut selection.
 
 Editing uses extended grapheme segmentation from
@@ -90,8 +96,9 @@ and the system clipboard through [arboard](https://docs.rs/arboard/latest/arboar
 Combining marks, flags, emoji modifiers and ZWJ sequences remain intact. Glyph
 coverage uses the same advanced shaping and bidirectional layout as labels, with
 system font fallback and bundled color emoji. Non-emoji script coverage still depends
-on available fonts. The editor is single-line; logical editing order does not imply
-a complete visual-navigation model for every mixed-direction text case.
+on available fonts. Logical editing order does not imply a complete visual-navigation model
+for every mixed-direction text case: arrows move in logical order, and a caret between a
+left-to-right and a right-to-left run is drawn at one of its two visual positions.
 
 ## IME and repaint scheduling
 
@@ -110,5 +117,102 @@ The host sleeps with `WaitUntil`; no continuous polling is needed. Unfocused fie
 schedule no timers. Setting the interval to zero shows a steady cursor without
 blink timers. The cursor width is `Style::text_edit_cursor_width`.
 
-Run `cargo run --example text_edit` to try independent fields, Unicode, read-only,
-disabled state and separate change/Enter/blur counters.
+## Multi-line mode
+
+`TextEdit::multiline()` (or `ui.text_area(&mut text)`) turns the same engine into a text
+area: the buffer, undo history, clipboard, IME, selection and mouse handling are shared with
+the single-line field; only the layout and the Enter rule differ. Shaping, bidi and line
+breaking come from the same cosmic-text layout as `Text`; the caret, hit testing, selection
+rectangles and painting all read one cached layout per paragraph.
+
+```rust
+ui.add(TextEdit::new(&mut note)
+    .id_source("note")
+    .multiline()
+    .auto_height(2.0, 8.0)
+    .submit_on_ctrl_enter(true)
+    .placeholder("Write a note…"));
+ui.add(TextEdit::new(&mut code).wrap(false).tab_indent(true).tab_size(4).rows(6.0));
+```
+
+| Builder | Default / behavior |
+| --- | --- |
+| `multiline()` | Single-line off; also implied by any builder below |
+| `wrap(bool)` | `true`: wrap at word boundaries (long words at glyphs). `false`: keep lines whole and scroll horizontally |
+| `rows(f32)` | Exactly this many text lines plus padding; longer content scrolls |
+| `auto_height(min, max)` | Grow with the content from `min` to `max` lines, then scroll; the parent layout sees the final height in the same pass |
+| `height(f32)` | Fixed total height in pixels |
+| (none of the above) | `TextEditStyle::area_min_height` (64 px with the default theme) |
+| `width(f32)` / `fill_width()` | Fills the available width unless the layout gives a preferred one |
+| `tab_indent(bool)` | `false`: Tab moves focus. `true`: Tab inserts a tab character; Shift+Tab always moves focus back |
+| `tab_size(u16)` | 4; width of a tab character in space widths (fixed width, not tab stops) |
+| `submit_on_ctrl_enter(bool)` | `false`. When `true`, Ctrl/Cmd+Enter sets `Response::submitted()` and inserts nothing; plain Enter always inserts a line break |
+| `max_chars(usize)` | As above |
+
+Padding, minimum height, border, radius, placeholder color, focus ring and the invalid and
+disabled states come from the same `TextEditStyle` and theme tokens as the single-line field
+(`area_padding` and `area_min_height` are the only multi-line additions). `status` and
+`enabled(false)` behave identically.
+
+**Text model.** Line breaks are stored as `\n`. Typed, pasted and committed text has `\r\n`
+and `\r` normalized to `\n`, tabs are kept and other control characters are dropped. A string
+the application supplies may contain `\r\n` or `\r`; it is displayed as separate lines and left
+unchanged.
+
+**Navigation and selection.** Up/Down keep the desired column across lines; Home/End go to
+the start/end of the visual line, Ctrl+Home/End to the document; PageUp/PageDown move the
+caret and the view by the viewport height; Ctrl+Left/Right and Ctrl+Backspace/Delete work by
+word and stop at line breaks; every movement extends the selection with Shift. Double-click
+selects a word, triple-click a paragraph (the text between line breaks), and dragging
+afterwards extends by words or paragraphs. Dragging past the edge scrolls at a speed
+proportional to the distance and keeps scrolling while the pointer is held still. At a soft
+wrap the position belongs to both visual lines: End and clicks past the end of a wrapped line
+draw the caret at the end of that line, every other movement draws it at the start of the next.
+Selections in right-to-left and mixed text produce one rectangle per contiguous run on every
+visual line; a selected line break adds a short stub so empty lines show as selected.
+
+**Scrolling.** The text scrolls inside the standard `ScrollArea` (same offset state, wheel
+routing, overlay scroll bars and hints). The wheel scrolls the field first and passes the
+remainder to the enclosing scroll area at the limits. The caret is revealed after typing,
+navigation, undo and composition, but not after wheel scrolling or a mouse press. When the
+width changes the paragraphs re-wrap and the top visible line stays in place.
+
+**IME.** Composition is shown inside the paragraph, underlined, and its selected clause is
+highlighted. Starting a composition over a selection deletes the selection as one undoable
+edit. The candidate window follows the caret through scroll offset, clipping, DPI and
+transforms, exactly as for the single-line field.
+
+**Performance model.** The document is a table of paragraphs. Shaping and layout are cached
+per paragraph and only the paragraphs near the viewport are shaped; an edit replaces the
+paragraphs it touches, the rest keep their layouts. Heights of paragraphs that were never
+shown are estimates (one line without wrapping, a character-count estimate with wrapping)
+until they are first measured, so the scroll bar of a very long document can move slightly
+as parts of it are reached; the top visible line stays anchored while this happens. Paint and
+hit testing only visit visible paragraphs; layouts far from the viewport are dropped, so
+memory follows the view. An idle field costs a hash of its text per pass and requests no
+frames; a focused one requests only the caret blink deadline. Selection, text and caret are
+separate cached elements, so the blinking caret does not rebuild the text. No rope or similar
+structure is used: measurements at 50 000 lines (`text_area_*` in the benchmark harness) have
+not called for one. Per-edit work that still grows with the document is the paragraph table
+update and the content hash, both linear in the number of paragraphs or bytes.
+
+Layouts do not store a text color, so colored ranges can be added later without changing the
+cache.
+
+Run `cargo run --example text_edit` to try independent fields, an auto-growing note, a fixed
+height field with scrolling, a non-wrapping field with Tab indentation, a read-only log,
+mixed Cyrillic/emoji/Arabic/Hebrew text and a disabled area. Benchmarks:
+`cargo bench --bench performance -- --quick --cpu-only --filter text_area --sizes 100,5000,50000`.
+
+## Multi-line limitations
+
+- Only the bundled proportional Inter family exists, so there is no monospaced font option
+  and no line-number gutter; an application can draw line numbers next to the field with
+  `Text`, but they do not follow the field's scrolling.
+- A tab is a fixed number of space widths, not an advance to the next tab stop.
+- The horizontal scroll range (`wrap(false)`) covers the widest paragraph measured so far;
+  paragraphs that were never on screen do not extend it.
+- No syntax highlighting, rich text or colored ranges, multiple carets, find and replace,
+  folding, completion, or dragging of selected text.
+- The text is not exposed to OS accessibility, as for every control.
+- Text assigned by the application is never truncated by `max_chars`.

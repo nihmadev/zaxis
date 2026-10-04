@@ -75,11 +75,13 @@ fn pointer_capture_selects_and_scrolls_using_font_metrics() {
     draw(&mut c, &mut a, &mut b, true, false);
     assert_eq!(c.text_edits[&r[0].id].buffer.cursor, 0);
     let x = c
-        .text_carets(&a, c.style.text_edit_font_size)
+        .text_carets(&a, c.style.text_edit_font_size, crate::FontWeight::REGULAR)
         .iter()
         .find(|(i, _)| *i == 2)
         .unwrap()
-        .1;
+        .1
+        // Aim inside "V": the exact caret edge ties between the word and the space.
+        - 1.0;
     c.move_pointer(start);
     c.primary_button(ElementState::Pressed);
     c.move_pointer(start + vec2(x, 0.0));
@@ -167,6 +169,9 @@ fn cursor_deadlines_and_external_replacement_do_not_spin_or_panic() {
     draw(&mut c, &mut a, &mut b, true, false);
     assert!(c.next_repaint().is_none());
     key(&mut c, KeyCode::Tab, ModifiersState::empty());
+    // Gaining focus is an event and schedules exactly one follow-up pass.
+    draw(&mut c, &mut a, &mut b, true, false);
+    assert!(c.dirty);
     draw(&mut c, &mut a, &mut b, true, false);
     assert!(!c.dirty);
     assert!(c.next_repaint().unwrap() > Instant::now());
@@ -194,13 +199,17 @@ fn cursor_deadlines_and_external_replacement_do_not_spin_or_panic() {
 #[test]
 fn shift_click_cache_reuse_stable_ids_and_removed_state() {
     let mut c = setup();
+    // A running hover tween legitimately re-tessellates; keep the idle check deterministic.
+    let mut style = c.style().clone();
+    style.motion.reduced_motion = true;
+    c.set_style(style);
     let mut a = "abcdef".to_owned();
     let mut b = String::new();
     let r = draw(&mut c, &mut a, &mut b, true, false);
     let start = r[0].rect.min + vec2(c.style.text_edit_padding.left, 10.0);
     click(&mut c, start);
     let x = c
-        .text_carets(&a, c.style.text_edit_font_size)
+        .text_carets(&a, c.style.text_edit_font_size, crate::FontWeight::REGULAR)
         .iter()
         .find(|(i, _)| *i == 3)
         .unwrap()

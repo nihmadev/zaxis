@@ -1,5 +1,5 @@
 use super::{
-    edit_buffer::{boundaries, word_at, EditBuffer},
+    edit_buffer::{boundaries, EditBuffer},
     edit_history::EditHistory,
     Response, Ui, Widget,
 };
@@ -7,22 +7,42 @@ use crate::{
     context::{HitAction, HitRegion, Paint, TextEditInput},
     Border, Color, CornerRadius, Id, Padding, Rect, Shape, Vec2,
 };
-use std::{hash::Hash, panic::Location, time::Duration};
+use std::{hash::Hash, ops::Range, panic::Location, time::Duration};
+use text_input::Fingerprint;
 use unicode_segmentation::UnicodeSegmentation;
 use winit::keyboard::KeyCode;
 
+mod area;
+mod area_paint;
+mod blink;
+mod chrome;
+mod doc;
+mod doc_layout;
 mod events;
 mod geometry;
-use geometry::{display_line, line, positions, single_line, x_at};
+mod options;
+mod scroll;
+mod show;
+mod single;
+mod text_input;
+use geometry::{display_line, line, positions, x_at};
+use options::{AreaHeight, AreaOptions};
 pub(crate) type EditEventHandler<'a> = dyn FnMut(&mut String, &TextEditInput) -> bool + 'a;
 
-/// A single-line editor bound directly to an application-owned string.
+/// An editor bound directly to an application-owned string: a single line by default,
+/// a scrolling multi-line text area after [`TextEdit::multiline`].
+///
+/// Both modes are one engine: the same buffer, undo history, clipboard, IME and mouse
+/// handling. Only the layout differs (one line, or wrapped paragraphs) and the Enter rule
+/// (submit, or insert a line break). Line breaks are stored as `\n`; `\r\n` and `\r` are
+/// normalized when text is typed, pasted or composed.
 pub struct TextEdit<'a> {
     text: &'a mut String,
     placeholder: String,
     id: Option<Id>,
     source: &'static Location<'static>,
     enabled: bool,
+    status: super::SemanticStatus,
     read_only: bool,
     width: Option<f32>,
     height: Option<f32>,
@@ -40,6 +60,8 @@ pub struct TextEdit<'a> {
     pub(crate) exact_id: Option<Id>,
     pub(crate) affixes: (String, String),
     pub(crate) select_all: bool,
+    max_chars: Option<usize>,
+    area: Option<AreaOptions>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -51,6 +73,7 @@ impl<'a> TextEdit<'a> {
             id: None,
             source: Location::caller(),
             enabled: true,
+            status: Default::default(),
             read_only: false,
             width: None,
             height: None,
@@ -68,6 +91,8 @@ impl<'a> TextEdit<'a> {
             exact_id: None,
             affixes: (String::new(), String::new()),
             select_all: false,
+            max_chars: None,
+            area: None,
         }
     }
     pub fn style(mut self, style: super::theme::TextEditStyle) -> Self {
@@ -94,6 +119,15 @@ impl<'a> TextEdit<'a> {
         self.enabled = value;
         self
     }
+    /// Validation state: the border and a soft ring take the status color. Fields inherit
+    /// the status of an enclosing [`super::Field`] unless this is set.
+    pub fn status(mut self, status: super::SemanticStatus) -> Self {
+        self.status = status;
+        self
+    }
+    #[deprecated(
+        note = "use `.enabled(!disabled)`; `enabled` is the one way to set a control's availability"
+    )]
     pub fn disabled(self, value: bool) -> Self {
         self.enabled(!value)
     }
@@ -102,28 +136,36 @@ impl<'a> TextEdit<'a> {
         self.read_only = value;
         self
     }
+    #[track_caller]
     pub fn width(mut self, value: f32) -> Self {
-        assert!(value.is_finite() && value > 0.0);
-        self.width = Some(value);
+        self.width = super::sanitize::positive("TextEdit::width", value).or(self.width);
         self
     }
+    /// Total height including padding. For a text area this fixes the height; the
+    /// content scrolls inside it.
+    #[track_caller]
     pub fn height(mut self, value: f32) -> Self {
-        assert!(value.is_finite() && value > 0.0);
-        self.height = Some(value);
+        self.height = super::sanitize::positive("TextEdit::height", value).or(self.height);
         self
     }
+    #[track_caller]
     pub fn font_size(mut self, value: f32) -> Self {
-        assert!(value.is_finite() && value > 0.0);
-        self.size = Some(value);
+        self.size = super::sanitize::positive("TextEdit::font_size", value).or(self.size);
         self
     }
     pub fn padding(mut self, value: Padding) -> Self {
         self.padding = Some(value);
         self
     }
-    pub fn rounding(mut self, value: CornerRadius) -> Self {
-        self.rounding = Some(value);
+    pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.rounding = Some(radius.into());
         self
+    }
+    #[deprecated(
+        note = "use `.corner_radius(..)`; one name for the corner radius of every component"
+    )]
+    pub fn rounding(self, value: CornerRadius) -> Self {
+        self.corner_radius(value)
     }
     pub fn fill(mut self, value: Color) -> Self {
         self.fill = Some(value);
@@ -141,24 +183,37 @@ impl<'a> TextEdit<'a> {
         self.selection_color = Some(value);
         self
     }
+    /// Limit the text to `count` characters (Unicode scalar values). Typed, pasted and
+    /// composed text is cut at a grapheme boundary to fit; text set by the application
+    /// is never truncated.
+    pub fn max_chars(mut self, count: usize) -> Self {
+        self.max_chars = Some(count);
+        self
+    }
 }
 
 pub(crate) struct TextEditState {
     pub(crate) buffer: EditBuffer,
     pub(crate) scroll: f32,
-    last_text: String,
+    fingerprint: Fingerprint,
     history: EditHistory,
-    word_drag: Option<std::ops::Range<usize>>,
+    word_drag: Option<Range<usize>>,
+    /// The press that started `word_drag` selected whole paragraphs, not words.
+    drag_paragraphs: bool,
     focused: bool,
     blink_interval: Duration,
     pub(crate) preedit: Option<(String, Option<(usize, usize)>)>,
+    area: Option<Box<area::AreaState>>,
 }
-
-mod show;
 
 impl Ui<'_> {
     #[track_caller]
     pub fn text_edit(&mut self, text: &mut String) -> Response {
         self.add(TextEdit::new(text))
+    }
+    /// A multi-line text area with default settings; see [`TextEdit::multiline`].
+    #[track_caller]
+    pub fn text_area(&mut self, text: &mut String) -> Response {
+        self.add(TextEdit::new(text).multiline())
     }
 }

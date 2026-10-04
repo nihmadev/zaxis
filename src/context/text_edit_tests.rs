@@ -28,7 +28,7 @@ fn draw(
                         TextEdit::new(a)
                             .id_source("a")
                             .width(120.0)
-                            .disabled(!enabled)
+                            .enabled(enabled)
                             .read_only(read_only),
                     ),
                     ui.add(TextEdit::new(b).id_source("b")),

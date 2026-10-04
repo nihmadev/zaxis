@@ -1,17 +1,20 @@
 use super::*;
+use crate::context::Context;
 
-pub(super) fn single_line(text: &str) -> String {
-    text.chars().filter(|c| !c.is_control()).collect()
-}
+/// Control characters are shown as spaces so byte offsets stay unchanged.
 pub(super) fn display_line(text: &str) -> String {
     text.chars()
         .map(|c| if c.is_ascii_control() { ' ' } else { c })
         .collect()
 }
-pub(super) fn positions(ui: &mut Ui<'_>, text: &str, size: f32) -> Vec<(usize, f32)> {
+pub(super) fn positions(
+    ctx: &mut Context,
+    text: &str,
+    size: f32,
+    weight: crate::FontWeight,
+) -> Vec<(usize, f32)> {
     let points = boundaries(text);
-    ui.context
-        .text_carets(&display_line(text), size)
+    ctx.text_carets(&display_line(text), size, weight)
         .into_iter()
         .filter(|(byte, _)| points.binary_search(byte).is_ok())
         .collect()
@@ -40,6 +43,7 @@ impl TextEdit<'_> {
         outer: Rect,
         position: Vec2,
         size: f32,
+        weight: crate::FontWeight,
         suffix_width: f32,
         color: Color,
     ) {
@@ -52,6 +56,7 @@ impl TextEdit<'_> {
                     text: self.affixes.0.clone(),
                     position: Vec2::new(outer.min.x, position.y),
                     size,
+                    weight,
                     wrap_width: f32::INFINITY,
                     color,
                 },
@@ -59,6 +64,7 @@ impl TextEdit<'_> {
                     text: self.affixes.1.clone(),
                     position: Vec2::new(outer.max.x - suffix_width, position.y),
                     size,
+                    weight,
                     wrap_width: f32::INFINITY,
                     color,
                 },
