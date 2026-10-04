@@ -76,6 +76,7 @@ impl Context {
             .collect();
         self.finish_modals();
         self.finish_tooltips();
+        self.finish_toasts();
         self.drag_emit_preview();
         self.finish_diagnostics();
         let ranks: std::collections::HashMap<_, _> = self

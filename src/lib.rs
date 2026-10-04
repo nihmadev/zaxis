@@ -50,7 +50,7 @@ pub use components::{
     SliderStatus, SortDirection, SortRequest, SplitBoundaryOutput, SplitHandle, SplitHandleStyle,
     SplitOutput, SplitPane, SplitPanel, SplitPanelOutput, SplitSize, SplitStyle, SplitSurface,
     SplitUi, Style, Switch, Table, TableBody, TableOutput, TableStyle, Text, TextEdit, TitleBar,
-    TitleBarResponse, Tooltip, TooltipStyle, TooltipWidget, Ui, Validation, Widget,
+    TitleBarResponse, Toast, Tooltip, TooltipStyle, TooltipWidget, Ui, Validation, Widget,
     WidgetState, Window,
 };
 pub use components::{

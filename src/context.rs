@@ -47,6 +47,7 @@ mod theme;
 mod theme_regression_tests;
 #[cfg(test)]
 mod theme_tests;
+pub(crate) mod toast;
 pub(crate) mod tooltip;
 mod tree;
 mod viewport;
@@ -211,6 +212,7 @@ pub struct Context {
     pub(crate) popup_layers: Vec<Id>,
     pub(crate) modals: modal::Modals,
     pub(crate) tooltips: tooltip::Tooltips,
+    pub(crate) toasts: toast::Toasts,
     pub(crate) key_capture: crate::components::key_box::KeyCapture,
     pub(crate) color_pickers: HashMap<Id, crate::components::color_picker::ColorPickerState>,
     pub(crate) text_edits: HashMap<Id, crate::components::text_edit::TextEditState>,

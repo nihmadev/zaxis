@@ -52,6 +52,7 @@ pub mod text;
 pub mod text_edit;
 pub mod theme;
 pub mod title_bar;
+pub mod toast;
 pub mod tooltip;
 pub mod tree_view;
 pub mod ui;
@@ -112,6 +113,7 @@ pub use text::Text;
 pub use text_edit::TextEdit;
 pub use theme::*;
 pub use title_bar::{TitleBar, TitleBarResponse};
+pub use toast::Toast;
 pub use tooltip::{Tooltip, TooltipStyle, TooltipWidget};
 pub use tree_view::{
     TreeChildren, TreeEvent, TreeIssue, TreeModel, TreeNode, TreeOutput, TreeView,
