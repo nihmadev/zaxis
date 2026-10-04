@@ -104,6 +104,7 @@ impl Tooltip {
                 text: self.text,
                 style,
                 font_size,
+                font_weight: ui.style().typography.weights.body,
                 fill,
                 color,
                 border,

@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use super::{Context, Id, Paint};
-use crate::{Border, Color, Rect, Shape, TooltipStyle, Vec2};
+use crate::{Border, Color, FontWeight, Rect, Shape, TooltipStyle, Vec2};
 
 pub(crate) struct TooltipRequest {
     pub target: Id,
@@ -9,6 +9,7 @@ pub(crate) struct TooltipRequest {
     pub text: String,
     pub style: TooltipStyle,
     pub font_size: f32,
+    pub font_weight: FontWeight,
     pub fill: Color,
     pub color: Color,
     pub border: Border,
@@ -75,11 +76,12 @@ impl Context {
             .max(request.font_size * 8.0)
             .min(available.x);
         let (mut text, mut size, mut wrap) =
-            self.tooltip_text(&request.text, request.font_size, width);
+            self.tooltip_text(&request.text, request.font_size, request.font_weight, width);
         // Prefer a wider box to losing lines when the viewport is short.
         if size.y > available.y && width < available.x {
             width = available.x;
-            (text, size, wrap) = self.tooltip_text(&request.text, request.font_size, width);
+            (text, size, wrap) =
+                self.tooltip_text(&request.text, request.font_size, request.font_weight, width);
         }
         let size = size + inset;
         let rect = place(anchor, size, viewport);
@@ -100,6 +102,7 @@ impl Context {
                     text,
                     position: rect.min + Vec2::new(padding.left, padding.top),
                     size: request.font_size,
+                    weight: request.font_weight,
                     wrap_width: wrap,
                     color: request.color,
                 },
@@ -107,7 +110,13 @@ impl Context {
         );
     }
 
-    fn tooltip_text(&mut self, text: &str, font: f32, width: f32) -> (String, Vec2, f32) {
+    fn tooltip_text(
+        &mut self,
+        text: &str,
+        font: f32,
+        weight: FontWeight,
+        width: f32,
+    ) -> (String, Vec2, f32) {
         // Wrap at words first. The shared shaper handles oversized words and
         // grapheme clusters, using exactly the same width for measurement/paint.
         let mut output = String::new();
@@ -122,7 +131,9 @@ impl Context {
                 } else {
                     format!("{line} {word}")
                 };
-                if !line.is_empty() && self.measure_text(&next, font, f32::INFINITY).x > width {
+                if !line.is_empty()
+                    && self.measure_text(&next, font, weight, f32::INFINITY).x > width
+                {
                     output.push_str(&line);
                     output.push('\n');
                     line = word.to_owned();
@@ -132,7 +143,7 @@ impl Context {
             }
             output.push_str(&line);
         }
-        let (size, wrap) = self.measure_text_layout(&output, font, width);
+        let (size, wrap) = self.measure_text_layout(&output, font, weight, width);
         (output, size, wrap)
     }
 }
@@ -222,11 +233,12 @@ mod tests {
         let (text, size, wrap) = c.tooltip_text(
             "Первая строка с пояснением\nSecond paragraph with words",
             14.0,
+            FontWeight::REGULAR,
             180.0,
         );
         assert!(text.contains("\nSecond"));
         assert!(size.x <= 180.0 && size.y < 140.0);
-        assert_eq!(c.measure_text(&text, 14.0, wrap), size);
+        assert_eq!(c.measure_text(&text, 14.0, FontWeight::REGULAR, wrap), size);
         let anchor = Rect::from_min_size(vec2(610.0, 330.0), vec2(20.0, 20.0));
         let rect = place(anchor, size + vec2(20.0, 12.0), c.viewport());
         assert!(rect.max.y < anchor.min.y);

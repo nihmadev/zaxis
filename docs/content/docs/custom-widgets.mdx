@@ -1,0 +1,95 @@
+---
+title: Custom widgets
+icon: PenTool
+description: Write a widget outside the crate with Ui::interact, Sense and the shared Response events.
+---
+
+A widget is anything that implements [`Widget`](./api.mdx#ui). Composing built-in
+controls needs nothing more. A widget with its own geometry and input uses one extra
+call, `Ui::interact`, which asks for a `Response` for a rectangle you allocated.
+
+```rust
+use zaxis::{vec2, Border, Color, Response, Sense, Shape, Ui, Widget};
+
+struct Pad<'a> { on: &'a mut bool }
+
+impl Widget for Pad<'_> {
+    fn ui(self, ui: &mut Ui<'_>) -> Response {
+        let rect = ui.allocate_space(vec2(120.0, 40.0));
+        let mut response = ui.interact(rect, "pad", Sense::CLICK | Sense::FOCUS);
+        if response.clicked() {
+            *self.on = !*self.on;
+            response.mark_changed();
+        }
+        let fill = if *self.on { Color::rgb(60, 140, 90) } else { Color::gray(52) };
+        ui.paint(Shape::rect(rect, fill).corner_radius(6.0)
+            .border(Border::new(if response.focus_visible { 2.0 } else { 1.0 }, Color::gray(110))));
+        response
+    }
+}
+
+// ui.add(Pad { on: &mut flag }.tooltip("Toggle the pad"));
+```
+
+## `Ui::interact(rect, id_source, sense) -> Response`
+
+* **Id.** `id_source` is hashed into the current scope, so `Response::id` is stable
+  across frames and distinct inside `Ui::push_id` loops. Two regions with one id in a
+  pass are reported as an `IdCollision` [diagnostic](./diagnostics.mdx).
+* **Geometry.** `rect` comes from `Ui::allocate_space` (or your own layout). Allocate
+  first, then interact: inside a Grid cell, Table row or `Ui::visual` group the region
+  moves with the content, exactly like a `Button`.
+* **One path.** The region is registered through the same hit path as the built-in
+  controls. It is clipped by windows, scroll areas and split panels, hidden when
+  scrolled out of view, disabled by `Ui::add_enabled_ui` (a disabled region blocks the
+  controls underneath like a disabled button), ordered by window and popup layers,
+  captured by the pointer while pressed, reached by Tab, and activated by Enter or
+  Space. There is no second hit test and nothing to register by hand.
+* **Repaint.** Any event on the response requests the follow-up pass, as `Ui::add`
+  does. Idle widgets never ask for frames.
+
+## `Sense`
+
+Combine with `|`. A sense only chooses which input the response reports.
+
+| Sense | Reports |
+| --- | --- |
+| `Sense::NONE` | Nothing; a passive region |
+| `Sense::HOVER` | `hovered`; presses still reach what is underneath |
+| `Sense::CLICK` | `clicked`, `double_clicked`, `secondary_clicked`, `pressed`; Enter and Space click while focused |
+| `Sense::DRAG` | `pressed`, `drag_started`, `dragged`, `drag_delta`, `drag_stopped`; capture continues outside the rectangle |
+| `Sense::FOCUS` | `has_focus`, `focus_visible`, `gained_focus`, `lost_focus`; Tab and presses focus it |
+
+A focused widget has no key handler of its own; read keys from
+`ui.context().input().keys_pressed`, as the [knob example](https://github.com/nihmadev/zaxis/blob/main/examples/custom_widget.rs)
+does. `Response::mark_changed()` reports that the widget changed its value, so `Ui::add`
+and callers see `changed()` like they do for a `Slider`.
+
+## Events are one-shot
+
+`clicked`, `double_clicked`, `secondary_clicked`, `drag_started`, `drag_stopped`,
+`gained_focus` and `lost_focus` are true for exactly one pass per user input.
+`dragged` is true while a drag is in progress and on the pass that ends it;
+`drag_delta` is the pointer movement since the previous pass, starting at the press
+position, so the deltas of one drag add up to its displacement. See
+[Input and responses](./input.mdx#response) for the full list and the rules that tie
+them together.
+
+## Drawing and caching
+
+`Ui::paint(shape)` takes `Shape::rect`, `Circle`, `Line` and the other
+[shapes](./drawing.mdx). A shape whose description did not change since the previous
+pass reuses its tessellated geometry, so a widget that paints from its current value
+costs nothing while idle and tessellates again only when the value or a state changes.
+Keep per-frame data out of the shape (no animation clocks, no counters) and the cache
+does the rest. Text inside a custom widget is a `Text` widget or a `ui.label`.
+
+## Checklist
+
+1. Use stable `id_source` values; scope loops with `Ui::push_id`.
+2. Allocate before interacting; give the widget a nonzero rectangle.
+3. Read events from the returned `Response`; never from `InputState` transitions.
+4. Treat `response.enabled` as the disabled state; do not test your own flag.
+5. Return the response so wrappers (`.tooltip(..)`, `.context_menu(..)`) can attach.
+6. Check the result with the [debug overlay](./diagnostics.mdx#debug-overlay): press F3 in
+   the custom widget example.

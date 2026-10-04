@@ -1,5 +1,6 @@
 ---
 title: ContextMenu
+icon: ListOrdered
 description: Context actions with icons, separators, and edge captions.
 ---
 
@@ -26,6 +27,11 @@ logical-pixel box. Icons align in a compact column; left captions precede their 
 `right_text` aligns to the trailing edge. Action IDs must be unique and remain
 stable when labels or item order change. Duplicate visible labels are supported.
 Shortcut captions are display text; shortcut handling belongs to the application.
+
+In one expression, `ui.add(Button::new("Document").context_menu(&items))` attaches the
+menu to the widget and reports the choice as `response.menu_selected()`. The menu opens
+on the same `Response::secondary_clicked()` signal that any control reports: a secondary
+press and release over the same target.
 
 Use `ContextMenu::new(source, &items).style(style).show(ui, target)` for custom
 proportions and popup/control appearances. `open_at(position)` opens on that pass;

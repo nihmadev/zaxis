@@ -11,6 +11,7 @@ pub(super) struct Metrics {
     icon: f32,
     right: f32,
     font: f32,
+    weight: crate::FontWeight,
 }
 pub(super) fn measure(
     ui: &mut Ui<'_>,
@@ -24,6 +25,7 @@ pub(super) fn measure(
         icon: 0.0,
         right: 0.0,
         font,
+        weight: ui.style().typography.weights.control,
     };
     let mut label_width: f32 = 0.0;
     for item in items {
@@ -35,7 +37,7 @@ pub(super) fn measure(
             if s.is_empty() {
                 0.0
             } else {
-                ui.context.measure_text(s, font, f32::INFINITY).x
+                ui.context.measure_text(s, font, m.weight, f32::INFINITY).x
             }
         };
         m.icon = m.icon.max(width(&item.icon));
@@ -59,12 +61,24 @@ pub(super) fn measure(
     m
 }
 
-fn text(ui: &mut Ui<'_>, id: Id, rect: Rect, caption: &str, font: f32, color: Color, right: bool) {
+#[allow(clippy::too_many_arguments)]
+fn text(
+    ui: &mut Ui<'_>,
+    id: Id,
+    rect: Rect,
+    caption: &str,
+    font: f32,
+    weight: crate::FontWeight,
+    color: Color,
+    right: bool,
+) {
     if caption.is_empty() || rect.is_empty() {
         return;
     }
-    let size = ui.context.measure_text(caption, font, f32::INFINITY);
-    let offset = ui.context.centered_line_offset(caption, font);
+    let size = ui
+        .context
+        .measure_text(caption, font, weight, f32::INFINITY);
+    let offset = ui.context.centered_line_offset(caption, font, weight);
     let x = if right {
         rect.max.x - size.x
     } else {
@@ -78,6 +92,7 @@ fn text(ui: &mut Ui<'_>, id: Id, rect: Rect, caption: &str, font: f32, color: Co
             text: caption.to_owned(),
             position: Vec2::new(x, rect.center().y - size.y * 0.5 + offset),
             size: font,
+            weight,
             wrap_width: f32::INFINITY,
             color,
         }],
@@ -182,7 +197,7 @@ pub(super) fn row(
         0.0
     } else {
         ui.context
-            .measure_text(&item.left_text, m.font, f32::INFINITY)
+            .measure_text(&item.left_text, m.font, m.weight, f32::INFINITY)
             .x
             + 6.0
     };
@@ -198,6 +213,7 @@ pub(super) fn row(
         segment(min, min + m.icon - 6.0),
         &item.icon,
         m.font,
+        m.weight,
         color,
         false,
     );
@@ -220,6 +236,7 @@ pub(super) fn row(
         segment(min + m.icon, min + m.icon + left - 6.0),
         &item.left_text,
         m.font,
+        m.weight,
         muted,
         false,
     );
@@ -232,6 +249,7 @@ pub(super) fn row(
         ),
         &item.text,
         m.font,
+        m.weight,
         color,
         false,
     );
@@ -241,6 +259,7 @@ pub(super) fn row(
         segment((max - m.right + 18.0).max(min), max),
         &item.right_text,
         m.font,
+        m.weight,
         muted,
         true,
     );

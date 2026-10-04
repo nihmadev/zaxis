@@ -227,7 +227,10 @@ fn short_menu_has_no_overflow_and_long_captions_fit_their_columns() {
             } = paint
             {
                 if text == "Remove copy" || text == "Ctrl+D" {
-                    let width = c.text.measure(text, *size, f32::INFINITY).x;
+                    let width = c
+                        .text
+                        .measure(text, *size, crate::FontWeight::REGULAR, f32::INFINITY)
+                        .x;
                     let clip = c
                         .elements
                         .iter()

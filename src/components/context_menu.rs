@@ -84,6 +84,28 @@ pub struct ContextMenuStyle {
     pub popup: crate::PopupStyle,
     pub item: crate::ControlStyle,
 }
+impl ContextMenuStyle {
+    /// Sizes that are not finite and positive fall back to the defaults; padding
+    /// becomes non-negative.
+    #[track_caller]
+    fn normalize(&mut self) {
+        use super::sanitize::{length, positive};
+        let default = Self::default();
+        self.min_width =
+            positive("ContextMenuStyle::min_width", self.min_width).unwrap_or(default.min_width);
+        self.row_height =
+            positive("ContextMenuStyle::row_height", self.row_height).unwrap_or(default.row_height);
+        self.separator_height =
+            positive("ContextMenuStyle::separator_height", self.separator_height)
+                .unwrap_or(default.separator_height);
+        self.font_size =
+            positive("ContextMenuStyle::font_size", self.font_size).unwrap_or(default.font_size);
+        self.padding.left = length("ContextMenuStyle::padding", self.padding.left);
+        self.padding.right = length("ContextMenuStyle::padding", self.padding.right);
+        self.padding.top = length("ContextMenuStyle::padding", self.padding.top);
+        self.padding.bottom = length("ContextMenuStyle::padding", self.padding.bottom);
+    }
+}
 impl Default for ContextMenuStyle {
     fn default() -> Self {
         Self {
@@ -137,32 +159,18 @@ impl<'a> ContextMenu<'a> {
         self
     }
     /// Open programmatically on this pass. Omit on later passes to retain state.
+    #[track_caller]
     pub fn open_at(mut self, position: Vec2) -> Self {
-        assert!(position.is_finite());
-        self.position = Some(position);
+        self.position =
+            super::sanitize::finite_vec2("ContextMenu::open_at", position).or(self.position);
         self
     }
     /// Attach after building the target, in the same UI scope. Works with passive
     /// text as well as controls, and follows deferred layout and scroll clipping.
     /// Action IDs must be unique within this menu.
-    pub fn show(self, ui: &mut Ui<'_>, target: Response) -> ContextMenuOutput {
+    pub fn show(mut self, ui: &mut Ui<'_>, target: Response) -> ContextMenuOutput {
+        self.style.normalize();
         let style = &self.style;
-        assert!([
-            style.min_width,
-            style.row_height,
-            style.separator_height,
-            style.font_size
-        ]
-        .iter()
-        .all(|v| v.is_finite() && *v > 0.0));
-        assert!([
-            style.padding.left,
-            style.padding.right,
-            style.padding.top,
-            style.padding.bottom
-        ]
-        .iter()
-        .all(|v| v.is_finite() && *v >= 0.0));
         let id = ui.scope.with(("context-menu", self.source, target.id));
         let anchor_id = id.with("anchor");
         let hit = HitRegion {
@@ -181,11 +189,8 @@ impl<'a> ContextMenu<'a> {
         if ui.context.dismissed_popups.remove(&popup_id) {
             state.open = false;
         }
-        let pointer_open = ui
-            .context
-            .secondary_target
-            .filter(|(anchor, _)| *anchor == anchor_id)
-            .map(|(_, p)| p);
+        // The same secondary-click signal that `Response::secondary_clicked` reports.
+        let pointer_open = ui.context.gestures.secondary_position(anchor_id);
         if let Some(position) = self.position.or(pointer_open) {
             state.position = position;
             state.keyboard = false;
@@ -195,9 +200,6 @@ impl<'a> ContextMenu<'a> {
                 .iter()
                 .find(|i| i.enabled && i.id.is_some())
                 .and_then(|i| i.id);
-            if pointer_open.is_some() {
-                ui.context.secondary_target = None;
-            }
             ui.context.request_repaint();
         }
         state.open &= ui.enabled && !self.items.is_empty();
@@ -334,6 +336,26 @@ impl<'a> ContextMenu<'a> {
         output.open = state.open;
         ui.context.context_menus.insert(id, state);
         output
+    }
+}
+
+/// A widget with a context menu attached; see [`super::Widget::context_menu`].
+pub struct ContextMenuWidget<'a, W> {
+    widget: W,
+    items: &'a [ContextMenuItem],
+}
+impl<'a, W> ContextMenuWidget<'a, W> {
+    pub(super) fn new(widget: W, items: &'a [ContextMenuItem]) -> Self {
+        Self { widget, items }
+    }
+}
+impl<W: super::Widget> super::Widget for ContextMenuWidget<'_, W> {
+    fn ui(self, ui: &mut Ui<'_>) -> Response {
+        let mut response = self.widget.ui(ui);
+        response.menu_selected = ContextMenu::new(response.id, self.items)
+            .show(ui, response)
+            .selected;
+        response
     }
 }
 

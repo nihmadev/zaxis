@@ -1,8 +1,12 @@
 use std::hash::Hash;
 
-use crate::{context::Paint, layout::LayoutCursor, Context, Id, Layout, Rect, Shape, Vec2};
+use crate::{
+    context::{HitAction, HitRegion, Paint},
+    layout::LayoutCursor,
+    Context, Id, Layout, Rect, Shape, Vec2,
+};
 
-use super::{HoverStyle, Response, Style, Widget};
+use super::{HoverStyle, Response, Sense, Style, Widget};
 
 mod flow;
 mod scopes;
@@ -33,7 +37,7 @@ impl Ui<'_> {
     /// Add a widget, automatically scheduling a follow-up redraw on activation or change.
     pub fn add(&mut self, widget: impl Widget) -> Response {
         let response = self.layout_item(|ui| widget.ui(ui));
-        if response.clicked || response.changed || response.submitted || response.lost_focus {
+        if response.has_event() {
             self.context.request_repaint();
         }
         response
@@ -50,11 +54,15 @@ impl Ui<'_> {
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
+    #[deprecated(
+        note = "use `add_enabled_ui(enabled, |ui| ui.add(widget))`, or `.enabled(..)` on the widget"
+    )]
     pub fn add_enabled(&mut self, enabled: bool, widget: impl Widget) -> Response {
         self.add_enabled_ui(enabled, |ui| ui.add(widget))
     }
-    /// Disable a group without changing its layout or bound values.
-    /// Nested groups cannot re-enable a disabled parent.
+    /// The one way to disable a group of controls without changing layout or
+    /// bound values; the one way for a single control is its `.enabled(bool)`
+    /// builder. Nested groups cannot re-enable a disabled parent.
     pub fn add_enabled_ui<R>(&mut self, enabled: bool, build: impl FnOnce(&mut Self) -> R) -> R {
         let previous = self.enabled;
         self.enabled &= enabled;
@@ -163,19 +171,61 @@ impl Ui<'_> {
 
     pub(super) fn response(&self, id: Id, rect: Rect, interactive: bool) -> Response {
         let interactive = interactive && self.enabled;
-        let visible = self.context.scroll_visible(self.window, rect, self.clip);
+        let visible = interactive && self.context.scroll_visible(self.window, rect, self.clip);
+        let events = if visible {
+            self.context.gestures.events(id)
+        } else {
+            Default::default()
+        };
         Response {
             id,
             rect,
             hovered: self.context.hovered(id, self.window, rect, self.clip),
-            pressed: interactive && visible && self.context.active(id),
-            has_focus: interactive && visible && self.context.has_focus(id),
-            focus_visible: interactive && visible && self.context.focus_visible(id),
+            pressed: visible && self.context.active(id),
+            has_focus: visible && self.context.has_focus(id),
+            focus_visible: visible && self.context.focus_visible(id),
             enabled: interactive,
-            clicked: interactive && visible && self.context.clicked(id),
+            clicked: visible && self.context.clicked(id),
             changed: false,
             submitted: false,
-            lost_focus: false,
+            lost_focus: events.lost_focus,
+            gained_focus: events.gained_focus,
+            double_clicked: events.double_clicked,
+            secondary_clicked: events.secondary_clicked,
+            drag_started: events.drag_started,
+            dragging: events.dragging,
+            drag_stopped: events.drag_stopped,
+            drag_delta: events.drag_delta,
+            menu_selected: None,
         }
+    }
+
+    /// Response for custom geometry, through the same hit path as built-in controls.
+    ///
+    /// Allocate `rect` with [`Self::allocate_space`] (or take it from your own layout)
+    /// and give the widget a stable `id_source`. Clipping, scrolling, disabled groups,
+    /// pointer capture, layer order, popups, keyboard activation and repaint behave
+    /// exactly as they do for a [`super::Button`]; `sense` selects the inputs reported.
+    /// A focusable region receives raw keys through [`Context::input`].
+    pub fn interact(&mut self, rect: Rect, id_source: impl Hash, sense: Sense) -> Response {
+        let id = self.scope.with(("interact", Id::new(id_source)));
+        let response = self.response(id, rect, self.enabled);
+        if sense.claims_pointer() || !self.enabled {
+            self.context.register_hit(HitRegion {
+                id,
+                window: self.window,
+                rect,
+                clip: self.clip,
+                action: if self.enabled {
+                    HitAction::Interact(sense)
+                } else {
+                    HitAction::Block
+                },
+            });
+        }
+        if response.has_event() {
+            self.context.request_repaint();
+        }
+        response
     }
 }
