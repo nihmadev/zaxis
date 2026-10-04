@@ -15,6 +15,7 @@ pub struct Button<F = fn(&mut crate::Painter<'_>, crate::ControlPaint)> {
     enabled: bool,
     width: Option<f32>,
     min_size: Vec2,
+    align: crate::Align,
     padding: Option<Padding>,
     rounding: Option<CornerRadius>,
     border: Option<Border>,
@@ -35,6 +36,7 @@ impl Button {
             enabled: true,
             width: None,
             min_size: Vec2::ZERO,
+            align: crate::Align::Center,
             padding: None,
             rounding: None,
             border: None,
@@ -64,6 +66,7 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
             enabled: self.enabled,
             width: self.width,
             min_size: self.min_size,
+            align: self.align,
             padding: self.padding,
             rounding: self.rounding,
             border: self.border,
@@ -117,6 +120,12 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
     }
     pub fn padding(mut self, padding: Padding) -> Self {
         self.padding = Some(padding);
+        self
+    }
+    /// Horizontal position of the caption inside the padding; centered by default.
+    /// `Start` and `End` suit full-width, text-only buttons in a list.
+    pub fn align(mut self, align: crate::Align) -> Self {
+        self.align = align;
         self
     }
     #[deprecated(
@@ -358,7 +367,14 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
             ui.clip.intersect(text_rect),
             vec![Paint::Text {
                 text: label.to_owned(),
-                position: rect.center() - text_size * 0.5 + Vec2::new(0.0, optical),
+                position: Vec2::new(
+                    match self.align {
+                        crate::Align::Start => text_rect.min.x,
+                        crate::Align::Center => rect.center().x - text_size.x * 0.5,
+                        crate::Align::End => text_rect.max.x - text_size.x,
+                    },
+                    rect.center().y - text_size.y * 0.5 + optical,
+                ),
                 size,
                 weight,
                 wrap_width: f32::INFINITY,

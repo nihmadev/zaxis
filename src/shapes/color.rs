@@ -12,6 +12,27 @@ impl Color {
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self([r, g, b, a])
     }
+    /// The same color with a replaced alpha channel.
+    ///
+    /// ```
+    /// use zaxis::Color;
+    /// assert_eq!(Color::rgb(10, 20, 30).with_alpha(128), Color::rgba(10, 20, 30, 128));
+    /// ```
+    pub const fn with_alpha(self, alpha: u8) -> Self {
+        Self([self.0[0], self.0[1], self.0[2], alpha])
+    }
+
+    /// The same color with its alpha channel scaled by `opacity` (clamped to 0–1).
+    ///
+    /// ```
+    /// use zaxis::Color;
+    /// assert_eq!(Color::rgba(1, 2, 3, 200).with_opacity(0.5).0[3], 100);
+    /// ```
+    pub fn with_opacity(self, opacity: f32) -> Self {
+        let alpha = f32::from(self.0[3]) * opacity.clamp(0.0, 1.0);
+        self.with_alpha(alpha.round() as u8)
+    }
+
     /// Creates an opaque color from `0xRRGGBB`.
     ///
     /// ```

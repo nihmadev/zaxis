@@ -181,13 +181,14 @@ pub(super) fn option(
         if response.enabled && (response.hovered || active) {
             style.active_fill
         } else {
-            Color::TRANSPARENT
+            // Same hue, no alpha: fading from black would flash gray on light fills.
+            style.active_fill.with_alpha(0)
         },
         Border::NONE,
         if !enabled {
             style.disabled_text
         } else if response.hovered || active {
-            ui.style().on_accent
+            crate::contrast_foreground(style.active_fill)
         } else {
             style.text
         },
@@ -233,7 +234,7 @@ pub(super) fn option(
     if selected {
         let c = Vec2::new(rect.max.x - 10.0, rect.center().y);
         let check = if response.enabled && (response.hovered || active) {
-            effective.on_accent
+            crate::contrast_foreground(style.active_fill)
         } else {
             style.check_color
         };
