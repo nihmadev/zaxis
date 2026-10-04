@@ -1,0 +1,83 @@
+---
+title: Diagnostics
+icon: Bug
+description: Usage errors, value normalization, platform failures and the debug overlay.
+---
+
+zaxis does not panic on mistakes in how it is driven and does not print anything.
+Problems are collected while the UI is built and handed to the application:
+
+```rust
+for problem in context.diagnostics() {
+    // problem.kind, problem.id, problem.rect, problem.message
+}
+context.set_diagnostic_handler(Some(Box::new(|d| eprintln!("{:?}: {}", d.kind, d.message))));
+context.set_debug_overlay(zaxis::DebugOverlay::ISSUES);
+```
+
+`Context::diagnostics()` lists the problems of the last completed pass; it is empty
+for a correct UI. Detection costs nothing while nothing is wrong. The handler is called
+once for each distinct problem, the first time it appears, so a misconfigured widget
+cannot flood a log; `diagnostics()` keeps describing it every pass while it persists.
+
+| `DiagnosticKind` | Meaning | What the library does |
+| --- | --- | --- |
+| `IdCollision` | Two widgets, columns, panels, rows or options used one id in a pass | Keeps drawing both (the second under a derived id) |
+| `UnbalancedScope` | A scroll, placement or visual scope was left open at the end of a pass | Closes it so the next pass starts clean |
+| `NoLayoutSpace` | An interactive widget finished layout with an empty rectangle | Registers nothing for it |
+| `PopupWithoutAnchor` | A popup had a non-finite anchor or no room beside it | Does not open it |
+| `InvalidValue` | A builder or style value was out of range | Uses the normalized value, below |
+| `InvalidModel` | A model passed to a component is inconsistent, such as a tree cycle | Same list as `TreeOutput::issues`; the component repairs what it can |
+| `InvalidUsage` | An API contract was broken, such as an extra Grid cell or an unknown split panel | Makes the call harmless |
+| `External` | The clipboard, a native window drag or an image failed | Reports it; nothing else changes |
+
+## Value normalization
+
+One rule for every component: **an out-of-range value never panics.** NaN, infinity,
+zero or a negative number from configuration is replaced by the nearest valid value, or
+ignored when there is none, and an `InvalidValue` diagnostic names the call site.
+
+| Kind of value | Examples | Rule |
+| --- | --- | --- |
+| Must be positive | `width`, `height`, `font_size`, `step`, `size`, row heights, scale | Anything not finite and `> 0` is ignored: the previous value or the theme default stays |
+| May be zero | gaps, paddings, thickness, radii, offsets `>= 0`, opacities | Negative becomes `0`; NaN and infinity are ignored |
+| Positions and angles | `offset`, `pivot`, `rotating`, scroll offsets and targets | NaN and infinity are ignored |
+| Weights | `ColumnWidth::Remainder`, `SplitSize::Weight` | Anything not finite and `> 0` counts as `1` |
+| Fractions | `ProgressState::Determinate`, drag opacities | Clamped to `0..=1`; NaN becomes `0` |
+| Ranges | `Slider::new`, `NumberInput::range` | Descending ends are swapped; a non-finite end gives `0..=1` (slider) or is ignored |
+| Motion | presence, reveal, shared and highlight transitions | A repeating or reversing tween plays once, forward |
+| Styles | `ComboBoxStyle`, `NumberStyle`, `ContextMenuStyle`, split surfaces | The same rules, field by field, on a copy used for the pass |
+
+Duplicate ids, a `Grid` without columns, extra cells, unknown panel ids and similar
+mistakes in how widgets are combined follow the same idea: the pass completes, the
+mistake is a diagnostic. `assert!` remains only for violations of the library's own
+invariants, never for application data.
+
+## Platform and resource failures
+
+| Failure | Where it reaches the application |
+| --- | --- |
+| `run` event-loop, window or unrecoverable GPU errors | `Result<(), RunError>` returned by `run` |
+| GPU device lost | The runner recreates the renderer; `Frame::device_resets()` counts recoveries and `Frame::last_device_loss()` gives the reason. If recreation fails, `run` returns `RunError::Render` |
+| Image decoding | `ImageState::Error(ImageError)` through `Image::show`, `Context::image_state`, and an `External` diagnostic on the image's rectangle |
+| Clipboard unavailable or refused | An `External` diagnostic; an empty clipboard is not an error |
+| Native window drag or resize refused by the OS | An `External` diagnostic |
+
+Failures that happen between passes, such as a refused clipboard write, appear in the
+list of the next completed pass.
+
+## Debug overlay
+
+`Context::set_debug_overlay(DebugOverlay)` draws on top of every layer. It is off by
+default, costs nothing while off, and never changes layout, hit testing or the cached
+geometry of the application's own elements, so it is safe to enable in a running app.
+
+| Field | Draws |
+| --- | --- |
+| `issues` | A red frame and a short message on the rectangle of each diagnostic |
+| `bounds` | The bounds of the topmost hit region under the cursor |
+| `clip` | The clip rectangle of that region |
+| `hits` | Every hit region under the cursor, with its kind |
+
+`DebugOverlay::OFF`, `ISSUES` and `ALL` cover the usual choices. The `custom_widget` and
+`validation` examples toggle it with F3.

@@ -12,7 +12,7 @@ pub(crate) struct NativeChrome {
 }
 
 impl Context {
-    pub(crate) fn native_chrome_press(&self, event: &WindowEvent, window: &Window) -> bool {
+    pub(crate) fn native_chrome_press(&mut self, event: &WindowEvent, window: &Window) -> bool {
         if window.is_decorated() {
             return false;
         }
@@ -32,7 +32,10 @@ impl Context {
         let Some(chrome) = &self.native_chrome else {
             return false;
         };
-        if self.top_window(pointer) != Some(chrome.owner) || self.capture.is_some() {
+        let top = self.top_window(pointer);
+        if top != Some(chrome.owner) && !top.is_some_and(|id| self.is_modal_layer(id))
+            || self.capture.is_some()
+        {
             return false;
         }
         // Launch on MouseInput, before press/release can be batched into a redraw.
@@ -49,7 +52,9 @@ impl Context {
             return false;
         };
         if let Err(error) = result {
-            eprintln!("Native window interaction: {error}");
+            self.report(crate::DiagnosticKind::External, None, None, || {
+                format!("native window interaction failed: {error}")
+            });
         }
         true
     }

@@ -4,9 +4,10 @@ icon: Wrench
 description: Symptoms, causes, and direct fixes for identity, rendering, repaint, and input failures.
 ---
 
-## Duplicate widget/paint ID panic
+## Duplicate widget/paint ID
 
-Two same-kind controls have the same caption and scope, or two windows share an ID.
+Reported as an `IdCollision` in `Context::diagnostics()` (and framed by the debug
+overlay). Two same-kind controls have the same caption and scope, or two windows share an ID.
 Add unique `##suffix` strings, `id_source`, or a stable `Ui::push_id` scope. For
 changing captions, use explicit identity. See [IDs](./ids.mdx).
 
@@ -93,5 +94,6 @@ See [Renderer](./renderer.mdx#surface-outcomes).
 The engine supports complex shaping and bidirectional layout. Bundled Noto Color Emoji
 provides emoji; other script coverage depends on installed fallback fonts. Install a
 font covering the script, restart the application so the shared font database is
-rebuilt, or load a primary font through `Context::with_font` in a custom host.
+rebuilt, or pass a primary family with `RunOptions::with_font_family` (or
+`Context::with_fonts` in a custom host).
 See [Text and fonts](./components/text.mdx#replace-the-font).

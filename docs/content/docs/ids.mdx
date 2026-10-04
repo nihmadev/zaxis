@@ -11,6 +11,8 @@ description: Stable identity for windows, changing captions, repeated controls, 
 | `Window` | Hash of `("window", full_title)` |
 | `Button` | UI scope, widget kind, and full caption |
 | `Checkbox` | UI scope, widget kind, and full caption |
+| `Switch` | UI scope, widget kind, and full caption; optional `id_source` override |
+| `DragSource`, `DropTarget` | UI scope, kind and the application `Id` passed in; results report that `Id` unchanged |
 | `Slider` | UI scope, construction call site, and occurrence at that site; optional `id_source` override |
 | `Text`, `Separator`, shapes, rows | UI scope, element kind, and allocation sequence |
 
@@ -89,6 +91,8 @@ capture are cleared when their matching interactive hit region disappears or cha
 kind. Omitted window geometry remains in the context; reopening the same window ID
 restores its position and size.
 
-Painting the same ID twice in one pass panics with `duplicate widget/paint ID`.
-Use separate scopes or explicit IDs. This includes duplicate window titles and
+Painting the same ID twice in one pass does not panic: both elements are drawn (the
+second under a derived ID) and the pass reports an `IdCollision` in
+`Context::diagnostics()`; the [debug overlay](./diagnostics.mdx#debug-overlay) frames the
+colliding widget. Use separate scopes or explicit IDs. This includes duplicate window titles and
 duplicate same-kind captions inside a single scope.
