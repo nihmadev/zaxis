@@ -70,6 +70,29 @@ drop, validation and diagnostics. Public APIs may still change between developme
   converts into `ImageSource`; strokes are white, so `Image::tint` sets the color. The
   `icons` example shows a filterable gallery. Lucide is ISC licensed (some icons are MIT,
   from Feather); `LICENSE-LUCIDE` ships in the crate.
+- Multiple native windows: `App` gained optional `windows`, `close_requested`,
+  `window_failed` and `shortcut` hooks next to `update`; `WindowKey`, `WindowOptions`,
+  `WindowPlan` (declarative windows), `Frame::open_window` and `Windows` (imperative open,
+  close and `request_close`), `CloseRequested::reject` (e.g. "Save changes?" in a `Modal`),
+  `GlobalShortcut`, `WindowInfo`/`WindowStatus`/`WindowError`, `AppStats`, and
+  `RunOptions::with_exit_policy` (`ExitPolicy`) and `with_main_window`. A single-window
+  `App` behaves as before. Each window has its own `Context`; closing one drops only its UI
+  state.
+- `SharedResources` and `Context::with_shared`: windows share one glyph atlas, image cache
+  and appearance, so a glyph or image is rasterized, decoded and uploaded once;
+  `SharedResources::set_theme` re-themes every window.
+- Monospace text: bundled JetBrains Mono (Regular, Bold with `bundled-weights`) behind the
+  default `bundled-monospace` feature (about 550 KB); `Text::monospace`, `TextFamily`,
+  `TypographyRole::Code` / `Ui::code` with `Typography::code` and `TypographyWeights::code`,
+  `Context::monospace_metrics` / `Ui::monospace_metrics` (`MonospaceMetrics`),
+  `RunOptions::with_monospace_family` and `Context::with_font_families`. Ligatures are off
+  so one character is one cell; tabs are tab stops (`Text::tab_size`, default 8 cells).
+- `TextEdit::monospace`, `family`, `font_family` and `tabular_numbers`: caret, hit testing,
+  selection and the IME rectangle read the same layout as `Text::monospace`.
+- Tabular figures: `Text::tabular_numbers`, `TextStyle::tabular_numbers` (OpenType `tnum`),
+  and `Column::numeric(true)` for right-aligned table columns with aligned digits.
+- Examples `multi_window` (with `--smoke-test`) and `code_view` (source, diff and file
+  table in the code font).
 - Benchmarks cover menus, disclosure and split panes; docs and examples updated for the
   new components.
 - Font weights and families: `FontWeight` (100–900) on `Text::weight`, `TextStyle::weight`,
@@ -93,6 +116,9 @@ drop, validation and diagnostics. Public APIs may still change between developme
 - `SliderStatus` is now an alias of `SemanticStatus`.
 - Inter is now the only bundled font in the main crate: SVG text also uses it and Lato
   was removed.
+- The renderer shares device, queue, pipelines and the GPU texture store between windows
+  (`Renderer::create_sibling`); each window keeps its own surface, buffers and blur targets.
+  The desktop runner was split into `app` submodules.
 - Internal: color picker, text edit, slider, split pane, text layout and animation state
   were split into smaller modules; context and widget regressions were reorganized into
   test modules.
@@ -108,6 +134,10 @@ drop, validation and diagnostics. Public APIs may still change between developme
 - `tab_bar` no longer overflows a narrow window: tabs keep their natural width and the
   strip scrolls horizontally. A plain wheel now scrolls horizontal-only `ScrollArea`s.
 - Fractional clips stay inside their panels.
+- Backdrop blur no longer skips source pixels when downsampling (box prefilter).
+- Windows created with a transparent attribute composite with the desktop through
+  premultiplied alpha where the surface supports it; otherwise they stay opaque.
+- Right alignment (`Column::align`) uses the real measured text width.
 
 ## 0.0.1 Blinking
 

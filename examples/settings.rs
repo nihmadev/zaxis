@@ -1,5 +1,5 @@
 use zaxis::{
-    vec2, App, Border, Button, Card, Checkbox, Color, ColorPicker, ColorPickerType, Confirm,
+    vec2, App, Border, Button, CloseRequested, Card, Checkbox, Color, ColorPicker, ColorPickerType, Confirm,
     Confirmation, Context, Frame, Padding, PresentationMode, Root, RunOptions, Shape, Slider,
     Widget,
 };
@@ -19,9 +19,7 @@ impl App for SettingsExample {
         self.settings.window_maximized = frame.window().is_maximized();
         show_ui(context, &mut self.settings);
         if let Some(action) = self.settings.window_action.take() {
-            if !matches!(action, chrome::Action::Close) || self.settings.request_close() {
-                chrome::apply(action, frame);
-            }
+            chrome::apply(action, frame);
         }
         if std::mem::take(&mut self.settings.exit_confirmed) {
             frame.close();
@@ -36,6 +34,13 @@ impl App for SettingsExample {
                 self.settings.draft.blur_radius = [4, 12, 32][self.smoke_frames % 3];
                 context.request_repaint();
             }
+        }
+    }
+
+    /// The OS close button, Alt+F4 and the title-bar button all arrive here.
+    fn close_requested(&mut self, request: &mut CloseRequested<'_>) {
+        if !self.settings.request_close() {
+            request.reject();
         }
     }
 }

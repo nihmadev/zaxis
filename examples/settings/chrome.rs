@@ -21,7 +21,8 @@ pub fn show(context: &mut Context, maximized: bool) -> Option<Action> {
 
 pub fn apply(action: Action, frame: &mut Frame<'_>) {
     match action {
-        Action::Close => frame.close(),
+        // Ask like the OS does, so the title-bar button and Alt+F4 share one confirmation.
+        Action::Close => frame.request_close(),
         Action::Minimize => frame.window().set_minimized(true),
         Action::Maximize => frame.window().set_maximized(!frame.window().is_maximized()),
     }

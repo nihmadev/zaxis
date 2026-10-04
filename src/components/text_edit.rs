@@ -62,6 +62,8 @@ pub struct TextEdit<'a> {
     pub(crate) select_all: bool,
     max_chars: Option<usize>,
     area: Option<AreaOptions>,
+    family: Option<crate::TextFamily>,
+    tabular: Option<bool>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -93,10 +95,30 @@ impl<'a> TextEdit<'a> {
             select_all: false,
             max_chars: None,
             area: None,
+            family: None,
+            tabular: None,
         }
     }
     pub fn style(mut self, style: super::theme::TextEditStyle) -> Self {
         self.style = style;
+        self
+    }
+    /// Edit in the monospace family: bundled JetBrains Mono by default. Every character of
+    /// the main font is one cell wide, so columns, the caret, selection and IME rectangles
+    /// use the same cell grid as `Text::monospace`. Tab width is [`Self::tab_size`] in cells.
+    pub fn monospace(mut self) -> Self {
+        self.family = Some(crate::TextFamily::Monospace);
+        self
+    }
+    /// Choose the font family of this field; the default is the theme's (`Proportional`).
+    pub fn family(mut self, family: crate::TextFamily) -> Self {
+        self.family = Some(family);
+        self
+    }
+    /// Tabular figures (OpenType `tnum`) for digits in the proportional family, when the font
+    /// has them. Has no effect on the monospace family.
+    pub fn tabular_numbers(mut self, tabular: bool) -> Self {
+        self.tabular = Some(tabular);
         self
     }
     pub fn caret_color(mut self, color: Color) -> Self {

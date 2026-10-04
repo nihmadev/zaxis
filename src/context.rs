@@ -31,6 +31,7 @@ pub(crate) mod popup;
 mod repaint;
 pub(crate) mod scroll;
 mod scroll_input;
+mod shared;
 #[cfg(test)]
 mod scroll_input_tests;
 mod split;
@@ -87,6 +88,8 @@ mod layout_motion_tests;
 #[cfg(test)]
 mod modal_tests;
 #[cfg(test)]
+mod monospace_tests;
+#[cfg(test)]
 mod motion_presets_tests;
 #[cfg(test)]
 mod number_tests;
@@ -121,6 +124,7 @@ pub(crate) use diagnostics::{invalid_value, Diagnostics};
 pub use diagnostics::{DebugOverlay, Diagnostic, DiagnosticKind};
 pub use id::Id;
 pub use input::{EventResponse, InputState};
+pub use shared::SharedResources;
 pub(crate) use interaction::{HitAction, HitRegion, NumberInputEvent, SliderInput, TextEditInput};
 pub(crate) use paint::Paint;
 pub(crate) use windows::WindowState;
@@ -140,7 +144,9 @@ pub struct CacheStats {
     pub text_layouts_built: u64,
 }
 
-/// Stateful IMGUI context. One context is intended for one native viewport.
+/// Stateful IMGUI context. One context is intended for one native viewport: with several
+/// windows, create one per window with [`Context::with_shared`] so that they share fonts,
+/// the glyph atlas, the image cache and the theme but never input or retained widget state.
 pub struct Context {
     pub(crate) native_chrome: Option<native_chrome::NativeChrome>,
     input: InputState,
@@ -159,7 +165,11 @@ pub struct Context {
     in_pass: bool,
     pub(crate) animations: crate::animation::state::Animations,
     text: TextSystem,
-    pub(crate) images: crate::images::ImageCache,
+    pub(crate) images: crate::images::SharedImages,
+    shared: SharedResources,
+    appearance_seen: u64,
+    images_epoch: u64,
+    shows_images: bool,
     pub(crate) image_visual_scale: f32,
     cache: HashMap<Id, CachedElement>,
     pub(crate) visual_meshes: HashMap<Id, paint::VisualMesh>,

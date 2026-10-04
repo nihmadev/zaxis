@@ -194,8 +194,8 @@ For sensitive vulnerabilities, contact Telegram privately; see [SECURITY.md](SEC
 
 ## License
 
-Source: [MIT](LICENSE). Bundled Inter (Regular, Medium, SemiBold, Bold) and Noto Color Emoji fonts:
-[Inter OFL](assets/OFL-Inter.txt),
+Source: [MIT](LICENSE). Bundled Inter (Regular, Medium, SemiBold, Bold), JetBrains Mono (Regular, Bold) and Noto Color Emoji fonts:
+[Inter OFL](assets/OFL-Inter.txt), [JetBrains Mono OFL](assets/OFL-JetBrainsMono.txt),
 [Noto Emoji OFL](https://github.com/nihmadev/zaxis/blob/main/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
 Lucide-derived icons: [ISC](assets/LUCIDE-LICENSE). Include the corresponding
 licenses when redistributing these assets.
