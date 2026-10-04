@@ -1,0 +1,75 @@
+---
+title: Field and validation
+icon: BadgeAlert
+description: Mark controls valid or invalid, show a message, and keep the layout steady.
+---
+
+The library validates nothing and stores no rules. The application checks its own
+data on every pass and passes the result in; the library draws it.
+
+```rust
+use zaxis::{Field, TextEdit, Validation};
+
+let email = if touched { Validation::from(&parse_email(&text)) } else { Validation::ok() };
+Field::new("Email")
+    .hint("Receipts are sent here")
+    .validation(email)
+    .show(ui, |ui| ui.add(TextEdit::new(&mut text).id_source("email")));
+```
+
+## `Validation`
+
+A status plus the text to show. `Validation::ok()`, `error(msg)`, `warning(msg)` and
+`success(msg)` build one; `Validation::from(SemanticStatus)` has no message, and
+`Validation::from(&Result<T, E: Display>)` turns `Err(e)` into `error(e.to_string())`.
+Compute it every pass; nothing is kept between passes and a message never requests
+frames by itself.
+
+## `Field`
+
+| Builder | Meaning |
+| --- | --- |
+| `Field::new(label)` | Label above the control (an empty label is omitted) |
+| `.id_source(impl Hash)` | Scope for the contents; defaults to the label |
+| `.hint(text)` | Muted text under the control while the validation has no message |
+| `.validation(impl Into<Validation>)` | Status and message for this pass |
+| `.reserve_message(bool)` | Keep one line free under the control so a message appearing or disappearing moves nothing |
+| `.show(ui, build)` | Lays out label, `build`, message; returns the closure's result |
+
+Layout is a vertical stack with `Style::spacing / 2` between its parts. The message
+line exists only while there is something to say, so a message adds exactly its own
+height and the gap above it, and removing it restores the layout exactly. A hint and an
+error share one slot. The message is `TypographyRole::Small`; hints are muted, status
+messages use the theme's `error`, `warning` or `success` color.
+
+## Status on controls
+
+`TextEdit`, `NumberInput`, `DragValue`, `ComboBox`, `Checkbox`, `Switch`, `Slider` and
+`Button` take `.status(SemanticStatus)`. Controls inside a `Field` inherit the field's
+status unless they set their own (buttons keep their own meaning and ignore the
+field's). The state is drawn with theme tokens, not fixed colors:
+
+| State | Drawing |
+| --- | --- |
+| Invalid (`Error`, `Warning`, `Success`) | Border in the status color (`Style::error`, `warning`, `success`), plus a 2 px soft ring inside the border in the same color at 20 % on light themes and 40 % on dark ones |
+| Invalid and hovered or pressed | The status border stays; the usual hover fill applies |
+| Invalid and focused by keyboard | Status border and a stronger ring; the focus color does not replace it |
+| Invalid and disabled | Border kept, ring and focus removed; text uses the disabled color |
+| Normal | Unchanged from the default theme |
+
+`ControlStyle::error`, `warning` and `success` patches still apply, so a theme can
+restyle each state. A `NumberInput` draft that does not parse keeps its own red
+outline in addition.
+
+## Shorter forms
+
+* `ui.combo_box_values(&mut value, [(Value::A, "A"), (Value::B, "B")])` binds a combo
+  box to an enum or number directly; option ids derive from the values.
+* `Slider::new(&mut count, 0..=10)` on an integer needs no `.step(1).precision(0)`.
+* `ui.heading(text)`, `ui.title(text)`, `ui.small(text)` and
+  `ui.typography(role, text)` use the theme's type scale.
+* `Widget::tooltip(text)` and `Widget::context_menu(&items)` attach to a widget in the
+  same expression; the chosen menu entry is `Response::menu_selected()`.
+
+The `validation` example shows the complete flow, including errors that appear only
+after a field was left once.

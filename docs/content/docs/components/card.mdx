@@ -1,0 +1,37 @@
+---
+title: Card
+icon: PanelsTopLeft
+description: Framed, padded container with surface and outline variants.
+---
+
+```rust
+use zaxis::Card;
+
+Card::new("session").show(ui, |ui| {
+    ui.label("Session");
+    ui.checkbox(&mut restore, "Restore the previous session");
+});
+```
+
+The card fills the available width, lays its content out vertically inside padding
+and returns `CardOutput { inner, rect }` where `rect` is the outer frame. Use
+`ui.horizontal` or a [Grid](./grid.mdx) inside for other arrangements.
+
+| Method | Default / behavior |
+| --- | --- |
+| `new(source)` | Stable identity within the UI scope |
+| `width(f32)` | Available width; clamped to it |
+| `padding(Padding)` | `Style::card.padding` (16 px, scaled by density) |
+| `variant(CardVariant)` | `Surface`: raised fill, hairline border, faint shadow. `Outline`: border only |
+| `style(CardStyle)` | Per-card `SurfaceStyle` (fill, border, rounding, shadow) and padding |
+
+Theme defaults live in `Style::card` and `StyleOverrides::card`.
+
+## Sizing
+
+The frame is painted below its content from the previous pass's height, so changing
+content (an opened [ColorPicker](./color-picker.mdx), more rows) resizes it after one
+scheduled redraw; an unchanged card requests none. Retained heights are dropped when a
+card stops being built.
+
+A card is not interactive and takes no focus; place controls inside it.

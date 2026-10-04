@@ -1,0 +1,56 @@
+---
+title: Switch
+icon: ToggleRight
+description: Animated on/off binding, sizing, label wrapping, and toggle responses.
+---
+
+```rust
+if ui.switch(&mut notifications, "Notifications").changed() {
+    // `notifications` already contains the new value.
+}
+```
+
+A pill track with a sliding thumb and an optional label. Both the track and the label
+are clickable. Activation toggles the supplied `&mut bool`; application code owns the value.
+
+## Builders
+
+```rust
+use zaxis::Switch;
+
+ui.add(Switch::new(&mut wifi, "Wi-Fi")
+    .id_source("wifi")
+    .enabled(airplane_mode_off)
+    .size(24.0));
+```
+
+| Method | Default / behavior |
+| --- | --- |
+| `new(&mut bool, text)` | Bind value and caption; hidden `##suffix` contributes to ID |
+| `id_source(impl Hash)` | Override caption identity in the current scope |
+| `enabled(bool)` | `true`; disabling preserves the value |
+| `size(f32)` | Track height is `1.25 × font_size`, clamped to 10–128; width is `1.8 ×` height |
+| `rounding` / `corner_radius` | Fully rounded pill (`height / 2`) |
+| `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
+| `hover_style(HoverStyle)` | Theme hover preset for the track; see [Hover](../style.mdx#hover) |
+| `style(SwitchStyle)` | Local override of `Style::switch` |
+
+`SwitchStyle` holds `track` and `thumb` `ControlStyle` states plus `width`, `height`,
+`gap` and `thumb_inset`. An explicit `size` takes precedence over `SwitchStyle::width`
+and `height`. `thumb_inset` defaults to `0.15 × height`. The same fields can be set
+globally through `Style::switch` or a `ThemeOverrides`.
+
+## Responses and motion
+
+A pointer release over the switch or Enter/Space release while focused toggles it.
+That pass reports both `clicked()` and `changed()`. Releasing the pointer outside
+cancels the toggle. Disabled switches cannot toggle or focus.
+
+The thumb slides with `Style::motion.hover`. With `reduced_motion` it snaps to the
+final position, and a settled switch requests no further redraws. An external
+assignment to the boolean moves the thumb with the same animation but does not set
+`changed()`; request a native redraw when changing model state outside the UI.
+
+## Limitations
+
+Switch has no `Painter` hook (Checkbox does) and no backdrop blur option.
