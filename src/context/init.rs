@@ -107,6 +107,7 @@ impl Context {
             popup_layers: Vec::new(),
             modals: Default::default(),
             tooltips: Default::default(),
+            key_capture: Default::default(),
             color_pickers: HashMap::new(),
             text_edits: HashMap::new(),
             clipboard: None,

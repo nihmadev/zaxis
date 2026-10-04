@@ -211,6 +211,7 @@ pub struct Context {
     pub(crate) popup_layers: Vec<Id>,
     pub(crate) modals: modal::Modals,
     pub(crate) tooltips: tooltip::Tooltips,
+    pub(crate) key_capture: crate::components::key_box::KeyCapture,
     pub(crate) color_pickers: HashMap<Id, crate::components::color_picker::ColorPickerState>,
     pub(crate) text_edits: HashMap<Id, crate::components::text_edit::TextEditState>,
     clipboard: Option<arboard::Clipboard>,
