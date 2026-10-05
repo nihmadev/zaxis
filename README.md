@@ -162,9 +162,6 @@ wakeup, bounded CPU/GPU caches and explicit update/reload/release operations.
 See [image API, memory limits and custom host integration](https://nihmadev.github.io/zaxis/components/image/).
 Run `cargo run --release --example images -- --smoke-test` for the public API example.
 
-The [measurement report](https://github.com/nihmadev/zaxis/blob/main/docs/images-benchmarks-2026-10-03.md) includes CPU/GPU stage
-distributions and sustained scroll/reload process-memory measurements.
-
 ## Optional features
 
 Default features include `bundled-emoji`, `image-gif`, `image-tiff`, and `accesskit`.
