@@ -1,14 +1,12 @@
-use std::{
-    error::Error,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{error::Error, sync::Arc, time::Duration};
+use zaxis::Instant;
 
+use zaxis::accesskit_winit::{Adapter, Event as AccessEvent, WindowEvent as AccessRequest};
 use zaxis::winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
     event::WindowEvent,
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     window::{Window as NativeWindow, WindowId},
 };
 use zaxis::{
@@ -18,14 +16,17 @@ use zaxis::{
 #[path = "../tests/support/gpu_cache.rs"]
 mod gpu_cache;
 
-#[derive(Default)]
 struct Demo {
     state: Option<State>,
     error: Option<Box<dyn Error>>,
     smoke_test: bool,
+    /// Assistive technology reports through the loop: its requests are user events.
+    proxy: EventLoopProxy<AccessEvent>,
 }
 
 struct State {
+    /// The accessibility adapter of the window; dropped before the window.
+    access: Adapter,
     window: Arc<NativeWindow>,
     renderer: Renderer,
     context: Context,
@@ -35,7 +36,32 @@ struct State {
     retry_at: Option<Instant>,
 }
 
-impl ApplicationHandler for Demo {
+impl ApplicationHandler<AccessEvent> for Demo {
+    /// A screen reader asked for the tree, requested an action, or disconnected. Nothing
+    /// is collected until the first request; the next frame then publishes the tree.
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AccessEvent) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+        let redraw = match event.window_event {
+            AccessRequest::InitialTreeRequested => {
+                state.context.set_accessibility_active(false);
+                state.context.set_accessibility_active(true);
+                true
+            }
+            AccessRequest::ActionRequested(request) => {
+                state.context.on_accessibility_action(&request).repaint
+            }
+            AccessRequest::AccessibilityDeactivated => {
+                state.context.set_accessibility_active(false);
+                false
+            }
+        };
+        if redraw {
+            state.window.request_redraw();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(state) = &mut self.state {
             state.occluded = false;
@@ -43,14 +69,19 @@ impl ApplicationHandler for Demo {
             state.window.request_redraw();
             return;
         }
+        let proxy = self.proxy.clone();
         let result = (|| -> Result<State, Box<dyn Error>> {
+            // The adapter must exist before the window is first shown.
             let window = Arc::new(
                 event_loop.create_window(
                     NativeWindow::default_attributes()
                         .with_title("zaxis — desktop GUI")
-                        .with_inner_size(LogicalSize::new(860.0, 560.0)),
+                        .with_inner_size(LogicalSize::new(860.0, 560.0))
+                        .with_visible(false),
                 )?,
             );
+            let access = Adapter::with_event_loop_proxy(event_loop, &window, proxy);
+            window.set_visible(true);
             let mode = if std::env::args().any(|arg| arg == "--vsync") {
                 PresentationMode::Vsync
             } else {
@@ -62,8 +93,10 @@ impl ApplicationHandler for Demo {
             ))?;
             let mut context = Context::new();
             context.set_viewport(window.inner_size(), window.scale_factor());
+            context.set_accessibility_title("zaxis — desktop GUI");
             window.request_redraw();
             Ok(State {
+                access,
                 window,
                 renderer,
                 context,
@@ -94,6 +127,7 @@ impl ApplicationHandler for Demo {
         if state.window.id() != id {
             return;
         }
+        state.access.process_event(&state.window, &event);
         let response = state.context.on_window_event(&event);
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
@@ -128,6 +162,9 @@ impl ApplicationHandler for Demo {
                 state
                     .context
                     .run(|context| show_ui(context, clicks, checked));
+                if let Some(update) = state.context.take_accessibility_update() {
+                    state.access.update_if_active(|| update);
+                }
                 state.context.sync_ime(&state.window);
                 match state
                     .renderer
@@ -204,11 +241,13 @@ impl ApplicationHandler for Demo {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::<AccessEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let mut demo = Demo {
+        state: None,
+        error: None,
         smoke_test: std::env::args().any(|arg| arg == "--smoke-test"),
-        ..Default::default()
+        proxy: event_loop.create_proxy(),
     };
     event_loop.run_app(&mut demo)?;
     if let Some(error) = demo.error {
