@@ -163,3 +163,12 @@ hash and an animation lookup per pass.
 
 Content state is keyed by the stable `Id`s of the content, with the usual retained
 state rules for `TextEdit`, `ScrollArea` and `ComboBox`.
+
+## Accessibility
+
+Role `Dialog`, modal; `Confirm` is an `AlertDialog`. The name is
+`Modal::accessible_label("..")`, otherwise the first text of the header; `Dialog` uses its
+title and publishes its description text as the description, and a `Confirm` without a
+title is named by its message. While a modal is open everything behind it leaves the
+tree; toasts and tooltips stay. The close button is a `Button` named "Close".
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

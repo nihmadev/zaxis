@@ -182,3 +182,12 @@ geometry.
 Run `cargo run --example split_pane` for three external panels, a three-panel vertical
 nest, rounded cards, image overflow, blur, TextEdit, Table and ScrollArea. Add
 `-- --smoke-test` for the existing short native/GPU startup-and-close convention.
+
+## Accessibility
+
+Each panel is a `Group` and each boundary a `Splitter` named "Resize" (English, not
+changeable), placed between its panels in the tree. Its value is the size of the panel
+before it in logical pixels, within the range a resize may reach. `Increment` and
+`Decrement` act like the arrow keys on a focused boundary and `SetValue` sets the size. A
+boundary that cannot move is disabled.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

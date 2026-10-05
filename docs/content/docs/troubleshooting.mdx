@@ -89,6 +89,26 @@ Handle `Retry` with backoff and `Dormant` by waiting for relevant events. Recrea
 the renderer on `DeviceLost`; lost/outdated surfaces are recovered inside `render`.
 See [Renderer](./renderer.mdx#surface-outcomes).
 
+## The page stays blank or fails to start (browser)
+
+Open the console: the runner writes startup errors, panics with their message, and the
+chosen backend (`zaxis: BrowserWebGpu renderer on ...`) there.
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `RunError::Web` / "there is no element with id" | `canvas_id` or `container_id` names an element the page does not have yet. Run after the element exists, for example from a `type="module"` script |
+| "finding a GPU adapter" | Neither WebGPU nor WebGL2 is available (hardware acceleration off, blocklisted GPU). Try `?zaxis_backend=webgl2` or enable acceleration |
+| Works with WebGL2 only | WebGPU is missing or disabled in that browser; no action needed, or force it with `?zaxis_backend=webgpu` to see the error |
+| Wasm fails to load / wrong MIME type | Serve `.wasm` as `application/wasm` over HTTP(S), not `file://` |
+| `wasm-bindgen` schema mismatch | The CLI must match `wasm-bindgen` in `Cargo.lock` (`cargo install wasm-bindgen-cli --version <it>`) |
+| `time not implemented on this platform` | Code outside zaxis calls `std::time::Instant::now()`; use `zaxis::Instant` |
+| Text missing or boxes | No system fonts in a page: enable the `bundled-*` features or load a `FontFamily` |
+| Image never appears | `ImageSource::path` cannot work in a page; use `bytes`, `encoded` or `rgba` |
+| Paste does nothing | Needs a real Ctrl/Cmd+V in the canvas: the text comes from the `paste` event. Custom hosts need `Context::set_clipboard` |
+| Copy reports "clipboard unavailable" | `navigator.clipboard` needs HTTPS or localhost and a recent gesture; the `copy` event path still works from the key press |
+| Canvas blurry on a high-density screen | Give the canvas CSS size, not a fixed `width`/`height` attribute; winit sets the backing store |
+| Frozen after a GPU or driver reset | WebGPU device loss recovers by itself; a lost WebGL context needs a page reload |
+
 ## Missing glyphs or incorrect script layout
 
 The engine supports complex shaping and bidirectional layout. Bundled Noto Color Emoji

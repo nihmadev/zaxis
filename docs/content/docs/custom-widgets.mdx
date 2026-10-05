@@ -84,6 +84,59 @@ costs nothing while idle and tessellates again only when the value or a state ch
 Keep per-frame data out of the shape (no animation clocks, no counters) and the cache
 does the rest. Text inside a custom widget is a `Text` widget or a `ui.label`.
 
+## Accessibility
+
+A custom widget that describes nothing is not in the accessibility tree. Describe it
+with `Ui::accessible` after `Ui::interact`; the node takes the id and rectangle of the
+response:
+
+```rust
+use zaxis::{AccessRole, Sense};
+
+let mut response = ui.interact(rect, "pad", Sense::CLICK | Sense::FOCUS);
+ui.accessible(&response, |node| {
+    node.role(AccessRole::Switch).label("Pad").toggled(*self.on);
+});
+if response.clicked() {
+    *self.on = !*self.on;
+    response.mark_changed();
+}
+```
+
+The closure runs only while assistive technology is connected, so building a name
+costs nothing otherwise. `AccessNode` sets what the node says:
+
+| Method | Sets |
+| --- | --- |
+| `role(AccessRole)` | What the widget is; the default is `Group` |
+| `label(text)`, `description(text)` | The name and the detail spoken after it |
+| `value(text)`, `numeric(value, min, max)`, `step(size)` | A text value, or a range value and the size of one step |
+| `toggled(..)`, `selected(bool)`, `expanded(bool)` | State of a two- or three-state control, an item, a disclosure |
+| `disabled`, `read_only`, `required`, `invalid`, `busy`, `hidden` | Flags; a region inside a disabled `Ui` is published as disabled already |
+| `orientation`, `level`, `position_in_set(index, size)` | Axis, heading or tree level, zero-based position in a set |
+| `placeholder`, `url`, `keyboard_shortcut` | Extra text properties |
+| `live(AccessLive)` | Changes of the text are announced without moving focus |
+| `labelled_by(id)`, `described_by(id)` | Name or describe the node with another widget's text |
+| `action(AccessActionKind)` | Accept a request of that kind |
+
+Requests from assistive technology arrive one pass later:
+
+* A region with `Sense::FOCUS` is focusable in the tree; a `Focus` request moves
+  keyboard focus to it.
+* A `Click` request on a region with `Sense::CLICK` arrives as `Response::clicked()`,
+  exactly like a pointer click. Nothing has to be declared for it.
+* Every other request is returned by `Ui::accessible` as an `AccessAction`, once, and
+  only for kinds the node declared with `action(..)`: `Increment`, `Decrement`,
+  `SetValue(String)`, `SetNumericValue(f64)`, `Expand`, `Collapse` and the rest. A
+  numeric value may be out of range or not finite; clamp it.
+
+`Ui::accessible_group(id_source, role, label, |ui| ..)` groups the widgets built in the
+closure under one named node without changing layout. A caller can also rename, describe,
+re-role or hide any widget with `.accessible_label(..)`, `.accessible_description(..)`,
+`.accessible_role(..)` and `.accessibility_hidden()`. See
+[Accessibility](./accessibility.mdx#custom-widgets) for a slider that handles
+`Increment` and `Decrement`.
+
 ## Checklist
 
 1. Use stable `id_source` values; scope loops with `Ui::push_id`.
@@ -91,5 +144,6 @@ does the rest. Text inside a custom widget is a `Text` widget or a `ui.label`.
 3. Read events from the returned `Response`; never from `InputState` transitions.
 4. Treat `response.enabled` as the disabled state; do not test your own flag.
 5. Return the response so wrappers (`.tooltip(..)`, `.context_menu(..)`) can attach.
-6. Check the result with the [debug overlay](./diagnostics.mdx#debug-overlay): press F3 in
+6. Describe the widget with `Ui::accessible`: a role, a name, and the requests it accepts.
+7. Check the result with the [debug overlay](./diagnostics.mdx#debug-overlay): press F3 in
    the custom widget example.

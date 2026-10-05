@@ -37,3 +37,12 @@ the shared Unicode shaper for long words. It follows final layout and scroll
 placement, escapes parent clipping, and fits the viewport below or above the
 target. On short viewports it can grow wider to keep all lines visible. Text
 larger than the entire viewport should be shown in a scrollable panel instead.
+
+## Accessibility
+
+The tooltip text becomes the description of its widget, whether the tooltip is shown or
+not, unless the widget already has a description or is named by the same text. The
+widget accepts `ShowTooltip` and `HideTooltip`. While shown, the tooltip is a `Tooltip`
+layer. A tooltip switched off with `enabled(false)` says
+nothing; one hidden only by `TooltipStyle::enabled` of the theme still describes its widget.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

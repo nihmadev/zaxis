@@ -52,3 +52,9 @@ Request a native redraw when changing model state outside the UI.
 
 The indicator uses button fill colors, text color for the checkmark, and muted text
 when disabled. `Style::rounding` does not change its default radius.
+
+## Accessibility
+
+Role `CheckBox`, named by its label, with its toggled state. A `Click` request toggles
+it like a pointer click. A checkbox without text needs `.accessible_label("..")`.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

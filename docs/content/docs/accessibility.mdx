@@ -1,0 +1,333 @@
+---
+title: Accessibility
+icon: Accessibility
+description: The OS accessibility tree through AccessKit - roles, names, requests, announcements, and what was verified.
+---
+
+zaxis describes its widgets to screen readers and other assistive technology through
+[AccessKit](https://accesskit.dev). Every built-in component publishes a role, a name, a
+value, its state and the requests it accepts; requests from assistive technology come
+back as ordinary input for the next pass.
+
+## Platforms
+
+| Platform | Support |
+| --- | --- |
+| Windows | UI Automation through `accesskit_winit`; on by default (feature `accesskit`) |
+| macOS | NSAccessibility through `accesskit_winit`; on by default (feature `accesskit`) |
+| Linux and the BSDs | AT-SPI only with the `accesskit_unix` feature; nothing without it |
+| Browser (`wasm32`) | Not supported. The layer compiles, the runner creates no adapter and collects nothing |
+| Mobile | Not supported |
+
+Only part of this was checked with real assistive technology; see
+[Verified and unverified](#verified-and-unverified).
+
+## Activation and cost
+
+Nothing is collected until assistive technology asks a window for its tree:
+
+1. The adapter is created with the native window and holds a placeholder.
+2. When a screen reader connects, the adapter sends `InitialTreeRequested` through the
+   event-loop proxy. The runner turns collection on for that window's `Context`.
+3. The next frame publishes the whole tree.
+4. Later frames send only the nodes that changed. A frame that changes nothing sends
+   nothing.
+5. When assistive technology disconnects, collection stops and the tree is dropped.
+
+Without a screen reader the cost of the layer is one flag test per widget: the closure
+that builds a node's name and value does not run.
+
+While the UI is in motion (an animation, a glide, a drag) bounds that change are
+published at most every 200 ms; the final bounds are sent when the motion ends. A change
+of role, name, value or state is never delayed.
+
+The runner does not build frames for a window that is minimized, occluded or hidden, so
+its tree is not updated until the window is shown again.
+
+Turn the integration off with `RunOptions::with_accessibility(false)` for every window
+or `WindowOptions::with_accessibility(false)` for one; see
+[Desktop runner](./app.mdx#accessibility).
+
+## Naming widgets
+
+A control takes its name from its visible text: the label of a `Button`, `Checkbox` or
+`Switch`, the caption of a `Slider`, the title of a `Window`. A control without text
+needs a name from the call site:
+
+```rust
+ui.add(Button::new("##save").accessible_label("Save document"));
+ui.add(Switch::new(&mut muted, "").accessible_label("Mute"));
+```
+
+`Widget` has four methods for this; each wraps the widget in `Accessible<W>`:
+
+| Method | Effect |
+| --- | --- |
+| `.accessible_label(text)` | Replaces the name derived from visible text |
+| `.accessible_description(text)` | Extra detail spoken after the name |
+| `.accessible_role(role)` | Presents the widget as another `AccessRole` |
+| `.accessibility_hidden()` | Leaves the widget and everything in it out of the tree |
+
+Components that draw no caption of their own have a builder for the name:
+
+| Component | Method |
+| --- | --- |
+| `Image` | `alt(text)`; `decorative()` (or an empty `alt`) removes a non-interactive image from the tree |
+| `Loader` | `label(text)`; without it the spinner is an unnamed busy indicator |
+| `Modal` | `accessible_label(text)`; without it the dialog is named by the first text of its header |
+| `ListBox`, `TreeView`, `Table`, `Carousel` | `accessible_label(text)` |
+
+A [`Field`](./components/field.mdx) names the first control inside it with its label and
+describes it with its hint or validation message. A `TextEdit` with a placeholder and no
+other name is not reported as nameless.
+
+A control of a role that a screen reader announces by name and that has none is reported
+as `DiagnosticKind::MissingAccessibleName`; see [Diagnostics](#diagnostics).
+
+## Roles, states and requests
+
+"Click" below means that a `Click` request sets the same `clicked` state as a pointer
+click. Every node of a region that takes keyboard focus also accepts `Focus`. A disabled
+widget is published as disabled and ignores requests. A node inside a scrollable
+container accepts `ScrollIntoView`.
+
+### Text and images
+
+| Component | Role | Name and value | State | Requests |
+| --- | --- | --- | --- | --- |
+| `Text`, `ui.label`, `ui.muted` | `Label` | Value is the text; one text run per visual line | | |
+| `ui.title`, `ui.heading` | `Heading` | Value is the text | Level 1 (title) or 2 (heading) | |
+| `SelectableLabel`, `rich_label` | `Label` or `Heading` | Value is the whole source text, also when shortened with an ellipsis; a tooltip is the description | Selection; disabled | `SetTextSelection` (selectable text only) |
+| Link inside rich text | `Link`, child of its label | Name is the link text; URL; tooltip as description | Visited; disabled | Click |
+| `Hyperlink` | `Link` | Name is the text; URL | Visited; disabled | Click |
+| Copy button of a text block | `Button` | "Copy" | | Click |
+| `Badge` | `Label` | Value is the text; an empty badge has no node | | |
+| `Image` | `Image` | `alt(..)`; a load error is the description | Busy while loading | Click when `interactive` |
+| `Loader` | `ProgressIndicator` | `label(..)`, optional | Busy; no node while inactive | |
+| `Progress` | `ProgressIndicator` | `.accessible_label(..)`; value "N%" and 0-100 when determinate | Busy while indeterminate work is active | |
+| `Separator`, `Skeleton` | none | | | |
+
+### Controls
+
+| Component | Role | Name and value | State | Requests |
+| --- | --- | --- | --- | --- |
+| `Button` | `Button` | Label | Toggled for a toggle button; disabled | Click |
+| `Checkbox` | `CheckBox` | Label | Toggled | Click |
+| `Switch` | `Switch` | Label | Toggled | Click |
+| `RadioGroup` | `RadioGroup` of `RadioButton` | Option label; option description | Toggled; position in set | Click |
+| `SegmentedControl` | `RadioGroup` of `RadioButton` | Segment text, or its tooltip for an icon-only segment | Toggled; position in set; orientation | Click |
+| `Slider` | `Slider` | Caption; value with suffix; range and step | Horizontal; disabled | `Increment`, `Decrement`, `SetValue` |
+| `NumberInput` | `SpinButton` around a `TextInput` | Name from a `Field` or `.accessible_label(..)`; value with prefix and suffix; range and step only when a range was set | Invalid; disabled | `Increment`, `Decrement`, `SetValue` (text or number) |
+| `DragValue` | `SpinButton` that holds focus itself | As `NumberInput` | Invalid; disabled | `Increment`, `Decrement`, `SetValue` |
+| `TextEdit` | `TextInput` or `MultilineTextInput` | Name from a `Field`, `.accessible_label(..)` or the placeholder; value is the text | Read-only; invalid; disabled; selection | `SetTextSelection`; `SetValue` and `ReplaceSelectedText` unless read-only |
+| `Field` | no node of its own | Its label names the first control inside; its message describes it | Error status marks the control invalid; a validation message is a live region | |
+| `ComboBox` | `ComboBox`; while open a `ListBox` of `ListBoxOption` | Label; value is the selected option | Expanded; has popup; options: selected, position in set | Click, `Expand`, `Collapse`, `SetValue` (an option's label); options: Click |
+| `ColorPicker` | `ColorWell`; while open a group with three `Slider` and four `TextInput` | Label; value is the color as text | Expanded | Click, `Expand`, `Collapse`; sliders: `Increment`, `Decrement`, `SetValue`; fields: `SetValue` |
+| `KeyBox` | `Button` | Label; value is the binding | Toggled while it captures a key | Click |
+| `CollapsingHeader` | `Button` | Caption | Expanded | Click, `Expand`, `Collapse` |
+| `ui.tab_bar` | `TabList` of `Tab` | Tab label | Selected; position in set | Click |
+| `IconTabs` | vertical `TabList` of `Tab` | Tab label | Selected; position in set | Click |
+| `ui.tab_pages` | `TabPanel` | Named by the selected tab (see [Limitations](#limitations)) | The leaving page is hidden during a transition | |
+
+### Collections and containers
+
+| Component | Role | Name and value | State | Requests |
+| --- | --- | --- | --- | --- |
+| `ListBox` | `ListBox` of `ListBoxOption`; section headers are `Label`; separators have no node | `accessible_label(..)`; option text | Multi-selectable; busy while loading; options: selected, position among items; the cursor row is the active descendant | Scroll; options: Click |
+| `TreeView` | `Tree` with a flat run of `TreeItem` | `accessible_label(..)`; row label | Items: level, position in set, selected, expanded; the cursor row is the active descendant | Scroll; items: Click, `Expand`, `Collapse` |
+| `Table` | `Table` with a header `Row` of `ColumnHeader`, then `Row` of `Cell` | `accessible_label(..)`; header title | Row and column counts and indices of the whole data set; sort direction on the sorted header; selectable rows: selected | Scroll; sortable header: Click; selectable row: Click |
+| `Grid` | none; cell content is published in place | | | |
+| `ScrollArea` | `ScrollView` | | Scroll offset and range | Scroll (`ScrollUp`/`Down`/`Left`/`Right` by item or page, `SetScrollOffset`) |
+| `SplitPane` | each panel a `Group`; each boundary a `Splitter` | "Resize"; value is the size of the panel before it in logical pixels, with its range | Orientation; disabled when it cannot move | `Increment`, `Decrement`, `SetValue` |
+| `Carousel` | `Region`; the current page a `Group`; arrows and indicator items are `Button` | `accessible_label(..)`; value is the one-based page number; "Previous", "Next", "Page N" | Orientation; only the current page is exposed | `Increment`, `Decrement`, `SetValue`; buttons: Click |
+| `Card` | `Group` | No name | | |
+| Drag source | `Group` when it is a tab stop | | Holds focus | |
+
+### Windows and overlays
+
+| Component | Role | Name and value | State | Requests |
+| --- | --- | --- | --- | --- |
+| `Window` | `Window` | Title | | |
+| `Root` | `Group` | No name | | |
+| `TitleBar` | `TitleBar` with `Button` children | Title; "Minimize", "Maximize" or "Restore", "Close" | | Buttons: Click |
+| `Popup` | `Group` layer | No name | | |
+| `Modal` | `Dialog` | `accessible_label(..)` or the first text of the header | Modal; everything behind it leaves the tree | |
+| `Dialog` | `Dialog` | Title; the description text is the description | Modal | |
+| `Confirm` | `AlertDialog` | Title, or the message when there is no title | Modal | |
+| Modal close button | `Button` | "Close" | | Click |
+| `MenuBar` | `MenuBar` of `MenuItem`; an open panel is a `Menu` layer | Title text; the compact form is a `Button` named "Menu" | Titles with a panel: has popup, expanded; the highlighted row is the active descendant | Click, `Expand`, `Collapse` |
+| `ContextMenu` | `Menu` of `MenuItem` (`MenuItemCheckBox` for a checked row) | Row text; shortcut text as keyboard shortcut | Toggled; rows with a submenu: has popup | Rows: Click, `Expand`, `Collapse`; the target widget: `ShowContextMenu` |
+| `Tooltip` | The text becomes the description of its widget; while shown, a `Tooltip` layer | | | The widget: `ShowTooltip`, `HideTooltip` |
+| `Toast` | `Status` | "Title: content", or whichever is present | Polite live region | |
+
+Toasts, tooltips and announcements stay in the tree above an open modal.
+
+## Custom widgets
+
+A custom widget that describes nothing is not in the tree. Describe it with
+`Ui::accessible` after `Ui::interact`:
+
+```rust
+use zaxis::{AccessAction, AccessActionKind, AccessRole, Sense, Ui, Vec2};
+
+fn dial(ui: &mut Ui<'_>, volume: &mut f64) {
+    let rect = ui.allocate_space(Vec2::splat(48.0));
+    let response = ui.interact(rect, "volume", Sense::DRAG | Sense::FOCUS);
+    let requests = ui.accessible(&response, |node| {
+        node.role(AccessRole::Slider)
+            .label("Volume")
+            .numeric(*volume, 0.0, 1.0)
+            .step(0.1)
+            .action(AccessActionKind::Increment)
+            .action(AccessActionKind::Decrement);
+    });
+    for request in requests {
+        match request {
+            AccessAction::Increment => *volume = (*volume + 0.1).min(1.0),
+            AccessAction::Decrement => *volume = (*volume - 0.1).max(0.0),
+            _ => {}
+        }
+    }
+}
+```
+
+`Ui::accessible(&response, |node| ..) -> Vec<AccessAction>` gives the node the
+response's id and rectangle. The closure runs only while collection is active. Requests
+are returned once, on the pass after they arrived; a request for an action the node did
+not declare with `AccessNode::action` is ignored. Two cases never reach the returned
+list: `Focus` moves keyboard focus when the region has `Sense::FOCUS`, and `Click` on a
+region made with `Sense::CLICK` arrives as `Response::clicked()`.
+
+`Ui::accessible_group(id_source, role, label, |ui| ..)` puts the widgets built in the
+closure under one named node, for example a toolbar or a form section. Layout is not
+affected.
+
+The public types are zaxis' own: `AccessRole`, `AccessNode`, `AccessAction`,
+`AccessActionKind`, `AccessToggled`, `AccessLive`, `AccessOrientation` and `Accessible`.
+AccessKit types appear only in `Context::take_accessibility_update`,
+`Context::on_accessibility_action` and the re-exports `zaxis::accesskit` and
+`zaxis::accesskit_winit`, which exist for [custom hosts](#custom-hosts). See
+[Custom widgets](./custom-widgets.mdx#accessibility) for the node builder.
+
+## Announcements
+
+```rust
+context.announce("Saved");
+context.announce_assertive("Disk full");
+```
+
+`Context::announce` is spoken when the screen reader is idle; `announce_assertive`
+interrupts what is being spoken. Neither moves focus. Repeating the same text announces
+it again. Both do nothing while no assistive technology is connected.
+
+A [`Toast`](./components/toast.mdx) is a polite status region and needs no extra call. A
+validation message of a [`Field`](./components/field.mdx) is a live region: assertive
+for an error, polite otherwise.
+
+## Text and IME
+
+`TextEdit` publishes one text run per visual line. A character of a run is a grapheme
+cluster, and positions and widths come from the same shaped clusters that painting,
+hit testing and the caret use, so a caret position reported to a screen reader is a
+position of the edit buffer.
+
+* A multi-line field publishes the lines of the paragraphs in view. The node's value
+  holds the whole text up to 256 KiB; a longer text has no value, only lines.
+* `SetValue`, `ReplaceSelectedText` and `SetTextSelection` go through the edit buffer
+  and the undo history, like typed text. A read-only field accepts only
+  `SetTextSelection`.
+* An IME composition is published as the text shown on screen, composition string
+  included.
+* `TextEdit` has no password mode, so there is no password role.
+
+Static text (`Text`, `SelectableLabel`, `rich_label`) is published the same way. A
+`SelectableLabel` or `rich_label` of more than 512 visual lines positions only the
+paragraphs in view; the rest is in the value and in runs without positions.
+
+## Features and building
+
+| Feature | Default | Effect |
+| --- | --- | --- |
+| `accesskit` | on | Builds the tree and the adapter: `accesskit` 0.25.1 and, on native targets, `accesskit_winit` 0.34.1 |
+| `accesskit_unix` | off | Adds AT-SPI on Linux and the BSDs; brings a D-Bus client and an async executor. Implies `accesskit` |
+
+```toml
+zaxis = { version = "=0.0.3", features = ["accesskit_unix"] }
+```
+
+With `--no-default-features` (or without `accesskit`) the tree is never built. The
+describing API stays available, so widgets compile unchanged:
+`Context::set_accessibility_active` only stores its flag, and
+`take_accessibility_update`, `on_accessibility_action` and the `accesskit` re-exports do
+not exist.
+
+On `wasm32` the `accesskit` feature compiles but `accesskit_winit` is not a dependency
+and the runner creates no adapter; see [Web](./web.mdx#differences-from-the-desktop).
+
+## Custom hosts
+
+A host that owns its event loop creates the `accesskit_winit` adapter itself, forwards
+window events to it, and passes `Context::take_accessibility_update()` to the adapter
+after each pass. The steps are in
+[Custom host](./integration.mdx#accessibility).
+
+## Diagnostics
+
+A node of one of these roles without a name is reported as
+`DiagnosticKind::MissingAccessibleName`, with the widget's id: `Button`, `CheckBox`,
+`Switch`, `RadioButton`, `Slider`, `SpinButton`, `TextInput`, `MultilineTextInput`,
+`ComboBox`, `Link`, `Image`, `Tab`, `MenuItem`, `MenuItemCheckBox`, `MenuItemRadio`,
+`ColorWell`, `Dialog` and `AlertDialog`. Two nodes with one id are an `IdCollision`.
+
+The check runs only while the tree is collected. To audit an application without a
+screen reader, turn collection on by hand:
+
+```rust
+context.set_accessibility_active(true);
+// after the next pass:
+for problem in context.diagnostics() { /* MissingAccessibleName, IdCollision */ }
+```
+
+## Testing
+
+`zaxis::accessibility::testing::AccessTree` is the hook the library's own tests use. It
+is `#[doc(hidden)]` and not a stable API. `AccessTree::attach(&mut context)` turns
+collection on, `sync` applies the update of the last pass, and the tree is then searched
+by role and name and sent requests the way an adapter sends them, without a window, a
+GPU or a screen reader.
+
+## Verified and unverified
+
+| Checked | How |
+| --- | --- |
+| Roles, names, states, requests, incremental updates of every component | `tests/accessibility`, without a window; every update is also applied to `accesskit_consumer` |
+| The live UI Automation tree, its patterns, and Invoke, Toggle and SetFocus | Windows 11, through a UI Automation client |
+| Narrator | Windows 11, by the author |
+
+Not verified: NVDA, JAWS, Accessibility Insights, macOS VoiceOver, and Orca or any
+other AT-SPI client on Linux. The macOS and Linux adapters are built from the same tree
+but nobody has run a screen reader against them.
+
+## Limitations
+
+* No requests for drag and drop: a drag cannot be started or dropped from assistive
+  technology.
+* A virtualized row that was not built has no node. `ListBox`, `TreeView`, `Table` and
+  `ComboBox` publish counts and positions of the whole set; reach a far row by
+  scrolling its container.
+* In a roving-focus group (`RadioGroup`, `SegmentedControl`) only the current tab stop
+  accepts a `Focus` request.
+* Built-in names are English and cannot be localized: "Close", "Menu", "Resize",
+  "Previous", "Next", "Page N", "Copy", "Minimize", "Maximize", "Restore", "No matches",
+  and the color editor's "Hue", "Saturation", "Brightness", "Red", "Green", "Blue" and
+  "Hex".
+* Not every platform adapter exposes the `described_by` and `error_message` relations
+  (the Windows adapter does not), so a `Field` also copies its message into the
+  control's description string.
+* Tab pages know no tab. A page is linked to the selected tab of the tab list built
+  last before it in the same window; a layout that builds them in another order has an
+  unnamed panel.
+* A `TitleBar` comes after the window content in tree order.
+* No password field.
+* `Card` has no name API; use `ui.accessible_group` for a named group.
+* No support in the browser or on mobile.

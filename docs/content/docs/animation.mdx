@@ -481,11 +481,16 @@ Feather MIT notices are bundled in `assets/LUCIDE-LICENSE`. No SVG parser, brows
 network request or image runtime is needed. Cached geometry rotates around its
 own center with a linear phase and constant speed. Numeric angle wraps modulo
 one turn, but the displayed pose is continuous. Builders set size, color, stroke,
-period and active state; defaults come from motion and theme. It is decorative
-and registers no hit region. Rotation never changes allocation.
+period and active state; defaults come from motion and theme. It registers no
+hit region. Rotation never changes allocation. While active it is a busy progress
+indicator to screen readers, named by `Loader::label("Loading messages")`; the
+rotation never changes what they are told. An inactive loader is not announced.
 
 `ProgressState::Determinate` applies the application's value immediately;
 `Complete` fills the track and stops animation. Indeterminate has no percentage.
+Screen readers get the same state: a percentage for determinate progress, "busy"
+for active indeterminate work, never the animated segment. Name the bar with
+`.accessible_label(..)`.
 Inactive/reduced-motion indeterminate shows a fixed segment as a busy symbol.
 Pulse quietly varies opacity between 0.65 and one; text never moves. Override
 with `pulse_with(..., Pulse::new(period).minimum(...), ...)`. `Rotation` and

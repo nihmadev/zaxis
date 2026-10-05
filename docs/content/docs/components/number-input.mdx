@@ -89,3 +89,13 @@ the same number and saturated steps do not mark it changed.
 
 Run `cargo run --example numbers` for a slider, numeric entry, negative fractional
 drag value and an exact large integer in one window.
+
+## Accessibility
+
+`NumberInput` is a `SpinButton` around a text field; `DragValue` is a `SpinButton` that
+holds the focus itself. Neither draws a caption: name them with a
+[`Field`](./field.mdx) or `.accessible_label("..")`. The value is published with prefix and
+suffix; a range and step are published only when a range was set. `Increment` and
+`Decrement` step like the arrow keys (a draft is committed first), `SetValue` commits a
+number or a text like a typed and confirmed value. An invalid draft marks the node invalid.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

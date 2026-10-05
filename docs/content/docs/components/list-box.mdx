@@ -1,0 +1,159 @@
+---
+title: ListBox
+icon: List
+description: A virtualized, keyboard-driven list on stable keys, with single, multiple and checked selection.
+---
+
+```rust
+let mut selected = HashSet::<Id>::new();
+
+let out = ListBox::new("files")
+    .mode(ListMode::Multiple)
+    .selection(&mut selected)
+    .row_height(40.0)
+    .max_height(400.0)
+    .show_rows(
+        ui,
+        files.len(),
+        |i| ListEntry::item(files[i].id, &files[i].name),
+        |ui, row| {
+            ui.label(&files[row.index].name);
+            row.trailing(ui, |ui| ui.button("Open"));
+        },
+    );
+for event in &out.events {
+    match event {
+        ListEvent::Activated(key) => open(*key),
+        ListEvent::Context(key) => show_menu(*key),
+        _ => {}
+    }
+}
+```
+
+## Data model
+
+The list never copies your data. It asks a `ListModel` for `len()` and `entry(index)`, a
+`ListEntry { key, kind, enabled, text }`, and builds the rows near the viewport only.
+Three entry points feed it:
+
+- `show(ui, &model, content)` with your own `ListModel`; `show_text` draws the entry text.
+- `show_rows(ui, len, |i| entry, content)`: a count and a closure.
+- `show_slice(ui, &items, |item| entry, content)`: a slice and an entry function.
+
+`ListEntry::item(key, text)`, `header(key, text)` and `separator(key)` take any `Hash` value
+as the key. Keys must be stable across insertion, removal, reordering and filtering: selection,
+the active row, the range anchor, measured heights, drag identity and the scroll anchor all
+follow keys, never indices. `.enabled(false)` marks a row disabled.
+
+`content(ui, ListRow)` runs for visible **item** rows only. It lays out in a horizontal row
+inside the padding, centered vertically; `ListRow` carries `index`, `key`, `text`, `selected`,
+`active`, `enabled`, and the `color` and `muted` text colors for the row's state.
+`row.trailing(ui, |ui| ...)` pins content to the right edge (a badge, a button).
+
+Entries are scanned once per **revision**: whenever the length, the first, middle or last key,
+`.revision(n)` or the row sizes change. Bump `revision` when entries change in place without
+changing the length (a re-sort that keeps the ends is the typical case). Between revisions
+nothing is called for rows outside the viewport.
+
+## Selection
+
+`.selection(&mut HashSet<Id>)` is the application's state: the list edits it and reports one
+`ListEvent::SelectionChanged` per user action. Keys that vanish from the model stay in the
+set; the list never prunes it.
+
+| Mode | Behavior |
+| --- | --- |
+| `None` | Rows are only activated. |
+| `Single` | A click selects the row. |
+| `Multiple` | Click selects one; Ctrl/Cmd toggles; Shift selects the range from the anchor; Ctrl+Shift adds the range; Ctrl+A selects all enabled rows; Esc clears. |
+| `Checks` | A check box on every row; a click or Space toggles the row, Shift adds a range. Arrow keys only move. |
+
+Disabled rows, headers and separators are never selected and are skipped by the keyboard.
+The anchor and the active row are keys, so inserting or removing rows above them keeps them.
+When the active row disappears, the nearest selectable row takes over.
+
+## Events
+
+`ListOutput::events` holds `SelectionChanged`, `Activated(key)` (Enter or a double click),
+`Context(key)` (secondary click; the list does not select), `Moved { key, target, position }`
+(see below) and `LoadMore`. One input yields one event. The output also reports the active
+key, the visible entry range, the number of rows built on this pass and the viewport.
+
+## Virtualization
+
+Rows have a fixed height (`row_height`, default `Style::control_height`) or are **measured**:
+`measured_rows(estimate)` builds each row at its natural height. Unmeasured rows count as
+`estimate`, measured heights are cached by key and kept in a Fenwick tree, so offsets and
+hit lookups cost O(log n). The scroll bar changes only by measured deltas. A row that starts
+above the viewport and changes height keeps its bottom edge in place, so scrolling up through
+unmeasured rows does not jump. Lists with 100 000+ rows build the viewport plus one row of
+margin on each side; fixed-height lists without separators or measuring need no memory per row.
+
+- `scroll_to_key(key)` reveals a row on that pass (pass it only when requested). Keyboard moves
+  reveal the active row; in measured lists the reveal is retried while rows are measured.
+- When the entries change, the row at the top of the viewport stays at the top (except at the
+  very start of the list). When the length shrinks, the position is clamped.
+- `has_more(true)` emits `LoadMore` once per length when the viewport nears the end;
+  `loading(true)` appends a spinner row. `empty_text` shows a centered message when the model is
+  empty ("No matches"). Headers pin to the top while their section scrolls; the next header
+  pushes them out.
+- Sizes are snapped to physical pixels, so rows and hits stay aligned at 1.25, 1.5 or 2.0 scale.
+  Invalid sizes (NaN, zero) are ignored with a diagnostic.
+
+The engine is `ScrollArea`'s row machinery: `Table::show_rows`, `TreeView` and `ComboBox` use
+the same code through `show_rows`.
+
+## Keyboard and pointer
+
+The whole list is one Tab stop. While it has focus: Up/Down, PageUp/PageDown, Home/End move the
+active row; in `Single` and `Multiple` they also select it (Ctrl moves without selecting, Shift
+extends the range, `selection_follows_focus` changes the default); Space toggles in `Multiple`
+and `Checks`; Enter activates; Ctrl+A and Esc as above. **Type-ahead** collects typed text
+(800 ms between characters, `ListBoxStyle::type_ahead_timeout`) and jumps to the next row whose
+text starts with it, case-insensitively and only on a grapheme boundary; repeating one
+character cycles through the matches.
+
+Keys are read only while the list itself has focus, so a nested `TextEdit` keeps them. Hover
+only highlights; it never moves the keyboard row.
+
+**Input priority** inside a row: controls built by `content` (buttons, check boxes, text fields)
+win the pointer; the row itself takes the rest; the list takes what no row covers. Pressing a row
+moves focus to the list. A disabled row blocks the pointer.
+
+## Reordering
+
+`drag_rows(true)` makes rows drag sources and before/after targets through the shared drag
+primitives (auto-scroll, insertion line, Ctrl+Space for the keyboard). The list reports
+`Moved { key, target, position }` and never edits your model. A dragged row that scrolls out of
+view stays alive while the model still has it.
+
+## Style
+
+`ListBoxStyle` (`Style::list_box`, or `ListBox::style`) sets `row_height`, `header_height`,
+`separator_height`, `row_margin`, `row_padding`, `row_rounding`, the `idle`, `hover`, `selected`,
+`selected_inactive` fills, the `active_ring`, `stripe` (alternating rows), `divider`, text
+colors, header look, font, `check_size`, `surface`, `border` and `scroll`. Unset fields follow the
+current `Style`. `density(ListDensity::{Compact, Normal, Comfortable})` scales height and
+padding. A settled list requests no redraw.
+
+## Limitations
+
+- Row content is laid out per frame for visible rows only; the model is scanned once per revision,
+  so a revision change on a multi-million entry list costs a linear pass.
+- Measured rows keep their estimate until built: scrolling to a far row positions it by
+  estimate and corrects while the rows are measured.
+- Headers and separators have their own fixed heights; they cannot contain widgets.
+- Dragging moves one row (the dragged one), not the whole selection.
+- Type-ahead matches the entry `text` after lowercasing; there is no Unicode normalization.
+- Horizontal scrolling, grid layout, column headers and in-place editing are not part of the
+  list; use `Table`, `Grid` or a `TextEdit` in a row.
+
+## Accessibility
+
+Role `ListBox`, named with `ListBox::accessible_label("..")`; multi-selectable in the
+`Multiple` and `Checks` modes and busy while loading. Rows are `ListBoxOption` nodes with
+selected state and position among the items of the whole list; section headers are labels
+and separators add nothing. A `Click` request on a row selects it like a pointer click.
+Focus stays on the list and the cursor row is its active descendant. Rows that were not
+built have no node; the list accepts scroll requests to reach them.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

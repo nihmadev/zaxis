@@ -1,7 +1,7 @@
 ---
-title: Desktop runner
+title: Runner
 icon: AppWindow
-description: App, Frame, native window configuration, lifecycle, and startup errors.
+description: App, Frame, native window configuration, lifecycle, startup errors, and the browser runner.
 ---
 
 ## Entry points
@@ -11,8 +11,14 @@ pub fn run(app: impl App) -> Result<(), RunError>;
 pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunError>;
 ```
 
-Call either entry point on the main thread. winit generally permits one event loop
-per process. The call blocks until the loop exits.
+On the desktop, call either entry point on the main thread. winit generally permits one
+event loop per process. The call blocks until the loop exits.
+
+In a browser (`wasm32-unknown-unknown`) the same functions draw on a canvas, but **the call
+returns immediately** after registering the event loop with winit's `spawn_app`: the page
+drives the loop from then on, and the renderer is created asynchronously. The application
+must be `'static`. Errors after the return are written to the console. The page has one
+window; see [Web](./web.mdx).
 
 `App` requires one method; the other four are optional and serve several native windows:
 
@@ -49,14 +55,17 @@ fn open(app: impl App) -> Result<(), RunError> {
 `presentation_mode: PresentationMode`, `font_family: Option<FontFamily>`
 (`RunOptions::with_font_family`; `None` uses the bundled Inter), `monospace_family`
 (`with_monospace_family`; `None` uses the bundled JetBrains Mono), `main_window: WindowKey`
-(`with_main_window`) and `exit_policy: ExitPolicy` (`with_exit_policy`). The attributes and
-presentation mode describe the main window. Defaults:
+(`with_main_window`), `exit_policy: ExitPolicy` (`with_exit_policy`) and `web: WebOptions`
+(`with_canvas_id`, `with_container_id`, `with_web_backend`; read only by the browser runner).
+The attributes and presentation mode describe the main window. Defaults:
 
 | Setting | Value |
 | --- | --- |
 | Native title | `zaxis` |
 | Native inner size | 860 × 560 logical pixels |
 | Presentation | `PresentationMode::Vsync` |
+
+`accessibility: bool` (`with_accessibility`) is described in [Accessibility](#accessibility).
 
 Native `WindowAttributes` can use logical or physical dimensions. The zaxis panel
 builder `Window` controls panels inside the native window; its dimensions are always
@@ -118,28 +127,51 @@ fn close_requested(&mut self, request: &mut CloseRequested<'_>) {
 * **Failures:** a window that cannot be created reaches `window_failed` and
   `WindowStatus::Failed`; the others keep running and the key can be requested again.
 * **Shortcuts:** keys go to the focused window; `global_shortcut` can take one first.
+* **Browser:** a page has one canvas. `Windows::open` returns `OpenOutcome::Unsupported`
+  for a second key, its status is `Failed`, and `window_failed` receives
+  `WindowError::Unsupported`; the main window is unaffected.
 
 Run `cargo run --example multi_window` (add `-- --smoke-test` for the scripted lifecycle).
 
 The runner does not expose its `Renderer` through `Frame`. Runtime presentation
 switching uses a [custom host](./integration.mdx).
 
+## Accessibility
+
+With the default `accesskit` feature every native window serves an accessibility tree
+to screen readers. Nothing is built until assistive technology connects, so leaving it
+on costs nothing without one.
+
+| Option | Effect |
+| --- | --- |
+| `RunOptions::with_accessibility(false)` | No window serves a tree |
+| `WindowOptions::with_accessibility(false)` | That window serves none; it is invisible to assistive technology |
+
+Both default to `true`; a window serves a tree only when both are on. The options have
+no effect without the `accesskit` feature or in a browser. The runner names the tree
+after the native window title. See [Accessibility](./accessibility.mdx).
+
 ## Lifecycle
 
 | Event | Runner action |
 | --- | --- |
-| Initial resume | Create the main native window and renderer, set viewport, request redraw; open declared windows |
+| Initial resume | Create the main native window and renderer, set viewport, request redraw; open declared windows. In a browser the renderer arrives from a task, and the window gets its context and first frame then |
 | Input | Forward to `Context`; request redraw when its response requires it |
 | Resize or DPI change | Refresh viewport from actual native size and scale, resize renderer |
 | Occlusion or zero native size | Stop rendering and wait for events |
 | Unocclusion | Request redraw |
 | Surface timeout, lost, or outdated | Retry after 16 ms; renderer handles surface recovery |
-| GPU device loss | Recreate renderer with the current presentation mode, request redraw |
+| GPU device loss | Recreate renderer with the current presentation mode, request redraw (in a browser, in the background; nothing is drawn meanwhile) |
 | Suspend | Drop native window/renderer, clear focus and held input |
 | Resume after suspend | Recreate native resources; retain application and UI state |
 
 The event loop uses `ControlFlow::Wait` while idle and `WaitUntil` for repaint
-deadlines. Surface retry backoff takes precedence over immediate UI repaint requests.
+deadlines; on the web winit maps them to `requestAnimationFrame` and timers, so a settled
+page and a background tab do no work. Surface retry backoff takes precedence over immediate
+UI repaint requests.
+
+Repaint deadlines are `zaxis::Instant` values: `std::time::Instant` on native targets,
+`web_time::Instant` on `wasm32`, where std's clock panics.
 
 ## Errors
 
@@ -149,6 +181,7 @@ deadlines. Surface retry backoff takes precedence over immediate UI repaint requ
 | --- | --- |
 | `EventLoop(EventLoopError)` | Create or run the winit event loop |
 | `Window(OsError)` | Create the main native window (secondary windows report `WindowError` to `window_failed`) |
+| `Web(String)` | The page lacks what the browser runner needs, such as the `canvas_id` element |
 | `Render(RenderError)` | Initialize the renderer or handle an unrecoverable rendering failure |
 
 Return this error from `main`, or handle it in your application launcher. Renderer

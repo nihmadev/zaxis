@@ -19,9 +19,11 @@ Run these commands from the repository root.
 | In-window drag and drop |  `cargo run --release --example drag_and_drop` | [drag_and_drop.rs](https://github.com/nihmadev/zaxis/blob/main/examples/drag_and_drop.rs) |
 | A widget written outside the crate | `cargo run --example custom_widget` | [custom_widget.rs](https://github.com/nihmadev/zaxis/blob/main/examples/custom_widget.rs) |
 | Lucide icon gallery | `cargo run --example icons --features bundled-icons` | [icons.rs](https://github.com/nihmadev/zaxis/blob/main/examples/icons.rs) |
+| Landing page in a window and in the browser | `cargo run --example web_landing --features bundled-icons`; browser: `cd examples/web_landing && trunk serve` ([Web](./web.mdx)) | [web_landing.rs](https://github.com/nihmadev/zaxis/blob/main/examples/web_landing.rs) |
 | Several native windows, shared resources | `cargo run --example multi_window` | [multi_window.rs](https://github.com/nihmadev/zaxis/blob/main/examples/multi_window.rs) |
 | Menu bar with cascading submenus | `cargo run --example menu_bar` | [menu_bar.rs](https://github.com/nihmadev/zaxis/blob/main/examples/menu_bar.rs) |
 | Source, diff and file table in the code font | `cargo run --example code_view` | [code_view.rs](https://github.com/nihmadev/zaxis/blob/main/examples/code_view.rs) |
+| Form for screen readers: roles, names and requests | `cargo run --example accessibility` | [accessibility.rs](https://github.com/nihmadev/zaxis/blob/main/examples/accessibility.rs) |
 | Validated form | `cargo run --example validation` | [validation.rs](https://github.com/nihmadev/zaxis/blob/main/examples/validation.rs) |
 
 All three select `PresentationMode::Immediate` unless passed `--vsync`:
@@ -73,6 +75,21 @@ For a host that must preserve state across suspend/resume, keep the model and
 `Context` outside the disposable window/renderer state. The full host contract is
 in [Custom host](./integration.mdx).
 
+The example also wires an AccessKit adapter through `zaxis::accesskit_winit`, so it
+needs the `accesskit` feature (on by default; with `--no-default-features` add
+`--features accesskit`).
+
+## Accessibility
+
+`accessibility` is a form a screen reader can operate: a menu bar, tabs, named fields
+with validation, a text area, a checkbox, a radio group, a slider, a combo box, an
+icon button named with `.accessible_label(..)`, an image with `alt`, a list, a tree, a
+table, a dialog and a toast. Run it with a screen reader turned on. It needs the
+`accesskit` feature, which is on by default. `--smoke-test` first builds the form
+without a window, validates every tree update with `accesskit_consumer` and sends a
+series of requests the way assistive technology does, then presents a few frames and
+exits. See [Accessibility](./accessibility.mdx).
+
 ## Smoke tests
 
 The `animations` example shows every built-in animation on its own tab: easing
@@ -87,6 +104,7 @@ modes; the custom spring asserts a single completion event.
 cargo run --example demo -- --smoke-test
 cargo run --example settings -- --smoke-test
 cargo run --example integration -- --smoke-test
+cargo run --example accessibility -- --smoke-test
 cargo run --example animations -- --smoke-test
 cargo run --example custom_animation -- --smoke-test
 cargo run --example ade_motion -- --smoke-test

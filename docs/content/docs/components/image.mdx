@@ -18,6 +18,11 @@ with straight alpha. `ImageSource::encoded(bytes)` owns encoded bytes through an
 identity. Paths and `include_bytes!` need no handles, decoders or backend calls.
 The ordinary runner wakes automatically when a background result arrives.
 
+In a browser there are no file paths and no worker threads: `path` sources report an error
+(use `bytes`, `encoded` or `rgba`), and decoding runs on the drawing thread in slices of
+about 6 ms per frame, at least one image each (`Context::decode_images_inline` changes the
+budget). See [Web](../web.mdx#images).
+
 PNG, JPEG, WebP, BMP and SVG are built in. GIF and TIFF are enabled by the default
 `image-gif` and `image-tiff` features; `--no-default-features` removes those two.
 Encoded format is detected from content, including files with misleading
@@ -29,8 +34,16 @@ Natural dimensions are logical layout units, independent of DPI. `size`, `max_si
 and `aspect_ratio` reserve layout space; unknown natural size uses a small placeholder.
 Contain preserves the full image, cover crops centrally and stretch fills the box.
 `uv(Rect)` crops before fitting. Tint and opacity compose with subtree opacity.
-Rounded texture contours use the core tessellator and clipping. Images are decorative
+Rounded texture contours use the core tessellator and clipping. Images take no input
 unless `.interactive(true)` enables the usual `Response` hit region.
+
+Screen readers announce an image by `.alt("what it shows")`. Mark one that only decorates
+with `.decorative()` (or an empty `alt`): it is left out of the accessibility tree. An image
+with neither is reported as `DiagnosticKind::MissingAccessibleName` while assistive
+technology is connected. An interactive image is a control and always stays in the tree,
+so it needs `alt`. While an image loads it is exposed as busy; a failed one carries the
+error as its description. Icons that `Button`, `IconTabs` and other components draw
+themselves are decoration and add nothing.
 
 `Image::show(ui)` returns `ImageOutput { response, state }`. `ImageState` is Loading,
 Ready or Error; `Context::image_state` observes it. `.placeholder(false)` allows custom
@@ -117,7 +130,7 @@ No Tokio runtime, frequent polling or continuous redraw is required.
 
 Implement `ImageDecoder` and register an `Arc` with `Context::add_image_decoder` to
 recognize another encoded format. Built-ins remain installed. The decoder runs in a
-worker, must check supplied limits before allocation and return straight sRGB RGBA8.
+worker (on the drawing thread in a browser), must check supplied limits before allocation and return straight sRGB RGBA8.
 It must finish in bounded time. Context drop cancels queued work and callbacks;
 currently running codec work finishes without publishing. GPU creation always stays
 with the renderer owner.
@@ -150,3 +163,10 @@ path, which differs from production `queue.write_texture`. Exact production GPU 
 and GPU allocation times are unavailable. Texture/view/bind-group creation and write_texture
 durations are CPU API time. `--gpu-wait` is completion waiting, and render/present includes
 CPU and surface work. Neither is pure GPU time.
+
+## Accessibility
+
+Role `Image`, named by `alt(..)`; `decorative()` removes a non-interactive image from the
+tree. Busy while loading; a load error is the description. An interactive image accepts
+`Click`.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

@@ -1,0 +1,186 @@
+---
+title: Hyperlink and selectable text
+icon: Link
+description: Links, links inside styled paragraphs, and static text that can be selected and copied.
+---
+
+```rust
+if ui.hyperlink_to("Documentation", "https://example.com/docs").clicked() {
+    // the application decides what a click means
+}
+
+ui.add(Hyperlink::new("Release notes").url("https://example.com/notes").open_in_browser());
+
+ui.rich_label(
+    RichText::new()
+        .text("see ")
+        .link("docs", "https://example.com/docs")
+        .text(" for ")
+        .bold("details"),
+);
+
+ui.selection_scope(|ui| {
+    ui.selectable_label("First paragraph");
+    ui.add(SelectableLabel::new("fn main() {}").monospace());
+});
+ui.copyable_label("cargo add zaxis");
+```
+
+Plain [`Text`](./text.mdx) is unchanged: it has no hit region and no selection state. These
+widgets share one engine: the same paragraph table as `TextEdit`, so hit testing, the
+selection backing, underlines and the glyphs on screen all read one cached layout.
+
+## Hyperlink
+
+`Hyperlink::new(text)` is a link as a widget; `ui.hyperlink(text)` and
+`ui.hyperlink_to(text, url)` are the short forms. It is accent colored, underlines on hover,
+is reachable with Tab and shows a focus ring around each line of the link.
+
+| Builder | Behavior |
+| --- | --- |
+| `url(impl Into<String>)` | The address. It is reported, never opened by itself. |
+| `visited(bool)` | The application says the link was followed; it gets the visited color. |
+| `enabled(bool)` | A disabled link is faded, takes no input and keeps the arrow cursor. |
+| `tooltip(impl Into<String>)` | Shown on hover; without one the full address is shown. |
+| `underline(Underline)` | `Always`, `Hover` (default) or `Never`. |
+| `style(HyperlinkStyle)` | Colors, underline thickness and focus ring; see [Style](#style). |
+| `open_in_browser()` / `open_with(UrlPolicy)` | Open the address on activation after checking its scheme. |
+| `selectable(bool)` | Let the pointer select the link text. Off by default. |
+| `context_menu(bool)` | Copy menu on a secondary click (on by default). |
+| `id_source(impl Hash)` | Stable ID. |
+
+`size`, `weight`, `monospace`, `muted`, `wrap`, `max_lines` and the other typography builders
+are shared with `SelectableLabel`.
+
+### Activation
+
+A click activates on release over the same link, like `Button`; pressing and moving away does
+not. A wrapped link has one hit area per line, and a press on one line with a release on the
+next is still one click. Enter and Space activate a focused link. `Response::link_activation()`
+reports the one activation of a pass:
+
+- `LinkActivation::Primary`: click, Enter or Space. `Response::clicked()` is true too.
+- `LinkActivation::Secondary`: middle click or Ctrl+click. `clicked()` stays false.
+
+`Hyperlink::show(ui)` returns a `HyperlinkOutput` with `response`, `activated` and `url`.
+A secondary click opens a menu with *Copy link address* and *Copy text*.
+
+### URL safety
+
+The library never opens an address unless you ask with `open_in_browser()` (or call
+`UrlPolicy::open`), and then only after `UrlPolicy::check`: the address must have no
+whitespace or control characters and a scheme from the allowlist. The default allowlist is
+`https`, `http` and `mailto`; anything else (`javascript:`, `file:`, `ms-settings:`, ...) is
+refused with `UrlError::Scheme` and reported as a diagnostic. Add schemes on purpose with
+`UrlPolicy::default().allow("tel")`, or build an exact list with `UrlPolicy::only([..])`.
+Text from an untrusted source should keep the default policy. The address is handed to the
+system as a single argument, never through a shell.
+
+## Links inside text
+
+`RichText` is a flat list of spans over one string. Build it piece by piece (`text`, `bold`,
+`code`, `colored`, `styled`, `link`, `link_with`) or with explicit byte ranges through
+`RichText::from_spans(text, [Span::new(range).style(..).link(..)])`. Ranges are widened to
+grapheme cluster boundaries; overlapping or empty ones are dropped and reported as invalid
+values. A `Span` has a `SpanStyle` (color, weight, monospace, underline) and an optional
+`LinkTarget` (url, visited, enabled, underline, tooltip and an optional ID, by default its
+position among the links).
+
+`ui.rich_label(rich)` (or `SelectableLabel::rich`) shapes the spans together, so they wrap
+and kern as one paragraph. Every link is focusable and clickable on its own, in text order,
+after the paragraph's own Tab stop. `LabelOutput::links` has a `LinkReport` per link (response,
+address, activation); `LabelOutput::activated()` is the one that fired.
+
+## Selectable text
+
+`ui.selectable_label(text)` or `SelectableLabel::new(text)`:
+
+| Gesture | Result |
+| --- | --- |
+| Press and drag | Selects whole grapheme clusters; scrolls the enclosing `ScrollArea` while the pointer is held outside it |
+| Double / triple click | Word by Unicode word boundaries / the paragraph (line break delimited) |
+| Shift+click | Extends the selection from its anchor |
+| Ctrl/Cmd+A | Everything in the label or `SelectionScope` |
+| Ctrl/Cmd+C, Ctrl+Insert | Copies the selection; with nothing selected the clipboard is not touched |
+| Secondary click | *Copy* and *Select all* (disabled when there is nothing to copy) |
+
+The pointer is an I-beam. The label takes one Tab stop so the shortcuts work and shows no
+caret; it never edits, and typing, Backspace and Delete are left alone. A focused `TextEdit`
+or `ComboBox` keeps its own shortcuts: the label reacts only while it has focus. The selection
+color is `Style::text_edit_selection`, dimmed in an inactive window or when the label does not
+have focus. It is drawn as snapped rectangles that share edges between lines at every DPI.
+
+**What is copied** is exactly the selected text: explicit `\n`, tabs and runs of spaces stay,
+breaks that only wrapping added do not, underlines and decorations are not text. A link copies
+its visible text; its address is added as `text (url)` only with
+`copy_url_in_selection(true)`. With `truncate(true)` or `max_lines(n)` the label shows an
+ellipsis, but selection and copy cover the full text.
+
+One selection exists per window: pressing in another label or in empty space replaces or clears
+it. `Context::selected_text()` reads it and `clear_selection()` drops it. State is keyed by the
+label's ID, follows the label when its text changes (the range is clamped onto cluster
+boundaries) and is dropped when the label stops being built.
+
+### SelectionScope
+
+Labels built inside `ui.selection_scope(..)` select as one document in build order: a drag from
+one label to another selects the tail of the first, everything between and the head of the last.
+Ctrl/Cmd+A selects the whole scope and a copy joins the labels with a line break, or with
+`SelectionScope::new().separator(" ")`. Only labels that were built take part: in a virtualized
+list (`ScrollArea::show_rows`, `ListBox`) the rows that were never drawn are not selected and not
+copied.
+
+### Copy button
+
+`SelectableLabel::copy_button()` (or `ui.copyable_label(text)`) adds a small copy icon to the
+right. A click copies the whole text once and the icon becomes a check mark for about a second.
+The button is pointer-only, so it adds no Tab stop.
+
+### Inside rows, tables and lists
+
+A selectable label captures presses on its text. In a row that handles clicks itself (a
+`ListBox` row, a `Table` row, a `TreeView` node, a button-like card) use plain `Text`, or
+`SelectableLabel::new(..).selectable(false)` for the same layout without selection. A press
+that starts on a selectable label inside a draggable control selects text; start the drag of
+the control from outside the text. Windows and splitters are not affected: they are moved
+and resized from their own handles.
+
+## Style
+
+`Style::hyperlink` (`HyperlinkStyle`, a `Theme` override) holds `color`, `hovered`, `pressed`,
+`visited`, `disabled`, `underline`, `thickness` and `focus`. Unset colors derive from the theme
+accent: hover is brighter on dark themes and deeper on light ones, pressed is darker, visited
+is the accent muted toward the secondary text, disabled is the disabled text color. The
+underline is a vector line at the baseline, a whole number of device pixels thick and snapped
+to the pixel grid. It is not a text character.
+
+## Motion
+
+Link colors and the underline fade through the hover tween of `Style::motion`;
+`reduced_motion` makes them instant. A settled link and a hidden one request no redraw. The
+selection backing follows the pointer immediately and is never animated.
+
+## Limitations
+
+- Spans are flat: no nesting and one font size for the whole text. Weight, monospace and color
+  change per span; italic and optical sizes do not exist yet.
+- Bidirectional text selects by cluster and does not panic, but a range that crosses a
+  direction change is shown as the several rectangles it covers and is not reordered visually.
+- A link's focus ring and underline cover whole line fragments; a link inside truncated text
+  keeps only its visible part.
+- Selection does not cross windows (each native window has its own context) and never starts
+  from a drag of a nested drag source.
+- Rows a virtualized list did not build are not part of a cross-widget selection or copy.
+- For screen readers a `Hyperlink` is one link node named by its text, with its address;
+  selectable and rich text is a label holding the whole text (also when an ellipsis hides part
+  of it), its selection and one link node per link. A link that the ellipsis hides entirely is
+  not offered. The copy button is a button named "Copy".
+
+## Accessibility
+
+A `Hyperlink` is one `Link` node named by its text, with its address, a visited state and
+its tooltip as description; a `Click` request activates it once, like Enter. Rich and
+selectable text is a `Label` (or `Heading`) whose value is the whole text, with one `Link`
+child per link; selectable text publishes its selection and accepts `SetTextSelection`.
+The copy button is a `Button` named "Copy".
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

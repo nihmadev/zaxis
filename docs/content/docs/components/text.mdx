@@ -32,7 +32,9 @@ ui.add(Text::new("Build output\nCompleted")
 | `tab_size(u16)` | 8; width of a tab in cells (space advances) |
 
 Text is passive: no pointer capture or keyboard focus. Its `Response` contains its
-measured rectangle and hover state. `##` is displayed literally.
+measured rectangle and hover state. `##` is displayed literally. For text the user can
+select and copy, links, or mixed styles inside a line, see
+[Hyperlink and selectable text](./hyperlink.mdx).
 
 `ui.muted("No selection")` is the short form of `ui.add(Text::new("No selection").muted())`.
 Text without an explicit color also uses muted text inside a disabled group.
@@ -213,3 +215,10 @@ the page's texture revision and trigger a full page upload on the next render.
 
 For editing and native IME composition, use [TextEdit](./text-edit.mdx).
 See [Limitations](../limitations.mdx) for the remaining boundaries.
+
+## Accessibility
+
+`ui.label`, `ui.muted` and `Text` are `Label` nodes whose value is the text; `ui.title` is a
+`Heading` of level 1 and `ui.heading` of level 2. The text is published as one run per
+visual line with grapheme-cluster characters from the shaped layout.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

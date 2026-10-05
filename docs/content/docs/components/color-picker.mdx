@@ -53,3 +53,12 @@ Palette and hue geometry use cached rounded gradients and need no external image
 
 The Settings example's Appearance page includes an **Internal Color Picker**
 checkbox to switch between the two modes, with live preview and Apply/Cancel support.
+
+## Accessibility
+
+The row is a `ColorWell` named by its label; its value is the color as text and it has an
+expanded state. It accepts `Click`, `Expand` and `Collapse`. The open editor is a group
+with three sliders ("Hue", "Saturation", "Brightness"; `Increment`, `Decrement`,
+`SetValue`) and four text fields ("Red", "Green", "Blue", "Hex"; `SetValue`). A floating
+editor has a "Close" button. These names are English and cannot be changed.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

@@ -110,3 +110,12 @@ node (see [Drag and drop](./drag-and-drop.mdx)). The tree emits
 node into itself or its own subtree is rejected, leaves offer no inside zone, and
 open state, selection and focus remain keyed by node id. Ctrl+Space picks up the
 focused node. `cargo run --example drag_and_drop` shows it with model edits.
+
+## Accessibility
+
+Role `Tree`, named with `TreeView::accessible_label("..")`. Built rows are a flat run of
+`TreeItem` nodes with level, position in the set, selected and expanded state. A row
+accepts `Click`, and `Expand` and `Collapse` when it has children. Focus stays on the
+tree and the cursor row is its active descendant. Rows that were not built have no node;
+the tree accepts scroll requests.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

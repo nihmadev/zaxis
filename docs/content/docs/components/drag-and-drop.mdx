@@ -165,3 +165,11 @@ and the keyboard flow. `--smoke-test` replays one real drag through the event pa
 `--hold=tree` or `--hold=list` stops mid-drag for visual inspection. Benchmark cases
 `dnd_idle`, `dnd_begin_end`, `dnd_move_targets`, `dnd_autoscroll_virtual`,
 `dnd_tree`, `dnd_preview` and `dnd_lifecycle` run in `benches/performance.rs`.
+
+## Accessibility
+
+A drag cannot be started or dropped from assistive technology: there are no drag-and-drop
+requests. The content of sources and targets stays in the tree once; a source that is a
+tab stop is a `Group` that holds the focus, and the drag preview is left out. Keyboard
+dragging remains the way to move items without a pointer.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

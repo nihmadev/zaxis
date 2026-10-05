@@ -3,9 +3,9 @@
   "pages": [
     "index",
     "---Start---", "installation", "quickstart", "examples",
-    "---Application---", "app", "layout", "ids", "input", "repaint", "animation", "diagnostics",
+    "---Application---", "app", "layout", "ids", "input", "repaint", "animation", "diagnostics", "accessibility",
     "---UI---", "components", "custom-widgets", "style", "drawing",
-    "---Integration---", "integration", "renderer", "protocol", "performance",
+    "---Integration---", "integration", "web", "renderer", "protocol", "performance",
     "---Reference---", "api", "limitations", "troubleshooting", "development"
   ]
 }

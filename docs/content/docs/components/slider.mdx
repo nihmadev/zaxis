@@ -107,3 +107,10 @@ an occurrence counter per scope. Inserting ordinary text before them does not ch
 their IDs. For reorderable lists, scope each row with its model key using `Ui::push_id`.
 Wrapper functions can propagate their caller location with `#[track_caller]`.
 See [IDs and retained state](../ids.mdx).
+
+## Accessibility
+
+Role `Slider`, named by its caption (`text(..)`) or `.accessible_label("..")`. It publishes
+the formatted value with its suffix, the range and the step, and accepts `Increment`,
+`Decrement` and `SetValue`; they go through the same clamping and stepping as the keys.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

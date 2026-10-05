@@ -29,6 +29,7 @@ cannot flood a log; `diagnostics()` keeps describing it every pass while it pers
 | `InvalidValue` | A builder or style value was out of range | Uses the normalized value, below |
 | `InvalidModel` | A model passed to a component is inconsistent, such as a tree cycle | Same list as `TreeOutput::issues`; the component repairs what it can |
 | `InvalidUsage` | An API contract was broken, such as an extra Grid cell or an unknown split panel | Makes the call harmless |
+| `MissingAccessibleName` | A control that a screen reader announces by name has none. Checked only while the accessibility tree is collected; see [Accessibility](./accessibility.mdx#diagnostics) | Publishes the control without a name |
 | `External` | The clipboard, a native window drag or an image failed | Reports it; nothing else changes |
 
 ## Value normalization

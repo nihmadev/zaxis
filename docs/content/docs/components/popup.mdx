@@ -49,3 +49,10 @@ from receiving pointer presses and scrolling. Outside presses consume the
 gesture before dismissal. Escape restores the requested focus (or the focus
 held before opening); Tab dismisses and resumes ordinary focus traversal.
 Losing native focus or omitting the popup/owner from a pass removes its hits.
+
+## Accessibility
+
+A popup is an unnamed `Group` layer around its content. It gives no role to what it holds:
+components built on it (`ComboBox`, `ContextMenu`, `ColorPicker`) describe their own lists
+and menus.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

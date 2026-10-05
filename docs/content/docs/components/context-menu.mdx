@@ -57,3 +57,12 @@ cargo bench --bench context_menu -- --iterations 1000 --output target/context-me
 ```sh
 cargo run --example context_menu
 ```
+
+## Accessibility
+
+A widget with a context menu accepts `ShowContextMenu`; the menu opens at the middle of
+the visible part of the widget. The open menu is a `Menu` of `MenuItem` rows
+(`MenuItemCheckBox` for a checked row). A row is named by its text, carries its shortcut
+caption as a keyboard shortcut, and accepts `Click`; a row with a submenu also accepts
+`Expand` and `Collapse`. The highlighted row is the active descendant of the menu.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

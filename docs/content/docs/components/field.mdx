@@ -73,3 +73,12 @@ outline in addition.
 
 The `validation` example shows the complete flow, including errors that appear only
 after a field was left once.
+
+## Accessibility
+
+`Field` adds no node of its own. Its label names the first control inside it and its hint
+or message describes that control. With an error status the control is marked invalid.
+A validation message is a live region: assertive for an error, polite otherwise, so it
+is spoken when it appears or changes. The message is also copied into the control's
+description, because not every platform follows the description relation.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

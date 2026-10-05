@@ -23,9 +23,13 @@ compatibility re-export of the component module.
 | [Toast](./toast.mdx) | `context.toast(Toast::new(title).content(text))` | Passive transient notifications |
 | [KeyBox](./key-box.mdx) | `ui.key_box(&mut KeyBinding, label)` | Captures the next key or mouse button |
 | [IconTabs](./icon-tabs.mdx) | `ui.icon_tabs(&mut value, tabs)` | Vertical icon strip bound to a selection |
+| [ListBox](./list-box.mdx) | `ListBox::new(id).show_rows(ui, len, entry, content)` | Virtualized list on stable keys: single/multiple/checked selection, type-ahead, sections, measured rows |
+| [Carousel](./carousel.mdx) | `Carousel::new(id).pages(n).show(ui, &mut page, content)` | Stack of cards or photo slider: swipe with fling and rubber band, keys, wheel, buttons, indicators, autoplay |
+| [SegmentedControl](./segmented-control.mdx) | `ui.segmented(&mut value, options)` | Sliding-thumb or Material 3 style single choice row |
 | [Badge](./badge.mdx) | `ui.add(Badge::new(text))` | Passive chip for key caps, pills and counts |
 | [Text](./text.mdx) | `ui.label(text)` | Read-only text |
 | [Icons](./icons.mdx) | `ui.image(&icons::USER)` | Bundled Lucide icons, tintable (`bundled-icons` feature) |
+| [Hyperlink](./hyperlink.mdx) | `ui.hyperlink_to(text, url)` | Links, links inside styled text, selectable and copyable static text |
 | [TextEdit](./text-edit.mdx) | `ui.text_edit(&mut String)` | Single-line Unicode editing and IME |
 | [Button](./button.mdx) | `ui.button(text)` | Activation |
 | [Checkbox](./checkbox.mdx) | `ui.checkbox(&mut bool, text)` | Boolean value |

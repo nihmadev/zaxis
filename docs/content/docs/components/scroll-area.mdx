@@ -170,3 +170,12 @@ a nested compact list with 10,000 rows, row-count changes, row reveal, and a
 nested two-axis canvas. The example's `--smoke-test` only verifies native
 presentation. Visual appearance and physical touchpad feel require interactive
 inspection on the target device.
+
+## Accessibility
+
+Role `ScrollView` with its offset and range. It accepts scroll requests by item (48
+logical pixels) or page in four directions and a scroll offset; they move the area the way
+the wheel does. A node inside it accepts `ScrollIntoView`. Components that own their
+scrolling (`ListBox`, `TreeView`, `Table`, the multi-line `TextEdit`) publish the scroll
+state on their own node instead.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

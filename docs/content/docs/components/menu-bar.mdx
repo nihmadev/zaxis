@@ -49,3 +49,11 @@ binding and toggles its own flags in response to `selected`.
 - Submenus open immediately on hover, without a delay or a pointer-direction tolerance.
 - No icons, radio groups or custom widgets inside rows; no Alt-key mnemonics or `F10`
   focus; no OS-native menu bar.
+
+## Accessibility
+
+Role `MenuBar` with one `MenuItem` per title. A title with a panel has an expanded state
+and accepts `Click`, `Expand` and `Collapse`. An open panel is a `Menu` layer of menu
+items; the row highlighted by the keyboard is its active descendant. The compact form is a
+`Button` named "Menu" (English, not changeable).
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

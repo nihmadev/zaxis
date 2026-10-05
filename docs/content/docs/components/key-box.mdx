@@ -22,3 +22,9 @@ one box listens at a time.
 `Context::key_capture_active()` is true; hotkeys that would otherwise fire should ignore
 input meanwhile. Builders: `id_source`, `enabled`, `allow_left_click`, `button_size`,
 `fill`, `active_fill`, `accent`.
+
+## Accessibility
+
+Role `Button`, named by its label; the value is the current binding. It is toggled while
+it waits for a key. A `Click` request starts capture like a pointer click.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

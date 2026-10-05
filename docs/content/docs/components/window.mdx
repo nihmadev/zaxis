@@ -142,3 +142,11 @@ Without an override the panel inherits `Style::blur_radius`. A flat clear color
 has no detail to blur; paint scene geometry with `Context::paint_background`
 before building panels, or put another panel behind it. This effect samples the
 application frame, not the desktop behind the native OS window.
+
+## Accessibility
+
+Role `Window`, named by its title. Every window, popup and dialog is a child of the
+native window's root in layer order. A `TitleBar` is a separate node named by its title
+with "Minimize", "Maximize" or "Restore" and "Close" buttons (English, not changeable);
+it comes after the window content in tree order.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

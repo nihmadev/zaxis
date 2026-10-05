@@ -224,5 +224,15 @@ mixed Cyrillic/emoji/Arabic/Hebrew text and a disabled area. Benchmarks:
   paragraphs that were never on screen do not extend it.
 - No syntax highlighting, rich text or colored ranges, multiple carets, find and replace,
   folding, completion, or dragging of selected text.
-- The text is not exposed to OS accessibility, as for every control.
 - Text assigned by the application is never truncated by `max_chars`.
+
+## Accessibility
+
+Role `TextInput`, or `MultilineTextInput` for a text area. The name comes from a
+[`Field`](./field.mdx), `.accessible_label("..")` or the placeholder. The node publishes
+the text as its value, the read-only, invalid and disabled states, one text run per
+visual line and the selection. A text area publishes the lines of the paragraphs in
+view; its value holds the whole text up to 256 KiB. `SetValue`, `ReplaceSelectedText` and
+`SetTextSelection` go through the edit buffer and the undo history; a read-only field
+accepts only `SetTextSelection`. An IME composition is published as the text shown.
+There is no password mode. See [Accessibility](../accessibility.mdx#text-and-ime).

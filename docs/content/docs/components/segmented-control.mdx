@@ -1,0 +1,94 @@
+---
+title: SegmentedControl
+icon: ToggleLeft
+description: A plate of equal-weight choices with a sliding thumb, or a Material 3 style outlined row.
+---
+
+```rust
+ui.segmented(&mut mode, [(Mode::Table, "Table"), (Mode::Board, "Board")]);
+
+ui.add(
+    SegmentedControl::new(
+        &mut mode,
+        [
+            SegmentOption::new(Mode::Table, "Table").icon(&icons::TABLE),
+            SegmentOption::new(Mode::Board, "Board").icon(&icons::SQUARE_KANBAN).tooltip("Kanban board"),
+            SegmentOption::new(Mode::Gantt, "Gantt").enabled(false),
+        ],
+    )
+    .width(SegmentWidth::Fill)
+    .size(SegmentedSize::Large),
+);
+```
+
+The control edits an application-owned `&mut T` (`PartialEq + Hash + Clone`). An option is a
+`(value, label)` or `(value, label, icon)` tuple, or a `SegmentOption` with `icon`, `enabled`
+and `tooltip`. Its identity is the hash of the value, never the position or the label, so
+reordering keeps focus and animation. `Response::changed()` is true on the one pass that
+follows a user action; assigning the value from outside never reports it. A value that
+matches no option selects nothing and is left as it is; a disabled selected option stays
+selected.
+
+## Variants
+
+| Variant | Look |
+| --- | --- |
+| `Raised` (default) | Grey rounded plate with a small inset; a raised thumb with a soft shadow slides to the selected segment. The thumb radius is the plate radius minus the inset. |
+| `Outlined` | Material 3 style: a pill with a hairline outline and dividers; the selected segment gets a tonal fill and a check mark (in place of its icon). Fills fade in place instead of sliding. |
+
+Colors, radii, insets, shadow and dividers come from `Style::segmented` and
+`Style::segmented_outlined` (`SegmentedStyle`, also available as overrides in `Theme`). Priority
+is: builders (`corner_radius`, `size`, ...), then `.style(SegmentedStyle)`, then the theme
+style. A transparent plate with a bordered thumb gives an outlined-thumb look without another
+component.
+
+## Sizes
+
+- `SegmentWidth::Equal` (default): every segment is as wide as the widest content.
+  `Content`: each fits its own content. `Fixed(px)`: one width. `Fill`: equal segments that
+  fill the available width. `min_segment_width(px)` sets a lower bound.
+- The height is `Style::control_height` scaled by `SegmentedSize::{Small, Medium, Large}`
+  (0.8, 1.0, 1.25); text and icons scale with it.
+- The row never overflows its container. When it does not fit, segments shrink **uniformly**
+  and labels are cut with an ellipsis on a grapheme boundary. If the label of a segment that
+  has an icon would become unreadable, the labels of all segments with icons are hidden and
+  the icons remain; the label becomes the tooltip. Text-only segments keep an ellipsis.
+- `icon_only(true)` shows only icons from the start; the labels are tooltips.
+- Widths are distributed in physical pixels (largest remainder), so segments and gaps add up to
+  the available width without rounding drift at 1.0, 1.25, 1.5 or 2.0 scale.
+- `vertical()` stacks the segments; all share one width.
+
+## Keyboard and pointer
+
+The control is a single Tab stop (roving focus): Tab lands on the selected segment (the first
+enabled one when nothing is selected). Left/Right (Up/Down when vertical) move focus and,
+by default, the selection to the next enabled segment; Home/End jump to the ends. Nothing
+wraps. `focus_follows_selection(false)` makes arrows move only the focus, and Space/Enter
+select. A click selects on release over the same segment, like `Button`. Disabled options and
+a disabled control ignore input and are skipped by the keyboard. The focus ring appears only for
+keyboard focus. Arrow keys are read only while a segment has focus, so a nested `TextEdit` or
+`ScrollArea` keeps them.
+
+## Motion
+
+The thumb follows `Style::motion.spring`, keeps its velocity when the target changes and is
+keyed by the option set and pixel layout: the first frame, a different set of options or a
+resize place it without animation. Text and fills ease with `Style::motion.hover`.
+`reduced_motion` makes everything instant. A settled control requests no redraw.
+
+## Limitations
+
+- No multi-select and no "nothing selected" toggle; use `Checkbox` or `Switch`.
+- Labels are one line; there is no wrapping inside a segment.
+- Keyboard navigation does not wrap around the ends.
+- A click on a segment selects it but does not move keyboard focus onto it.
+- The `Outlined` variant reserves room for the check mark in segments without an icon, so
+  selecting never changes widths.
+
+## Accessibility
+
+Role `RadioGroup` with one `RadioButton` per segment: toggled state, position in the set
+and the control's orientation. A segment is named by its text, or by its tooltip when it
+shows only an icon. A `Click` request selects it. Only the segment that is the current tab
+stop accepts a `Focus` request.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

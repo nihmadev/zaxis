@@ -100,3 +100,9 @@ Run `cargo run --example grid_table` for nested settings cards and a data table.
 
 `Grid::drag_rows(true)` makes rows draggable and reports `GridOutput::row_moved`
 (row ids are `Id::new(source)` of the `row` call); see [Drag and drop](./drag-and-drop.mdx).
+
+## Accessibility
+
+A layout `Grid` adds no nodes; the content of its cells is published in place. Inside a
+[`Table`](./table.mdx) the cells are `Cell` nodes with row and column indices.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

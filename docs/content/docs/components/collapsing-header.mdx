@@ -52,3 +52,10 @@ values. Zero header height intentionally hides the header. Theme changes retain 
 Run `cargo run --example collapsing_headers`. `--smoke-test` verifies native
 presentation only. The example includes nesting, right actions, repeated captions,
 reordering, controlled expansion, icons and dark/light/high-contrast themes.
+
+## Accessibility
+
+The header is a `Button` named by its caption with an expanded state. It accepts `Click`,
+`Expand` and `Collapse`; a header that is not expandable accepts none of them. Widgets in
+the header row follow it in the tree as separate nodes.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

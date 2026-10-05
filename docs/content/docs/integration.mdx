@@ -110,7 +110,7 @@ deadline; clear it before attempting a redraw and replace it if that attempt ret
 `Retry`.
 
 ```rust
-use std::time::Instant;
+use zaxis::Instant;
 use zaxis::Context;
 use zaxis::winit::event_loop::ControlFlow;
 
@@ -136,6 +136,84 @@ recreate native resources, update the retained context's viewport, and request r
 The integration example drops its entire `State` on suspend, including its context
 and counters. For retained application state, use the ownership split in the
 [desktop runner](./app.mdx#lifecycle), or retain model/context separately in your host.
+
+## Accessibility
+
+A custom host connects the `Context` to assistive technology with an
+`accesskit_winit::Adapter`, re-exported as `zaxis::accesskit_winit` (feature
+`accesskit`, on by default; the integration example requires it). The adapter reports
+through the event loop, so the loop carries its event type:
+
+```rust
+use zaxis::accesskit_winit::{Adapter, Event as AccessEvent, WindowEvent as AccessRequest};
+
+let event_loop = EventLoop::<AccessEvent>::with_user_event().build()?;
+let proxy = event_loop.create_proxy();
+```
+
+1. **Create the adapter before the window is shown.** Create the window hidden, create
+   the adapter, then show the window. Keep the adapter next to the window and drop it
+   before the window.
+
+   ```rust
+   let window = Arc::new(event_loop.create_window(
+       Window::default_attributes().with_visible(false),
+   )?);
+   let access = Adapter::with_event_loop_proxy(event_loop, &window, proxy);
+   window.set_visible(true);
+   context.set_accessibility_title("My application");
+   ```
+
+2. **Give the adapter every window event first**, before `Context::on_window_event`:
+
+   ```rust
+   access.process_event(&window, &event);
+   let response = context.on_window_event(&event);
+   ```
+
+3. **Publish after each pass.** `take_accessibility_update` returns `None` when the
+   tree did not change:
+
+   ```rust
+   context.run(|context| show_ui(context));
+   if let Some(update) = context.take_accessibility_update() {
+       access.update_if_active(|| update);
+   }
+   ```
+
+4. **Handle the three adapter events** in `ApplicationHandler::user_event`:
+
+   ```rust
+   let redraw = match event.window_event {
+       AccessRequest::InitialTreeRequested => {
+           context.set_accessibility_active(false);
+           context.set_accessibility_active(true);
+           true
+       }
+       AccessRequest::ActionRequested(request) => {
+           context.on_accessibility_action(&request).repaint
+       }
+       AccessRequest::AccessibilityDeactivated => {
+           context.set_accessibility_active(false);
+           false
+       }
+   };
+   if redraw {
+       window.request_redraw();
+   }
+   ```
+
+Nothing is collected until `InitialTreeRequested`; the frame after it publishes the
+whole tree, and later frames only what changed. Turning collection off and on again on
+that event makes the next update a complete tree, whatever was sent before. A request
+takes effect on the next pass, like input. An update that is not taken is not lost:
+the next one is then complete again. With several windows, route the event by
+`event.window_id`.
+
+AccessKit types appear in the public API only here: `take_accessibility_update`,
+`on_accessibility_action` and the re-exports `zaxis::accesskit` and
+`zaxis::accesskit_winit`. On Linux and the BSDs the adapter does nothing without the
+`accesskit_unix` feature. See [Accessibility](./accessibility.mdx).
 
 ## Native IME
 

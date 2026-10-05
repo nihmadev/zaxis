@@ -27,3 +27,10 @@ and fade out when their time is up.
 Toasts are passive: they never take focus, intercept the pointer, or carry actions or a
 close button. They belong to one `Context`, so with several native windows queue the toast
 on the window that should show it.
+
+## Accessibility
+
+Role `Status`, a polite live region: a screen reader speaks the toast once when it
+appears, without moving focus. The name is "title: content", or whichever of the two is
+present. Toasts stay in the tree above an open modal.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

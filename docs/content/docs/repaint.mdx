@@ -27,8 +27,8 @@ The timer API below is for application work with an independent deadline.
 This app displays elapsed time and schedules a new pass every 100 ms:
 
 ```rust title="src/main.rs"
-use std::time::{Duration, Instant};
-use zaxis::{App, Context, Frame, Window};
+use std::time::Duration;
+use zaxis::{App, Context, Frame, Instant, Window};
 
 struct Clock { started: Instant }
 

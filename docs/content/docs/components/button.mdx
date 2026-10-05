@@ -35,6 +35,7 @@ let response = ui.add(Button::new("Apply")
 | `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
 | `variant(ButtonVariant)` | `Surface`; `Solid` (accent fill), `Soft` (translucent tint), `Outline`, `Ghost`. Explicit `style`, `border` and `rounding` still win |
 | `selected(bool)` | `false`; selected buttons keep the pressed fill |
+| `icon(impl Into<ImageSource>)` | A leading icon one line tall, tinted like the caption (for example `&icons::CHEVRON_DOWN` with `bundled-icons`); it widens the button and moves with `align`, hover, pressed and disabled looks |
 | `border(Border)` | `Style::border`; visible keyboard focus takes precedence |
 | `hover_style(HoverStyle)` | Theme hover preset; supports fill, shadow, gradient and custom combinations |
 
@@ -59,3 +60,11 @@ uses `Style::button_pressed`. Keyboard focus uses `Style::focus_border` instead 
 the builder border; there is no extra outer ring. Validation status still adds its soft ring.
 
 Use [IDs and retained state](../ids.mdx) for dynamic captions and repeated buttons.
+
+## Accessibility
+
+Role `Button`, named by its label. A toggle button also publishes its toggled state. A
+`Click` request acts like a pointer click. A button without text (an icon, a `##id`
+label) needs `.accessible_label("..")`; without it a
+`MissingAccessibleName` diagnostic is reported while a screen reader is connected.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

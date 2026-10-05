@@ -35,3 +35,9 @@ scheduled redraw; an unchanged card requests none. Retained heights are dropped 
 card stops being built.
 
 A card is not interactive and takes no focus; place controls inside it.
+
+## Accessibility
+
+A card is an unnamed `Group` around its content. It has no name API; wrap the content in
+`ui.accessible_group(id, AccessRole::Group, "Name", ..)` when the group needs a name.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

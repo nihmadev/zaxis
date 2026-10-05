@@ -13,6 +13,7 @@ adapter, device, queue, buffers, textures, pipeline, and optional MSAA attachmen
 | --- | --- |
 | `Renderer::new(Arc<Window>).await` | `Result<Renderer, RenderError>`; Vsync |
 | `Renderer::new_with_presentation_mode(window, mode).await` | Initialize with explicit presentation mode |
+| `Renderer::new_with_backends(window, mode, Some(backends)).await` | Try only these wgpu backends; `None` is the default order |
 | `resize(PhysicalSize<u32>)` | Reconfigure surface and MSAA; returns `Result<(), RenderError>` |
 | `render(&DrawData, Color)` | Present; returns `Result<RenderStatus, RenderError>` |
 | `presentation_mode()` | Return requested mode |
@@ -22,7 +23,13 @@ adapter, device, queue, buffers, textures, pipeline, and optional MSAA attachmen
 
 Initialization selects a low-power compatible adapter, requests downlevel GPU limits
 with the adapter's resolution limits, and creates the surface through safe `Arc`
-ownership. zaxis forbids unsafe Rust code.
+ownership. zaxis forbids unsafe Rust code. On Windows DX12 is tried before the default
+set unless `WGPU_BACKEND` or `new_with_backends` names one.
+
+In a browser `Renderer::new*` is still `async` and never blocks; the runner awaits it in a
+task. It probes WebGPU first, without touching the canvas, and falls back to WebGL2 with the
+downlevel WebGL2 limits (the texture limit is raised to what the context reports). The shaders
+are the same on both and use only features WebGL2 has. See [Web](./web.mdx#backends).
 
 ## Presentation modes
 
@@ -51,7 +58,8 @@ that the compositor has displayed a frame.
 
 ## Color and antialiasing
 
-The renderer selects an sRGB surface format when available. If only RGBA8/BGRA8
+The renderer selects an sRGB surface format when available (a browser canvas offers
+`bgra8unorm` or `rgba8unorm`, so it uses the sRGB view). If only RGBA8/BGRA8
 unorm is available, it uses an sRGB view for the attachment. Unsupported formats
 produce `UnsupportedSurface`.
 

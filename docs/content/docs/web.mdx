@@ -1,0 +1,220 @@
+---
+title: Web
+icon: Globe
+description: Build an interface for wasm32-unknown-unknown, run it on a canvas with WebGPU or WebGL2, and know what differs from the desktop.
+---
+
+The built-in runner also targets `wasm32-unknown-unknown`. The same `App`, `run` and
+`run_with_options` draw on a `<canvas>`; the UI code does not change. Native windows,
+threads, the file system and system fonts do not exist in a page, so a few behaviors
+differ. They are listed below.
+
+## Build
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo check --target wasm32-unknown-unknown --lib
+```
+
+`examples/web_landing` is a landing page that runs in a native window and in the browser
+from one source. Build it with [Trunk](https://trunkrs.dev):
+
+```sh
+cargo install trunk wasm-bindgen-cli --version 0.2.129   # matches Cargo.lock
+cd examples/web_landing
+trunk serve            # http://127.0.0.1:8090, rebuilds on change
+```
+
+Without Trunk, `python examples/web_landing/serve.py` builds the example and serves it on
+`http://localhost:8080` (`--no-build` serves the last build, `--port` changes the port).
+
+Trunk builds binary targets only, so `Trunk.toml` runs `cargo build --example` and
+`wasm-bindgen` as hooks. The wasm-bindgen CLI version must equal the `wasm-bindgen` entry in
+`Cargo.lock`. Without Trunk, use the CLI directly and serve the output with any static
+server:
+
+```sh
+cargo build --release --example web_landing --features bundled-icons \
+    --target wasm32-unknown-unknown
+wasm-bindgen --target web --no-typescript --out-dir dist --out-name web_landing \
+    target/wasm32-unknown-unknown/release/examples/web_landing.wasm
+```
+
+```html title="dist/index.html"
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>zaxis</title>
+    <script type="module">
+      import init from "./web_landing.js";
+      init();
+    </script>
+  </head>
+  <body></body>
+</html>
+```
+
+An application is an ordinary binary: its `main` calls `zaxis::run`, and wasm-bindgen runs
+`main` when the module loads. No `cdylib` crate type is needed.
+
+A release build with the default features is large (about 25 MB uncompressed) because the
+bundled Inter, JetBrains Mono and color emoji fonts are embedded. Serve it compressed, run
+`wasm-opt -Oz`, or disable `bundled-emoji` and the other `bundled-*` features you do not need
+(`default-features = false`). Without any bundled font the page has no text, because a browser
+build has no system fonts.
+
+## What `run` does in a page
+
+```rust
+fn main() -> Result<(), zaxis::RunError> {
+    zaxis::run(MyApp)   // MyApp: App + 'static
+}
+```
+
+* **It returns immediately.** A page cannot block, so `run_with_options` registers the event
+  loop with winit (`spawn_app`) and returns `Ok(())`. The loop then runs from browser
+  events. Errors that happen afterwards have no caller and are written to the console.
+* **The application must be `'static`**, because the loop outlives the call.
+* **The renderer is created asynchronously.** The canvas window exists at once; wgpu
+  requests the adapter and device in a task, and the first frame is built when that
+  finishes. Nothing blocks.
+* **Frames follow the browser.** winit schedules frames with `requestAnimationFrame` and
+  repaint deadlines with timers, so a settled UI does no work, and a background tab, whose
+  animation frames the browser suspends, draws nothing and uses almost no CPU.
+* **Panics reach the console** with their message and a stack through
+  `console_error_panic_hook`, installed by the runner.
+
+## Canvas and size
+
+```rust
+use zaxis::RunOptions;
+
+zaxis::run_with_options(app, RunOptions::default()
+    .with_canvas_id("app")          // draw on <canvas id="app">
+    .with_container_id("host")      // or create a canvas inside <div id="host">
+    .with_web_backend(zaxis::WebBackend::Auto))
+```
+
+| `WebOptions` | Result |
+| --- | --- |
+| nothing set | A canvas is created and fixed to the whole browser window |
+| `container_id` | A canvas is created inside that element and fills it; the page decides its size |
+| `canvas_id` | That canvas is used; CSS keeps deciding its size |
+| `backend` | `Auto` (WebGPU, then WebGL2), `WebGpu`, or `WebGl2` |
+
+The `?zaxis_backend=webgl2` (or `webgpu`) URL parameter overrides `Auto`, to try the
+fallback without rebuilding. A missing canvas or container makes `run_with_options` return
+`RunError::Web`.
+
+Size and device pixel ratio come from winit: it observes the canvas with a
+`ResizeObserver` and the pixel ratio with a media query, and reports both as `Resized` and
+`ScaleFactorChanged`. The backing store is the canvas size in device pixels, so text and
+icons are sharp on high-density screens. `RunOptions::window_attributes` sizes are ignored
+in a page (the page's CSS sizes the canvas); the title is not applied.
+
+## Backends
+
+| Backend | Used when |
+| --- | --- |
+| WebGPU | `navigator.gpu` offers an adapter. Probed first, without touching the canvas, because a canvas that handed out a `webgpu` context can never hand out `webgl2` |
+| WebGL2 | WebGPU is unavailable or refused. wgpu uses the downlevel WebGL2 limits (`max_texture_dimension_2d` is raised to what the context reports) |
+
+The shaders are the desktop shaders: they use no storage buffers, push constants or
+optional features, and the vertex stage uses default (perspective) interpolation, the only
+kind GLSL ES 3.00 has. Backdrop blur and its intermediate targets run on both backends.
+The chosen backend and adapter are logged once with `console.info`.
+
+Device loss on WebGPU takes the same recovery path as on the desktop: a new renderer is
+created in the background (nothing is drawn until it arrives), then the window repaints.
+A lost WebGL context is not recovered by zaxis: wgpu's WebGL backend does not report it, so
+the canvas stops updating until the page is reloaded.
+
+## Clipboard
+
+A page cannot read the clipboard synchronously and may write it only from a user gesture,
+so Ctrl/Cmd+A/C/X/V in `TextEdit` and `SelectableLabel` use the document's own events:
+
+* **Paste** takes the text of the `paste` event that belongs to the key press. Nothing is
+  read asynchronously, so there is no permission prompt.
+* **Copy and cut** write with `navigator.clipboard.writeText`, and the `copy`/`cut` event
+  that follows the same key press also receives the text through `clipboardData`, which
+  needs no permission. To keep both inside the gesture, the key press that copies draws its
+  frame before the event handler returns.
+* A refused write is reported on the next frame through `Context::diagnostics`
+  (`DiagnosticKind::External`), exactly like a desktop clipboard error, unless the event
+  path delivered the text. Nothing panics.
+
+Copy buttons and link menus write with `writeText` shortly after the click; browsers allow
+that for a few seconds after a gesture. `navigator.clipboard` needs a secure page (HTTPS or
+`localhost`); elsewhere only the event path works.
+
+Custom hosts that call `Context` directly instead of `run` have no document listeners:
+install a `ClipboardBackend` with `Context::set_clipboard`.
+
+## Keyboard, pointer and the browser
+
+The page keeps what belongs to the browser and the UI takes what it uses:
+
+| Kept by the browser | Taken by the UI (`preventDefault`) |
+| --- | --- |
+| Reload, find, developer tools, zoom, tab and window shortcuts, F-keys | Tab and Shift+Tab (focus traversal), Space, Enter, Backspace |
+| Alt combinations such as history navigation | Cursor, Home/End and Page keys |
+| Ctrl/Cmd+C, X and V, so the clipboard events fire | Typing, including `/` and `'`; Ctrl/Cmd+A |
+| | Any key the UI reports as consumed |
+
+The browser's context menu is suppressed over the canvas, and `touch-action: none` keeps
+touch drags for the UI. The wheel is taken when the canvas covers the window, or when the UI
+scrolled with it; a canvas inside a page lets the page scroll otherwise.
+
+## Images
+
+There are no threads (without `COOP`/`COEP` headers there are no shared-memory workers) and
+no file system. Images decode on the drawing thread in slices: at most about 6 ms per frame
+(`Context::decode_images_inline` changes the budget, and also switches desktop hosts to
+this mode), and always at least one image, so a single large image can still take longer than a
+frame. Queued work keeps requesting frames until it is done.
+
+`ImageSource::path` reports an error in a page. Use `ImageSource::bytes` (`include_bytes!`),
+`encoded` (bytes you fetched with `fetch`) or `rgba`. Loading by URL is not built in: it
+needs an asynchronous load state in the cache and CORS handling, which `fetch` in your code
+already provides.
+
+## Fonts
+
+No system fonts exist. Text uses the bundled fonts (`bundled-weights`, `bundled-monospace`,
+`bundled-emoji`) and any `FontFamily` you load from bytes and pass with
+`RunOptions::with_font_family`. cosmic-text does not scan for system fonts on `wasm32`.
+Scripts that no loaded font covers render as missing glyphs.
+
+## Time
+
+`std::time::Instant::now()` panics on `wasm32-unknown-unknown`, so the crate takes its clock
+from `zaxis::Instant`: `std::time::Instant` on native targets (the public signatures of
+`Context::run_at`, `needs_repaint_at`, `next_repaint` and the rest are unchanged) and
+`web_time::Instant` on `wasm32`, the type winit uses for its repaint deadlines. Use
+`zaxis::Instant` in code that is meant to run in both. `Duration` is the std type everywhere.
+
+## Differences from the desktop
+
+| Area | In a browser |
+| --- | --- |
+| Windows | One canvas, one window. `Windows::open` returns `OpenOutcome::Unsupported`, the key's status is `Failed`, and `App::window_failed` receives `WindowError::Unsupported`; declared windows fail the same way. Nothing panics |
+| Native chrome | None. `RunOptions::with_rounded_corners` and `WindowOptions` decorations, position, level and icon have no effect. A `TitleBar` is drawn like any widget; its window buttons act through the `Windows` API and cannot move or resize a canvas |
+| Title | The `<title>` of the page is the page's |
+| IME | winit 0.30 does not deliver IME composition events on the web, and `set_ime_allowed` does nothing. Typing with a keyboard layout works; composing text with an input method (CJK, some mobile keyboards) does not |
+| Links | `Hyperlink::open_in_browser` opens a new tab (`window.open`, no opener), which popup blockers may refuse outside a gesture |
+| Files, threads, processes | Not available (see Images) |
+| Presentation | The browser paces frames; `PresentationMode::Immediate` behaves like `Vsync` |
+| Suspension | A page is never suspended the way a mobile window is; the runner does not recreate its window |
+| Cursor | The UI's cursor icon becomes the canvas's CSS `cursor` |
+| Accessibility | Not supported. A canvas has no accessibility tree of its own, the runner creates no AccessKit adapter and nothing is collected; `RunOptions::with_accessibility` has no effect. See [Accessibility](./accessibility.mdx#platforms) |
+
+## Checks
+
+`cargo check --target wasm32-unknown-unknown --lib` and building the example run in CI. They
+show that the code compiles, not that rendering, input or a particular browser behave.
+Rendering, scrolling, animation, clipboard and resize were checked in Chrome with WebGPU and with
+WebGL2 forced; Firefox, Safari, mobile browsers, IME and real display-density changes were not
+checked.

@@ -121,3 +121,13 @@ after targets; the move is reported as `TableOutput::row_moved` and the model st
 yours. With `show_rows`, call `ui.keep_drag_source(row)` while the dragged row exists
 so scrolling it out of the virtual window does not end the drag. Autoscroll applies to
 the table body. See [Drag and drop](./drag-and-drop.mdx).
+
+## Accessibility
+
+Role `Table`, named with `Table::accessible_label("..")`, with the row and column counts of
+the whole data set. The header is a `Row` of `ColumnHeader` nodes; a sortable header
+accepts `Click` and the sorted one publishes its direction. Body rows are `Row` nodes of
+`Cell` nodes with their indices; a selectable row publishes its selected state and accepts
+`Click`. Widgets inside cells keep their own roles. Rows that were not built have no node;
+the table accepts scroll requests.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

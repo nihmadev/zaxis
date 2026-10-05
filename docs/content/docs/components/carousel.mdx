@@ -1,0 +1,133 @@
+---
+title: Carousel
+icon: GalleryHorizontal
+description: A paged container with two looks, a stack of cards and a photo slider, driven by swipes, keys, the wheel, buttons and indicators.
+---
+
+```rust
+// A stack of cards: the front card is the page, the following pages show as sheets.
+let out = Carousel::new("shipments")
+    .pages(shipments.len())
+    .show(ui, &mut page, |ui, index| shipment_card(ui, &shipments[index]));
+if out.changed {
+    // the user moved to `page`
+}
+
+// A photo slider: sources by index, an optional overlay on the active photo.
+Carousel::new("gallery")
+    .images()
+    .pages(photos.len())
+    .looping(true)
+    .arrows(true)
+    .show_images_with(ui, &mut page, |i| photos[i].clone(), |ui, i| title(ui, i));
+```
+
+## Model
+
+- **Pages.** `pages(n)` or `keys(iter)`; the content closure is called with the page index
+  only for visible layers, once per layer per pass, and is never stored. A resting `Stack`
+  builds the front card only; the sheets behind it are blank until they rise.
+- **Current page.** `CarouselPage` is `&mut usize` (index), `&mut Id` (the key of the page,
+  with `keys`) or `CarouselPage::Internal` (the carousel keeps it, starting at
+  `initial_page`). Assigning it from outside moves the carousel with the spring and reports
+  nothing. An index past the end is clamped and reported in diagnostics.
+- **Stable keys.** With `keys`, content state, focus and the motion follow a key when pages
+  are inserted or removed. Bound to a key (or internal), the shown page stays put while
+  others come and go, and removing the shown page moves to its neighbour. Bound to an
+  index, the index wins: inserting before the current page changes which page it shows.
+- **Output.** `CarouselOutput { response, page, key, changed, autoplayed, progress,
+  dragging, activated }`. `changed` is true for the one pass that follows a swipe, key,
+  wheel turn, click, button or autoplay turn. `progress` is how close the displayed
+  position is to the current page (1 at rest). `activated` is the page activated by Enter,
+  Space or a click on the front page.
+- **Degenerate input.** An empty set, one page, NaN and zero sizes are handled without
+  panics; the first two are reported through diagnostics.
+
+## Variants
+
+| Variant | Look |
+| --- | --- |
+| `Stack` (default) | A large card with rounding and a soft shadow, `layers - 1` sheets peeking out `offset` px each, narrower by `scale_step` and paler by `fade_step`. The front card leaves towards `exit` (optionally tilted by `exit_rotation`) while the next one rises and its content fades in. |
+| `Images` | A wide central slide; up to `neighbors` slides on each side, smaller by `slide_scale_step`, lowered by `slide_drop`, dimmed by `dim` and optionally blurred; each reveals `peek` px more than the nearer one. Photos load through `ImageSource` (files, bytes, RGBA) with `Cover` fit, show a Skeleton while loading and fade in over it; a failed photo shows a muted block and is reported through diagnostics. |
+
+A jump of several pages (an indicator click, `End`) is drawn as one step in `Stack`: the
+cards in between do not pass through the front.
+
+## Gestures and input
+
+- **Swipe.** Press and drag on an empty part of the page. The gesture starts after the
+  shared drag threshold (4 logical px); the layers then follow the pointer 1:1. A release
+  projects the momentum with the engine's `Decay` (`friction`): a projection of at least
+  `commit` pages (default 0.25) from where the swipe started moves exactly one page; the
+  spring continues from the gesture's velocity. At the ends of a non-looping carousel the
+  page gives like rubber (`rubber`) and springs back. A transition can be interrupted at
+  any moment and continues from where it is.
+- **Nested controls win.** A press that lands on a control inside the front card (button,
+  field, slider) belongs to that control; only presses on empty areas swipe. Layers that
+  are not the page we are on take no input.
+- **Wheel.** A wheel or touchpad movement along the axis turns pages (about one page per
+  `wheel_step` px, then a `wheel_lock` pause so inertia turns one page); Shift+wheel is a
+  horizontal wheel. Movement across the axis scrolls the enclosing `ScrollArea`, and a
+  `ScrollArea` inside the carousel under the pointer that can still scroll takes the wheel
+  first. `wheel(false)` turns it off.
+- **Keyboard.** One Tab stop with a focus ring. Arrows along the axis, PageUp/PageDown
+  step; Home/End go to the ends; Enter and Space activate the page. Clicking a sheet, a
+  side slide, an arrow button or an indicator item goes to that page.
+- **Autoplay.** `autoplay(interval)` turns the page after `interval` of rest. It waits while
+  the pointer is over the carousel, it has keyboard focus, a swipe is in progress or it is
+  hidden, and does not run with reduced motion. It schedules a repaint deadline; a settled
+  carousel requests no frames. A non-looping carousel stops at the end.
+
+## Indicators and buttons
+
+`indicator(CarouselIndicator::{Pill, Dots, Dashes, Count, None})` and
+`indicator_position(IndicatorPosition::{After, Before, Overlay})`. The default is a pill
+below a `Stack` and strokes over an `Images` slide. In a `Pill` the active page stretches
+and flows to the next one while the carousel moves; the active stroke is longer and
+brighter. Items are buttons for their page; `Count` is text. More than 24 pages show the
+count. `arrows(true)` adds previous/next buttons (disabled at the ends of a non-looping
+carousel).
+
+## Style
+
+Everything geometric comes from `CarouselStyle` (`Style::carousel`, or `Carousel::style`):
+padding, gap, rounding, card and sheet surfaces (patches over `Style::card.surface`), content
+padding, stack `layers`/`offset`/`scale_step`/`fade_step`/`direction`/`exit`/`exit_rotation`,
+image `neighbors`/`peek`/`slide_scale_step`/`slide_drop`/`dim`/`blur`/`scrim`, gesture
+`travel`/`commit`/`friction`/`rubber`/`spring`, wheel, arrows and indicator metrics. Unset
+fields follow the theme (light or dark), so a local `Theme` restyles the carousel. The key
+parameters also have builders on `Carousel`: `layers`, `offset`, `scale_step`, `direction`,
+`exit`, `exit_rotation`, `neighbors`, `spring`, `vertical`.
+
+`vertical()` (or `orientation(CarouselOrientation::Vertical)`) turns both variants: the swipe, the arrow keys (Up/Down), the wheel, the arrow buttons and the indicator run along the vertical axis, `Stack` cards leave upwards, `Images` slides line up top to bottom and the indicator moves to the side.
+
+## Motion
+
+The position is a spring (`Style::motion.spring` by default) that keeps its velocity when the
+target changes; a swipe hands its release velocity to it. `reduced_motion` makes every move
+instant and disables autoplay. A settled carousel requests no redraw; hidden or fully clipped
+ones do not animate.
+
+## Limitations
+
+- The renderer clips to rectangles, not rounded shapes. Page content is clipped to a
+  rectangle inset from the rounded outline far enough that its corners lie on the arc, so
+  nothing can show outside the rounded shape; the sliver between that rectangle and the arc
+  stays empty. Photos are rounded by the image itself.
+- Rotated or scaled layers are look-only for input and their text is resampled while they
+  move, so a tilted exit (`exit_rotation`) is off by default.
+- Layers are clipped to the carousel's own rectangle, so a card
+  that leaves shows no further than its edge.
+- A page can appear at most once among the visible layers; with very few pages in a looping
+  carousel fewer neighbours are shown.
+- Keep image sources between frames: an `ImageSource::rgba` created every frame is a new
+  image every frame.
+
+## Accessibility
+
+Role `Region`, named with `Carousel::accessible_label("..")`. Its value is the one-based
+page number; `Increment`, `Decrement` and `SetValue` turn pages like the arrow keys. Only
+the current page is exposed, as a group named "Page N". The arrows are buttons named
+"Previous" and "Next", the indicator items buttons named "Page N". These names are
+English and cannot be changed.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

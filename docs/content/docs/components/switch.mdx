@@ -54,3 +54,9 @@ assignment to the boolean moves the thumb with the same animation but does not s
 ## Limitations
 
 Switch has no `Painter` hook (Checkbox does) and no backdrop blur option.
+
+## Accessibility
+
+Role `Switch`, named by its label, with its toggled state. A `Click` request toggles it
+like a pointer click. A switch without text needs `.accessible_label("..")`.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

@@ -42,7 +42,9 @@ Components include windows, text, buttons, checkboxes, sliders, TextEdit with IM
 ComboBox/Popup, menu bars, toasts, key binding boxes, numeric controls, color pickers, images,
 ScrollArea, Grid, and Table.
 The text engine supports complex shaping, bidirectional layout, system font fallback,
-and bundled color emoji. There is no OS accessibility bridge.
+and bundled color emoji. Widgets are exposed to screen readers through AccessKit on
+Windows and macOS, and on Linux with the `accesskit_unix` feature; see
+[Accessibility](./accessibility.mdx).
 See [limitations](./limitations.mdx) for the supported boundaries.
 
 Report problems through [GitHub Issues](https://github.com/nihmadev/zaxis/issues)
@@ -51,4 +53,4 @@ or contact [@nihmadev on Telegram](https://t.me/nihmadev).
 Source code is MIT licensed. Bundled Inter (Regular, Medium, SemiBold, Bold) and Noto Color Emoji fonts use the SIL
 Open Font License; redistribution must include the
 [Inter license](https://github.com/nihmadev/zaxis/blob/main/assets/OFL-Inter.txt)
-and [Noto Emoji license](https://github.com/nihmadev/zaxis/blob/main/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
+and [Noto Emoji license](https://github.com/nihmadev/zaxis/blob/main/crates/z-emoji/assets/OFL-NotoEmoji.txt).

@@ -79,7 +79,7 @@ These are the manifest requirements, not a claim about the newest upstream relea
 PNG/JPEG/WebP/BMP/SVG work without initialization. Default features `image-gif`
 and `image-tiff` additionally enable GIF and TIFF. Disable default features to omit
 those codecs and the bundled emoji font; built-in core formats remain available.
-The default `bundled-emoji` feature uses the separate `zaxis-emoji` data crate.
+The default `bundled-emoji` feature uses the separate `z-emoji` data crate.
 To omit only that font while keeping optional codecs:
 
 ```toml title="Cargo.toml"
@@ -89,6 +89,10 @@ zaxis = { version = "=0.0.3", default-features = false, features = ["image-gif",
 
 Emoji then use system font fallback, with coverage depending on installed fonts.
 The opt-in `bundled-icons` feature adds the Lucide icon set; see [Icons](./components/icons.mdx).
+The default `accesskit` feature exposes the UI to screen readers on Windows and macOS;
+the opt-in `accesskit_unix` feature adds AT-SPI on Linux and the BSDs. Add `accesskit`
+to the feature list to keep it when you disable default features; see
+[Accessibility](./accessibility.mdx#features-and-building).
 See [Image](./components/image.mdx)
 for limits, identity, async host wakeup and SVG resource/font policy.
 

@@ -95,3 +95,13 @@ Run `cargo run --example combo_box` for a long list, repeated labels, disabled
 options, delayed option updates, overlapping panels, a clipped parent and a
 draggable viewport-edge panel. `-- --open` opens the searchable list initially;
 `-- --smoke-test` renders the popup through the native GPU runner and exits.
+
+## Accessibility
+
+Role `ComboBox`, named by its label; the value is the label of the selected option. It
+publishes its expanded state and accepts `Click`, `Expand`, `Collapse` and `SetValue` with
+the label of an enabled option. While open, the list is a `ListBox` of `ListBoxOption`
+nodes with their selected state and position in the whole set; an option accepts `Click`.
+The node that holds focus (the trigger or the filter field) names the highlighted option
+as its active descendant. Options that were not built have no node.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).

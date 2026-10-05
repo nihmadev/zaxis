@@ -23,3 +23,10 @@ on the shared animation scheduler. The `Response` covers the whole strip and rep
 Builders: `id_source`, `tab_size`, `icon_size`, `gap`, `corner_radius`, `idle_color`,
 `active_color`, `fill`, `border`, `opacities(selected, hover, outline)`, `duration`.
 Pair it with `Ui::tab_pages_live` for pages that slide while keeping their input.
+
+## Accessibility
+
+A vertical `TabList` of `Tab` nodes named by their labels, with selected state and position
+in the set. A `Click` request selects a tab. A tab without a label is reported as
+`MissingAccessibleName`.
+See [Accessibility](../accessibility.mdx#roles-states-and-requests).
