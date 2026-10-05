@@ -6,10 +6,11 @@
 //! reported exactly once. Built-in controls and `Ui::interact` share this path.
 
 use super::{Context, HitAction, HitRegion, Id};
+use crate::time::Instant;
 use crate::Vec2;
 use std::{
     collections::{HashMap, HashSet},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 const DRAG_THRESHOLD_SQ: f32 = 16.0;
@@ -52,6 +53,8 @@ pub(crate) struct Gestures {
     drag_delta: HashMap<Id, Vec2>,
     focus_gained: HashSet<Id>,
     focus_lost: HashSet<Id>,
+    middle: HashSet<Id>,
+    middle_press: Option<Id>,
     drag: Option<DragGesture>,
     secondary_press: Option<SecondaryPress>,
     last_click: Option<LastClick>,
@@ -74,6 +77,10 @@ impl Gestures {
             lost_focus: self.focus_lost.contains(&id),
         }
     }
+    /// A middle click (press and release) on link `id` was delivered this pass.
+    pub(crate) fn middle_clicked(&self, id: Id) -> bool {
+        self.middle.contains(&id)
+    }
     /// Pointer position of a secondary click delivered to `id` this pass.
     pub(crate) fn secondary_position(&self, id: Id) -> Option<Vec2> {
         self.secondary.get(&id).copied()
@@ -87,6 +94,7 @@ impl Gestures {
         self.drag_delta.clear();
         self.focus_gained.clear();
         self.focus_lost.clear();
+        self.middle.clear();
     }
     pub(super) fn focus_changed(&mut self, lost: Option<Id>, gained: Option<Id>) {
         self.focus_lost.extend(lost);
@@ -184,6 +192,26 @@ impl Context {
                 time: now,
             });
         }
+    }
+
+    /// The middle button over a link is a click on it, never an auto-scroll. `None` when
+    /// the press did not start on a link and the scrolling code should handle it.
+    pub(super) fn gesture_middle(&mut self, pressed: bool) -> Option<bool> {
+        let under = self
+            .input
+            .pointer
+            .and_then(|p| self.hit_test(p))
+            .filter(|hit| hit.action == HitAction::Link)
+            .map(|hit| hit.id);
+        if pressed {
+            self.gestures.middle_press = under;
+            return under.map(|_| true);
+        }
+        let press = self.gestures.middle_press.take()?;
+        if under == Some(press) {
+            self.gestures.middle.insert(press);
+        }
+        Some(true)
     }
 
     /// Record what a secondary press hit; returns whether anything responds.

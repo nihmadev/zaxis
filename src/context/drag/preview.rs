@@ -8,7 +8,7 @@ use crate::{Rect, Shape, Transform, Vec2};
 
 /// Layer shared by snapshot and custom previews. It is ranked with the popup
 /// layers at the end of the pass, so it is above every window.
-pub(crate) fn layer_id() -> Id {
+pub fn layer_id() -> Id {
     Id::new("zaxis-drag-preview")
 }
 pub(super) fn return_id() -> Id {

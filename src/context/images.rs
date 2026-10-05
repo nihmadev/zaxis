@@ -2,7 +2,7 @@ use crate::{
     Context, ImageDecoder, ImageError, ImageHandle, ImageLimits, ImageMetrics, ImageSource,
     ImageState, ImageTiming,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 impl Context {
     /// Observe a source without starting work. A not-yet-requested source is Loading.
@@ -65,6 +65,13 @@ impl Context {
     /// The desktop runner installs its EventLoopProxy automatically.
     pub fn set_image_waker(&mut self, waker: impl Fn() + Send + Sync + 'static) {
         self.images.lock().set_waker(Some(Arc::new(waker)));
+    }
+    /// Decode images on the thread that draws, spending at most `frame_budget` per frame
+    /// (one image always runs, so a single large one can exceed it), instead of on worker
+    /// threads. This is the only mode on `wasm32`, where it is the default. `None` returns
+    /// to worker threads on targets that have them.
+    pub fn decode_images_inline(&mut self, frame_budget: Option<Duration>) {
+        self.images.lock().set_inline_decoding(frame_budget);
     }
     pub fn clear_image_waker(&mut self) {
         self.images.lock().set_waker(None);

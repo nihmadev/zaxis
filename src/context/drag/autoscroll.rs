@@ -10,7 +10,7 @@ use std::time::Duration;
 const MAX_STEP: Duration = Duration::from_millis(100);
 
 /// Signed velocity along one axis for a pointer at `p` inside `lo..hi`.
-fn axis_speed(p: f32, lo: f32, hi: f32, edge: f32, min: f32, max: f32) -> f32 {
+pub fn axis_speed(p: f32, lo: f32, hi: f32, edge: f32, min: f32, max: f32) -> f32 {
     // Bands never overlap, so a small container still has a calm middle.
     let zone = edge.min((hi - lo) * 0.5);
     if zone <= 0.0 {
@@ -27,7 +27,7 @@ fn axis_speed(p: f32, lo: f32, hi: f32, edge: f32, min: f32, max: f32) -> f32 {
     sign * (min + (max - min) * k * k)
 }
 
-fn can_move(state: &ScrollState, velocity: Vec2) -> bool {
+pub(in crate::context) fn can_move(state: &ScrollState, velocity: Vec2) -> bool {
     let max = state.max_offset();
     (0..2).any(|axis| {
         state.axes[axis]
@@ -108,7 +108,7 @@ impl Context {
         }
     }
 
-    fn scroll_container(&mut self, id: Id, delta: Vec2) {
+    pub(in crate::context) fn scroll_container(&mut self, id: Id, delta: Vec2) {
         let Some(state) = self.scrolling.states.get_mut(&id) else {
             return;
         };
@@ -119,23 +119,5 @@ impl Context {
             self.invalidate_scroll_hits(window);
             self.dirty = true;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::axis_speed;
-
-    #[test]
-    fn speed_grows_toward_the_edge_and_stays_zero_in_the_middle() {
-        let speeds: Vec<f32> = [98.0, 90.0, 80.0, 70.0, 50.0]
-            .into_iter()
-            .map(|p| axis_speed(p, 0.0, 100.0, 32.0, 80.0, 900.0))
-            .collect();
-        assert_eq!(speeds[4], 0.0);
-        assert!(speeds[0] > speeds[1] && speeds[1] > speeds[2] && speeds[2] > speeds[3]);
-        assert!(speeds[3] > 0.0 && speeds[0] <= 900.0);
-        assert!(axis_speed(2.0, 0.0, 100.0, 32.0, 80.0, 900.0) < -700.0);
-        assert!(axis_speed(-50.0, 0.0, 100.0, 32.0, 80.0, 900.0) <= -900.0 + 1e-3);
     }
 }

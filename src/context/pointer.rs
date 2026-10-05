@@ -58,6 +58,7 @@ impl Context {
                 if hit.is_none_or(|hit| hit.action != HitAction::TextEdit) {
                     self.text_click = None;
                 }
+                self.selection_press_elsewhere(hit);
                 self.drag_press(hit);
                 if let Some(hit) = hit {
                     if self.windows.contains_key(&hit.window) {
@@ -77,6 +78,9 @@ impl Context {
                             rect: self.windows.get(&hit.window).map_or(hit.rect, |w| w.rect),
                         });
                         self.gesture_press(hit, self.input.pointer.unwrap());
+                        if matches!(hit.action, HitAction::StaticText | HitAction::Link) {
+                            self.selection_note_press(hit.id, self.input.pointer.unwrap());
+                        }
                         if let HitAction::ScrollThumb { area, axis } = hit.action {
                             self.begin_scroll_drag(area, axis);
                         }
@@ -92,7 +96,7 @@ impl Context {
                         }
                         if hit.action == HitAction::TextEdit {
                             let pointer = self.input.pointer.unwrap();
-                            let now = std::time::Instant::now();
+                            let now = crate::time::Instant::now();
                             let count = self.text_click.as_ref().map_or(1, |last| {
                                 if last.id == hit.id
                                     && now.duration_since(last.time)
@@ -147,6 +151,7 @@ impl Context {
                     return true;
                 }
                 if let Some(capture) = self.capture.take() {
+                    self.selection_note_release(capture.hit.id);
                     if self
                         .input
                         .pointer

@@ -4,8 +4,8 @@
 use super::super::{interaction::Capture, Context, HitAction, HitRegion};
 use super::state::{Ended, Pending, Returning, Session};
 use crate::components::drag_drop::{DragEnd, DragReason};
+use crate::time::Instant;
 use crate::Vec2;
-use std::time::Instant;
 use winit::window::CursorIcon;
 
 /// Only plain activation surfaces may turn into a drag. Text selection, sliders,

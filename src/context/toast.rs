@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use crate::time::Instant;
+use std::time::Duration;
 
 use super::{Context, Id, Paint};
 use crate::{Border, Color, Rect, Shape, Toast, Vec2};
@@ -60,6 +61,8 @@ impl Context {
         let mut next_pass: Option<Duration> = None;
         let mut animating = false;
         let entries = std::mem::take(&mut self.toasts.entries);
+        // Where each toast comes to rest, newest first, for the accessibility tree.
+        let mut settled = Vec::new();
         for entry in entries.iter().rev() {
             let toast = &entry.toast;
             let age = now.saturating_duration_since(entry.born);
@@ -99,6 +102,9 @@ impl Context {
                 Vec2::new(width, height),
             );
             bottom -= height + GAP;
+            if self.a11y_on() {
+                settled.push(rect.translate(Vec2::new(-offset, 0.0)));
+            }
             let fade = |color: Color| color.with_opacity(alpha);
             let fill = fade(toast.fill.unwrap_or(self.style.window_fill));
             let border = fade(toast.border.unwrap_or(self.style.border.color));
@@ -131,6 +137,21 @@ impl Context {
                 });
             }
             self.paint(Id::new(("toast", entry.serial)), layer, viewport, paint);
+        }
+        // One live region per toast, oldest first. It is added once and neither its name
+        // nor its bounds follow the fade and the slide, so it is announced once.
+        for (entry, rect) in entries.iter().zip(settled.into_iter().rev()) {
+            let toast = &entry.toast;
+            let id = Id::new(("toast", entry.serial));
+            let access = self.a11y_begin_layer(layer, id, crate::AccessRole::Status, |node| {
+                match (toast.title.is_empty(), toast.content.is_empty()) {
+                    (_, true) => node.label(toast.title.as_str()),
+                    (true, false) => node.label(toast.content.as_str()),
+                    (false, false) => node.label(format!("{}: {}", toast.title, toast.content)),
+                };
+                node.live(crate::AccessLive::Polite);
+            });
+            self.a11y_end(access, Some((rect, viewport)));
         }
         self.toasts.entries = entries;
         if animating {

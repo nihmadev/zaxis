@@ -1,4 +1,4 @@
-use std::time::Instant;
+use crate::time::Instant;
 
 use super::{Context, Id, Paint};
 use crate::{Border, Color, FontWeight, Rect, Shape, TooltipStyle, Vec2};
@@ -19,12 +19,20 @@ pub(crate) struct TooltipRequest {
 pub(crate) struct Tooltips {
     pub pending: Vec<TooltipRequest>,
     hovered: Option<(Id, Instant)>,
+    /// The widget whose tooltip assistive technology asked to see. It stays until it is
+    /// asked to hide, the pointer finds another tooltip, a button goes down or the widget
+    /// is gone.
+    pub shown: Option<Id>,
 }
 
 impl Context {
     pub(super) fn finish_tooltips(&mut self) {
         let requests = std::mem::take(&mut self.tooltips.pending);
+        let asked = self.tooltips.shown.filter(|_| !self.input.primary_down);
+        // A widget behind a modal is not in the accessibility tree; its tooltip goes too.
+        let modal = self.top_modal_id().map(|id| self.layer_rank(id));
         let mut candidate = None;
+        let mut requested = None;
         for request in requests {
             let marker = self
                 .hits
@@ -50,21 +58,39 @@ impl Context {
                 })
             {
                 candidate = Some((request, hit.rect.intersect(hit.clip)));
+            } else if asked == Some(request.target)
+                && modal.is_none_or(|rank| self.layer_rank(hit.window) >= rank)
+            {
+                requested = Some((request, hit.rect.intersect(hit.clip)));
             }
         }
-        let Some((request, anchor)) = candidate else {
+        // The pointer's tooltip wins and appears after its delay; one that was asked for
+        // is shown at once.
+        let hovering = candidate.is_some();
+        let kept = match &candidate {
+            Some((request, _)) => asked == Some(request.target),
+            None => requested.is_some(),
+        };
+        if !kept {
+            self.tooltips.shown = None;
+        }
+        let Some((request, anchor)) = candidate.or(requested) else {
             self.tooltips.hovered = None;
             return;
         };
-        let start = match self.tooltips.hovered {
-            Some((id, start)) if id == request.target => start,
-            _ => self.frame_time,
-        };
-        self.tooltips.hovered = Some((request.target, start));
-        let elapsed = self.frame_time.saturating_duration_since(start);
-        if elapsed < request.style.delay {
-            self.request_repaint_after(request.style.delay - elapsed);
-            return;
+        if hovering {
+            let start = match self.tooltips.hovered {
+                Some((id, start)) if id == request.target => start,
+                _ => self.frame_time,
+            };
+            self.tooltips.hovered = Some((request.target, start));
+            let elapsed = self.frame_time.saturating_duration_since(start);
+            if elapsed < request.style.delay && !kept {
+                self.request_repaint_after(request.style.delay - elapsed);
+                return;
+            }
+        } else {
+            self.tooltips.hovered = None;
         }
         let viewport = self.viewport();
         let padding = request.style.padding;
@@ -87,6 +113,10 @@ impl Context {
         let rect = place(anchor, size, viewport);
         let id = request.target.with("tooltip");
         self.popup_layers.push(id);
+        let access = self.a11y_begin_layer(id, id, crate::AccessRole::Tooltip, |node| {
+            node.label(request.text.as_str());
+        });
+        self.a11y_end(access, Some((rect, viewport)));
         self.paint(
             id,
             id,
@@ -110,7 +140,7 @@ impl Context {
         );
     }
 
-    fn tooltip_text(
+    pub fn tooltip_text(
         &mut self,
         text: &str,
         font: f32,
@@ -148,7 +178,7 @@ impl Context {
     }
 }
 
-fn place(anchor: Rect, size: Vec2, viewport: Rect) -> Rect {
+pub fn place(anchor: Rect, size: Vec2, viewport: Rect) -> Rect {
     let below = anchor.max.y + 6.0;
     let above = anchor.min.y - 6.0 - size.y;
     let y = if below + size.y <= viewport.max.y {
@@ -160,168 +190,4 @@ fn place(anchor: Rect, size: Vec2, viewport: Rect) -> Rect {
     let min = Vec2::new(anchor.min.x, y)
         .clamp(viewport.min + Vec2::splat(4.0).min(max - viewport.min), max);
     Rect::from_min_size(min, size)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{vec2, Align, Button, Padding, Root, Tooltip};
-    use std::time::Duration;
-    use winit::{dpi::PhysicalSize, event::ElementState};
-
-    fn setup() -> Context {
-        let mut c = Context::new();
-        c.set_viewport(PhysicalSize::new(640, 360), 1.0);
-        c
-    }
-
-    fn draw(c: &mut Context, now: Instant, enabled: bool) -> Id {
-        let mut target = Id::new("unused");
-        c.run_at(now, |c| {
-            Root::new().show(c, |ui| {
-                ui.horizontal_aligned(Align::Center, |ui| {
-                    ui.spacer();
-                    target = ui
-                        .add(
-                            Tooltip::new(
-                                "A useful explanation that is much wider than this tiny button.",
-                            )
-                            .enabled(enabled)
-                            .wrap(Button::new("?")),
-                        )
-                        .id;
-                });
-            });
-        });
-        target
-    }
-
-    #[test]
-    fn tooltip_delay_layout_and_passive_input() {
-        let mut c = setup();
-        let now = Instant::now();
-        let target = draw(&mut c, now, true);
-        let hit = *c.previous_hits.iter().find(|h| h.id == target).unwrap();
-        c.move_pointer(hit.rect.center());
-        draw(&mut c, now, true);
-        assert!(!c.seen.contains(&target.with("tooltip")));
-        assert!(c.next_repaint().is_some());
-        let hits = c.previous_hits.len();
-        let later = now + Duration::from_millis(400);
-        draw(&mut c, later, true);
-        let paint = &c.cache[&target.with("tooltip")].paint;
-        let Paint::Shape(Shape::Rect { rect, .. }) = &paint[0] else {
-            panic!("tooltip box")
-        };
-        assert!(rect.size().x > hit.rect.size().x * 3.0);
-        assert!(rect.min.x >= c.viewport().min.x && rect.max.x <= c.viewport().max.x);
-        assert_eq!(c.previous_hits.len(), hits);
-        assert!(c.popup.is_none());
-        assert!(c.focused_widget.is_none());
-        assert_eq!(c.hit_test(hit.rect.center()).unwrap().id, target);
-        c.primary_button(ElementState::Pressed);
-        draw(&mut c, later, true);
-        assert!(!c.seen.contains(&target.with("tooltip")));
-        c.primary_button(ElementState::Released);
-        draw(&mut c, later, false);
-        assert!(!c.seen.contains(&target.with("tooltip")));
-    }
-
-    #[test]
-    fn text_wraps_at_words_and_fits_above_bottom_anchor() {
-        let mut c = setup();
-        let (text, size, wrap) = c.tooltip_text(
-            "Первая строка с пояснением\nSecond paragraph with words",
-            14.0,
-            FontWeight::REGULAR,
-            180.0,
-        );
-        assert!(text.contains("\nSecond"));
-        assert!(size.x <= 180.0 && size.y < 140.0);
-        assert_eq!(c.measure_text(&text, 14.0, FontWeight::REGULAR, wrap), size);
-        let anchor = Rect::from_min_size(vec2(610.0, 330.0), vec2(20.0, 20.0));
-        let rect = place(anchor, size + vec2(20.0, 12.0), c.viewport());
-        assert!(rect.max.y < anchor.min.y);
-        assert!(rect.max.x <= 640.0 && rect.min.x >= 0.0);
-    }
-
-    #[test]
-    fn passive_text_can_have_a_tooltip_and_global_disable_is_respected() {
-        let mut c = setup();
-        c.style.tooltip.delay = Duration::ZERO;
-        c.move_pointer(vec2(25.0, 25.0));
-        let mut id = Id::new("unused");
-        let build = |c: &mut Context, id: &mut Id| {
-            Root::new().padding(Padding::all(20.0)).show(c, |ui| {
-                *id = ui
-                    .add(Tooltip::new("Label explanation").wrap(crate::Text::new("Label")))
-                    .id;
-            });
-        };
-        c.run(|c| build(c, &mut id));
-        assert!(c.seen.contains(&id.with("tooltip")));
-        assert!(!c
-            .previous_hits
-            .iter()
-            .any(|h| h.id == id.with("tooltip-anchor")));
-        c.style.tooltip.enabled = false;
-        c.run(|c| build(c, &mut id));
-        assert!(!c.seen.contains(&id.with("tooltip")));
-    }
-
-    #[test]
-    fn tooltip_follows_scrolling_and_escapes_the_scroll_clip() {
-        let mut c = setup();
-        c.style.tooltip.delay = Duration::ZERO;
-        let mut target = Id::new("unused");
-        let build = |c: &mut Context, target: &mut Id, offset: f32| {
-            Root::new().show(c, |ui| {
-                crate::ScrollArea::vertical()
-                    .max_height(60.0)
-                    .scroll_offset(vec2(0.0, offset))
-                    .show(ui, |ui| {
-                        ui.add_space(45.0);
-                        let response = ui.button("Target");
-                        *target = response.id;
-                        ui.tooltip(response, "A hint outside the small scrolling viewport.");
-                        ui.add_space(150.0);
-                    });
-            });
-        };
-        c.run(|c| build(c, &mut target, 30.0));
-        let hit = *c.previous_hits.iter().find(|h| h.id == target).unwrap();
-        c.move_pointer(hit.rect.intersect(hit.clip).center());
-        c.run(|c| build(c, &mut target, 30.0));
-        let Paint::Shape(Shape::Rect { rect, .. }) = c.cache[&target.with("tooltip")].paint[0]
-        else {
-            panic!("tooltip box");
-        };
-        assert!(rect.min.y >= hit.rect.max.y);
-        assert!(rect.max.y > hit.clip.max.y);
-        c.run(|c| build(c, &mut target, 120.0));
-        assert!(!c.seen.contains(&target.with("tooltip")));
-    }
-
-    #[test]
-    fn response_hint_follows_a_centered_passive_label() {
-        let mut c = setup();
-        c.style.tooltip.delay = Duration::ZERO;
-        let mut target = Id::new("unused");
-        c.move_pointer(vec2(320.0, 25.0));
-        c.run(|c| {
-            Root::new().padding(Padding::all(20.0)).show(c, |ui| {
-                ui.vertical_aligned(Align::Center, |ui| {
-                    let response = ui.label("Centered label");
-                    target = response.id;
-                    ui.tooltip(response, "Explanation");
-                });
-            });
-        });
-        assert!(c.seen.contains(&target.with("tooltip")));
-        let Paint::Shape(Shape::Rect { rect, .. }) = c.cache[&target.with("tooltip")].paint[0]
-        else {
-            panic!("tooltip box");
-        };
-        assert!(rect.min.x > 200.0);
-    }
 }

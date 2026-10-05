@@ -5,7 +5,7 @@ use crate::{shapes::Mesh, text::TextFont, Color, CornerRadius, FontWeight, Rect,
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Paint {
+pub enum Paint {
     Visual {
         paint: Vec<Paint>,
         transform: crate::Transform,
@@ -54,16 +54,29 @@ pub(crate) enum Paint {
         tab: u16,
         color: Color,
     },
+    /// A paragraph whose runs differ in weight, family or color, shaped in one pass; see
+    /// [`crate::text::StyleRun`]. Glyph positions come from the same cached layout as
+    /// the component's hit testing.
+    Rich {
+        text: String,
+        runs: Arc<[crate::text::StyleRun]>,
+        position: Vec2,
+        size: f32,
+        font: TextFont,
+        wrap_width: f32,
+        tab: u16,
+        color: Color,
+    },
 }
 
-pub(super) struct CachedElement {
-    pub(super) paint: Vec<Paint>,
-    pub(super) scale: f32,
-    pub(super) mesh: Arc<Mesh>,
-    pub(super) bounds: Option<Rect>,
-    pub(super) last_frame: u64,
+pub struct CachedElement {
+    pub paint: Vec<Paint>,
+    pub scale: f32,
+    pub mesh: Arc<Mesh>,
+    pub bounds: Option<Rect>,
+    pub last_frame: u64,
 }
-pub(crate) struct VisualMesh {
+pub struct VisualMesh {
     base: Arc<Mesh>,
     transform: crate::Transform,
     opacity: f32,
@@ -303,6 +316,26 @@ impl Context {
                     delta,
                     self.scale,
                 ),
+                Paint::Rich {
+                    text,
+                    runs,
+                    position,
+                    size,
+                    font,
+                    wrap_width,
+                    tab,
+                    ..
+                } => self.text.rich_translation_preserves_raster(
+                    text,
+                    runs,
+                    *position,
+                    *size,
+                    *font,
+                    *wrap_width,
+                    *tab,
+                    delta,
+                    self.scale,
+                ),
                 _ => true,
             }) {
                 translation = None;
@@ -425,6 +458,27 @@ impl Context {
                     } => self.text.paint_with_tab(
                         &mut mesh,
                         text,
+                        *position,
+                        *size,
+                        *font,
+                        *wrap_width,
+                        *tab,
+                        *color,
+                        self.scale,
+                    ),
+                    Paint::Rich {
+                        text,
+                        runs,
+                        position,
+                        size,
+                        font,
+                        wrap_width,
+                        tab,
+                        color,
+                    } => self.text.paint_rich(
+                        &mut mesh,
+                        text,
+                        runs,
                         *position,
                         *size,
                         *font,

@@ -3,7 +3,7 @@
 
 use super::Context;
 use crate::{
-    text::{TextFont, TextLayout},
+    text::{StyleRun, TextFont, TextLayout},
     FontWeight, MonospaceMetrics, Vec2,
 };
 use std::sync::Arc;
@@ -68,6 +68,20 @@ impl Context {
         tab: u16,
     ) -> Arc<TextLayout> {
         self.text.layout_with_tab(text, size, font, wrap, tab)
+    }
+
+    /// [`Self::paragraph_layout`] for a paragraph whose `runs` (see [`StyleRun::cover`]) differ
+    /// in weight, family or color.
+    pub(crate) fn rich_paragraph_layout(
+        &mut self,
+        text: &str,
+        runs: &Arc<[StyleRun]>,
+        size: f32,
+        font: impl Into<TextFont>,
+        wrap: f32,
+        tab: u16,
+    ) -> Arc<TextLayout> {
+        self.text.rich_layout(text, runs, size, font, wrap, tab)
     }
 
     /// Cell width and line height of the monospace family at `size` and `weight`, for sizing

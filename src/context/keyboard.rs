@@ -145,6 +145,10 @@ impl Context {
         if self.tree_key(code, state, repeat) {
             return true;
         }
+        if state == ElementState::Pressed && !repeat && self.selection_key(code) {
+            self.input.keys_down.insert(code);
+            return true;
+        }
         let focused_action = self.focused_widget.and_then(|id| {
             self.previous_hits
                 .iter()
@@ -214,7 +218,7 @@ impl Context {
                 self.input.keys_down.insert(code);
                 self.input.keys_pressed.insert(code);
                 if code == KeyCode::Tab && !repeat {
-                    let buttons: Vec<_> = self
+                    let mut buttons: Vec<_> = self
                         .previous_hits
                         .iter()
                         .filter(|h| {
@@ -225,6 +229,8 @@ impl Context {
                         })
                         .map(|h| h.id)
                         .collect();
+                    // Fragments of one wrapped link are one focus stop.
+                    buttons.dedup();
                     if !buttons.is_empty() {
                         let current = self.focused_widget.and_then(|id| {
                             buttons
@@ -247,6 +253,7 @@ impl Context {
                     && !repeat
                     && !focused_action.is_some_and(|action| {
                         action == HitAction::Activate
+                            || action == HitAction::Link
                             || matches!(action, HitAction::Interact(sense) if sense.click())
                     })
                     && self.modal_default_action()
@@ -257,6 +264,7 @@ impl Context {
                     && !repeat
                     && focused_action.is_some_and(|action| {
                         action == HitAction::Activate
+                            || action == HitAction::Link
                             || matches!(action, HitAction::Interact(sense) if sense.click())
                     })
                 {

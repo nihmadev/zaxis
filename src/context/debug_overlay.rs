@@ -24,6 +24,8 @@ fn action_name(action: HitAction) -> &'static str {
         HitAction::ContextMenu => "context menu",
         HitAction::Activate => "activate",
         HitAction::Interact(_) => "interact",
+        HitAction::StaticText => "static-text",
+        HitAction::Link => "link",
         HitAction::Focus => "focus",
         HitAction::ComboBox => "combo box",
         HitAction::Tree | HitAction::TreeRow { .. } => "tree",
@@ -37,6 +39,7 @@ fn action_name(action: HitAction) -> &'static str {
         HitAction::ColumnResize { .. } => "column resize",
         HitAction::DragSource { .. } => "drag source",
         HitAction::DropTarget { .. } => "drop target",
+        HitAction::Semantic => "semantic",
     }
 }
 

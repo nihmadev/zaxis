@@ -1,4 +1,5 @@
 use super::Context;
+use crate::time::Instant;
 use crate::{
     animation::{
         state::{Control, Pass},
@@ -6,7 +7,6 @@ use crate::{
     },
     Id,
 };
-use std::time::Instant;
 
 impl Context {
     /// First appearance snaps; retarget preserves sampled position AND velocity.

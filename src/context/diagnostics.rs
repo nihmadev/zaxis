@@ -34,6 +34,9 @@ pub enum DiagnosticKind {
     /// An API contract was broken and the call was made harmless, for example an
     /// extra Grid cell or an unknown panel id.
     InvalidUsage,
+    /// A control that a screen reader announces by name has none. Found while the
+    /// accessibility tree is collected; see `Context::set_accessibility_active`.
+    MissingAccessibleName,
     /// A system resource failed and the app would otherwise never know: the
     /// clipboard, a native window drag or resize, an image that could not be decoded.
     External,
@@ -172,7 +175,11 @@ impl Context {
         for hit in &self.hits {
             let interactive = !matches!(
                 hit.action,
-                HitAction::Block | HitAction::ContextMenu | HitAction::Move | HitAction::Resize
+                HitAction::Block
+                    | HitAction::ContextMenu
+                    | HitAction::Move
+                    | HitAction::Resize
+                    | HitAction::Semantic
             );
             if interactive && (hit.rect.is_empty() || !hit.rect.is_finite()) {
                 empty.push((hit.id, hit.rect));

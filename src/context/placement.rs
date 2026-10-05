@@ -3,7 +3,7 @@ use super::{Context, HitRegion, Id, Paint};
 use crate::{Rect, Vec2};
 use std::ops::Range;
 
-pub(crate) struct PlacedPaint {
+pub struct PlacedPaint {
     pub id: Id,
     pub layer: Id,
     pub clip: Rect,
@@ -11,7 +11,7 @@ pub(crate) struct PlacedPaint {
     pub blur: Option<f32>,
     scope: Option<usize>,
 }
-pub(crate) struct Placement {
+pub struct Placement {
     animation_start: usize,
     popup_start: usize,
     window: Id,
@@ -24,7 +24,7 @@ pub(crate) struct Placement {
     targets: Vec<(usize, Rect)>,
 }
 #[derive(Default)]
-pub(crate) struct Placements {
+pub struct Placements {
     pub stack: Vec<Placement>,
     pub outstanding: usize,
 }
@@ -110,7 +110,13 @@ impl Context {
                 } else {
                     viewport
                 });
-            if !interactive {
+            if hit.action == super::HitAction::Semantic {
+                // Content that is shown but inert stays in the accessibility tree; what
+                // is not shown at all comes back blocked, which hides its node.
+                if opacity <= 0.0 {
+                    hit.action = super::HitAction::Block;
+                }
+            } else if !interactive {
                 hit.action = super::HitAction::Block;
                 hit.clip = Rect::default();
             }

@@ -10,12 +10,13 @@
 //! Targets compare the type, then call the application's predicate on the
 //! value, before highlighting and again before accepting. Nothing is serialized
 //! and no closure is stored; per-pass registries are plain data.
-mod autoscroll;
+#[doc(hidden)]
+pub mod autoscroll;
 mod frame;
 mod input;
 mod keyboard;
-pub(crate) mod preview;
-pub(crate) mod state;
+pub mod preview;
+pub mod state;
 mod targets;
 
 use super::{Context, Id};
@@ -79,12 +80,5 @@ impl Context {
     pub(crate) fn drag_reserve_order(&mut self, id: Id) {
         let order = self.hit_order.len();
         self.hit_order.entry(id).or_insert((order, None));
-    }
-}
-
-impl Context {
-    #[cfg(test)]
-    pub(crate) fn drag_cursor(&self) -> winit::window::CursorIcon {
-        self.cursor_icon()
     }
 }

@@ -5,7 +5,7 @@ use crate::{components::Sense, Rect, Vec2};
 use winit::keyboard::{KeyCode, ModifiersState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HitAction {
+pub enum HitAction {
     Block,
     ContextMenu,
     Activate,
@@ -25,6 +25,10 @@ pub(crate) enum HitAction {
         vertical: bool,
     },
     TextEdit,
+    /// Selectable static text: pointer press and drag select, I-beam cursor.
+    StaticText,
+    /// A hyperlink fragment: click activates, hand cursor. Fragments of one link share an ID.
+    Link,
     Move,
     Resize,
     ScrollThumb {
@@ -43,21 +47,29 @@ pub(crate) enum HitAction {
     DropTarget {
         slot: u32,
     },
+    /// Passive: carries the bounds of an accessibility node through placement, scrolling
+    /// and visual transforms. Removed from the hit list before it routes any input.
+    Semantic,
 }
 
 impl HitAction {
     /// Pointer inputs a region reports through `Response`.
-    pub(super) fn sense(self) -> Sense {
+    pub(crate) fn sense(self) -> Sense {
         match self {
             Self::Activate | Self::ComboBox => Sense::CLICK | Sense::FOCUS,
             Self::Focus => Sense::FOCUS,
             Self::Slider => Sense::DRAG | Sense::FOCUS,
-            Self::TextEdit | Self::DragValue => Sense::CLICK | Sense::DRAG | Sense::FOCUS,
+            Self::TextEdit | Self::DragValue | Self::StaticText => {
+                Sense::CLICK | Sense::DRAG | Sense::FOCUS
+            }
+            // A link has no drag of its own: moving between the lines of one wrapped link
+            // between press and release is still a click.
+            Self::Link => Sense::CLICK | Sense::FOCUS,
             Self::Interact(sense) => sense,
             _ => Sense::NONE,
         }
     }
-    pub(super) fn focusable(self) -> bool {
+    pub fn focusable(self) -> bool {
         matches!(self, Self::Interact(sense) if sense.focus())
             || matches!(
                 self,
@@ -67,6 +79,8 @@ impl HitAction {
                     | Self::Tree
                     | Self::Slider
                     | Self::TextEdit
+                    | Self::StaticText
+                    | Self::Link
                     | Self::DragValue
                     | Self::SplitResize { .. }
             )
@@ -74,9 +88,11 @@ impl HitAction {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum SliderInput {
+pub enum SliderInput {
     Pointer(Vec2),
     Key(KeyCode),
+    /// A value set directly, by assistive technology; normalized like any other input.
+    Set(f64),
 }
 
 pub(crate) enum NumberInputEvent {
@@ -93,17 +109,21 @@ pub(crate) enum TextEditInput {
     Pointer(Vec2, bool, u8),
     Focus(bool),
     Preedit(String, Option<(usize, usize)>),
+    /// From assistive technology: replace the whole text.
+    SetValue(String),
+    /// From assistive technology: select from the first byte offset to the second.
+    Select(usize, usize),
 }
 
 pub(super) struct ClickSequence {
     pub id: Id,
     pub position: Vec2,
-    pub time: std::time::Instant,
+    pub time: crate::time::Instant,
     pub count: u8,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct HitRegion {
+pub struct HitRegion {
     pub id: Id,
     pub window: Id,
     pub rect: Rect,
@@ -112,10 +132,10 @@ pub(crate) struct HitRegion {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct Capture {
-    pub(super) hit: HitRegion,
-    pub(super) pointer: Vec2,
-    pub(super) rect: Rect,
+pub struct Capture {
+    pub hit: HitRegion,
+    pub pointer: Vec2,
+    pub rect: Rect,
 }
 
 impl Context {
@@ -161,6 +181,16 @@ impl Context {
     }
     pub(crate) fn clicked(&self, id: Id) -> bool {
         self.clicked.contains(&id)
+    }
+    /// Report a click on `id` to the next pass, as a pointer release inside it would.
+#[cfg_attr(not(feature = "accesskit"), allow(dead_code))]
+    pub(crate) fn synthesize_click(&mut self, id: Id) {
+        self.clicked.insert(id);
+    }
+    /// Show the focus ring, as after keyboard navigation.
+#[cfg_attr(not(feature = "accesskit"), allow(dead_code))]
+    pub(crate) fn show_focus(&mut self) {
+        self.focus_visible = true;
     }
     pub(crate) fn take_column_resize(&mut self, table: Id, column: Id) -> Option<f32> {
         self.column_resize.remove(&(table, column))

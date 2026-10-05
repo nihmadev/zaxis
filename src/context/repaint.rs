@@ -1,7 +1,8 @@
 //! Repaint invalidation and deadline scheduling.
 
 use super::Context;
-use std::time::{Duration, Instant};
+use crate::time::Instant;
+use std::time::Duration;
 
 impl Context {
     /// Request another UI redraw, for example for an animation or custom interaction.
@@ -26,6 +27,12 @@ impl Context {
         if let Some(deadline) = now.checked_add(delay) {
             self.next_repaint = Some(self.next_repaint.map_or(deadline, |old| old.min(deadline)));
         }
+    }
+
+    /// A redraw has been requested since the current pass began.
+#[cfg_attr(not(feature = "accesskit"), allow(dead_code))]
+    pub(crate) fn repaint_requested(&self) -> bool {
+        self.dirty
     }
 
     pub fn next_repaint(&self) -> Option<Instant> {

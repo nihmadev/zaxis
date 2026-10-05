@@ -8,6 +8,9 @@ use winit::{
     keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
 };
 
+/// A wheel notch scrolls three lines of text at a line height of 1.5 font sizes.
+const LINE_STEP: f32 = 4.5;
+
 impl Context {
     /// Handle an event immediately against retained hit regions. This preserves
     /// press/release pairs even when several events arrive before the next redraw.
@@ -45,7 +48,9 @@ impl Context {
             WindowEvent::MouseWheel { delta, .. } => {
                 self.stop_auto_scroll();
                 let delta = match delta {
-                    MouseScrollDelta::LineDelta(x, y) => Vec2::new(*x, *y) * self.style.font_size,
+                    MouseScrollDelta::LineDelta(x, y) => {
+                        Vec2::new(*x, *y) * self.style.font_size * LINE_STEP
+                    }
                     MouseScrollDelta::PixelDelta(p) => {
                         Vec2::new(p.x as f32, p.y as f32) / self.scale
                     }
@@ -56,7 +61,9 @@ impl Context {
                     delta
                 };
                 self.input.scroll_delta += delta;
+                self.scrolling.wheel = true;
                 consumed = self.scroll_wheel(-delta);
+                self.scrolling.wheel = false;
                 true
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -154,7 +161,7 @@ impl Context {
 
 // Navigation follows key meaning: NumPad with NumLock off has a numeric physical
 // scan code but an arrow/Home/End logical key. Letter shortcuts stay physical.
-fn navigation_code(physical: PhysicalKey, logical: &Key) -> Option<KeyCode> {
+pub fn navigation_code(physical: PhysicalKey, logical: &Key) -> Option<KeyCode> {
     let code = match logical {
         Key::Named(NamedKey::ArrowUp) => KeyCode::ArrowUp,
         Key::Named(NamedKey::ArrowDown) => KeyCode::ArrowDown,
@@ -172,28 +179,4 @@ fn navigation_code(physical: PhysicalKey, logical: &Key) -> Option<KeyCode> {
         }
     };
     Some(code)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn keypad_navigation_uses_logical_key_without_changing_numeric_input() {
-        let physical = PhysicalKey::Code(KeyCode::Numpad1);
-        assert_eq!(
-            navigation_code(physical, &Key::Named(NamedKey::End)),
-            Some(KeyCode::End)
-        );
-        assert_eq!(
-            navigation_code(physical, &Key::Character("1".into())),
-            Some(KeyCode::Numpad1)
-        );
-        assert_eq!(
-            navigation_code(
-                PhysicalKey::Code(KeyCode::Numpad2),
-                &Key::Named(NamedKey::ArrowDown)
-            ),
-            Some(KeyCode::ArrowDown)
-        );
-    }
 }

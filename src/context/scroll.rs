@@ -1,12 +1,13 @@
 //! Retained scroll routing and deferred content paint. Layout runs once; after measuring,
 //! offset corrections move both paint and hits before either becomes visible to the host.
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use super::{Context, HitAction, HitRegion, Id, Paint};
+use crate::time::Instant;
 use crate::{Rect, Vec2};
 
 #[derive(Clone, Debug)]
-pub(crate) struct ScrollState {
+pub struct ScrollState {
     pub offset: Vec2,
     pub content: Vec2,
     pub viewport: Rect,
@@ -20,8 +21,30 @@ pub(crate) struct ScrollState {
     pub last_frame: u64,
     pub drag_origin: Vec2,
     pub travel: Vec2,
+    /// The offset the content is drawn at. It follows `offset` while a wheel glide runs and
+    /// equals it otherwise.
+    pub shown: Vec2,
+    pub glide: bool,
+    pub shown_at: Option<Instant>,
 }
+/// Time constant of wheel gliding: the drawn offset closes 63% of its distance to the target
+/// in this long, so a notch settles in about a quarter of a second.
+const GLIDE: Duration = Duration::from_millis(70);
 impl ScrollState {
+    /// The offset to draw at `now`: eased toward `offset` after wheel input, exact otherwise
+    /// (drags, explicit offsets, reveals and reduced motion snap). Returns whether it is
+    /// still moving, so the caller schedules another pass.
+    pub fn glide_to(&mut self, now: Instant, smooth: bool) -> bool {
+        let dt = self.shown_at.replace(now).map_or(Duration::ZERO, |at| now.saturating_duration_since(at));
+        if !self.glide || !smooth || (self.offset - self.shown).abs().max_element() < 0.5 {
+            self.shown = self.offset;
+            self.glide = false;
+            return false;
+        }
+        let k = 1.0 - (-dt.as_secs_f32() / GLIDE.as_secs_f32()).exp();
+        self.shown += (self.offset - self.shown) * k;
+        true
+    }
     pub fn new(window: Id) -> Self {
         Self {
             offset: Vec2::ZERO,
@@ -37,6 +60,9 @@ impl ScrollState {
             last_frame: 0,
             drag_origin: Vec2::ZERO,
             travel: Vec2::ZERO,
+            shown: Vec2::ZERO,
+            glide: false,
+            shown_at: None,
         }
     }
     pub fn max_offset(&self) -> Vec2 {
@@ -50,7 +76,7 @@ impl ScrollState {
     }
 }
 
-pub(crate) struct ScrollScope {
+pub struct ScrollScope {
     pub visual_scale: f32,
     pub id: Id,
     pub window: Id,
@@ -62,26 +88,28 @@ pub(crate) struct ScrollScope {
     pub target: Option<Rect>,
     pub origin: Vec2,
 }
-pub(crate) struct PendingPaint {
+pub struct PendingPaint {
     pub id: Id,
-    pub(super) layer: Id,
-    pub(super) clip: Rect,
-    pub(super) paint: Vec<Paint>,
+    pub layer: Id,
+    pub clip: Rect,
+    pub paint: Vec<Paint>,
     pub blur: Option<f32>,
-    pub(super) scope: usize,
+    pub scope: usize,
 }
 #[derive(Default)]
-pub(crate) struct Scrolling {
+pub struct Scrolling {
     pub states: HashMap<Id, ScrollState>,
     pub scopes: Vec<ScrollScope>,
     pub stack: Vec<usize>,
     pub pending: Vec<PendingPaint>,
-    pub(super) hits: Vec<(HitRegion, usize)>,
-    pub(super) ime: Option<(usize, Rect)>,
+    pub hits: Vec<(HitRegion, usize)>,
+    pub ime: Option<(usize, Rect)>,
     pub order: Vec<Id>,
-    pub(super) previous_order: Vec<Id>,
-    pub(super) auto: Option<super::scroll_input::AutoScroll>,
-    pub(super) auto_deadline: Option<std::time::Instant>,
+    pub previous_order: Vec<Id>,
+    pub auto: Option<super::scroll_input::AutoScroll>,
+    pub auto_deadline: Option<crate::time::Instant>,
+    /// Wheel input is being routed: areas it moves glide instead of jumping.
+    pub wheel: bool,
 }
 impl Scrolling {
     pub(crate) fn remove_layer_hits(&mut self, layer: Id) {
@@ -266,13 +294,15 @@ impl Context {
                 let s = &self.scrolling.states[id];
                 s.window == window && s.enabled && s.clip.contains(pointer)
             });
-        target.is_some_and(|id| self.scroll_from(id, delta, false))
+        self.route_carousel_wheel(pointer, window, delta, target)
+            || target.is_some_and(|id| self.scroll_from(id, delta, false))
             || self.popup.is_some()
             || self.modal_active()
     }
-    pub(super) fn scroll_from(&mut self, id: Id, mut delta: Vec2, middle: bool) -> bool {
+    pub(crate) fn scroll_from(&mut self, id: Id, mut delta: Vec2, middle: bool) -> bool {
         let mut current = Some(id);
         let mut changed = false;
+        let wheel = self.scrolling.wheel;
         let window = self.scrolling.states[&id].window;
         while let Some(id) = current {
             let state = self.scrolling.states.get_mut(&id).unwrap();
@@ -300,6 +330,9 @@ impl Context {
                     delta -= moved;
                 }
                 changed |= old != state.offset;
+                if old != state.offset {
+                    state.glide = wheel && !middle;
+                }
             }
             current = state.parent;
         }

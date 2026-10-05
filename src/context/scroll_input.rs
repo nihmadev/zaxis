@@ -1,7 +1,8 @@
 //! Middle-button autoscroll. The gesture stays attached to its initial scroll tree.
 use super::{Context, Id};
+use crate::time::Instant;
 use crate::Vec2;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use winit::event::ElementState;
 
 const DEAD_ZONE: f32 = 8.0;
@@ -10,7 +11,7 @@ const MAX_SPEED: f32 = 1800.0;
 const INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy)]
-pub(super) struct AutoScroll {
+pub struct AutoScroll {
     area: Id,
     origin: Vec2,
     held: bool,
@@ -35,6 +36,9 @@ impl Context {
 
     pub(super) fn middle_button(&mut self, state: ElementState) -> bool {
         self.input.middle_down = state == ElementState::Pressed;
+        if let Some(consumed) = self.gesture_middle(state == ElementState::Pressed) {
+            return consumed;
+        }
         if state == ElementState::Released {
             let Some(auto) = self.scrolling.auto.as_mut() else {
                 return false;

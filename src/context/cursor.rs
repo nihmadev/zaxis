@@ -20,7 +20,8 @@ impl Context {
             Some(HitAction::SplitResize { vertical: false }) => CursorIcon::EwResize,
             Some(HitAction::SplitResize { vertical: true }) => CursorIcon::NsResize,
             Some(HitAction::Resize) => CursorIcon::NwseResize,
-            Some(HitAction::TextEdit) => CursorIcon::Text,
+            Some(HitAction::TextEdit | HitAction::StaticText) => CursorIcon::Text,
+            Some(HitAction::Link) => CursorIcon::Pointer,
             Some(HitAction::DragValue) => CursorIcon::EwResize,
             _ => CursorIcon::Default,
         }

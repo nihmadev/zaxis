@@ -4,16 +4,14 @@ use super::super::{HitRegion, Id, Paint};
 use crate::components::drag_drop::{
     style::Resolved, DragEffect, DragEnd, DropZones, Insertion, PreviewKind,
 };
+use crate::time::Instant;
 use crate::{Rect, Vec2};
-use std::{
-    any::{Any, TypeId},
-    time::Instant,
-};
+use std::any::{Any, TypeId};
 use winit::window::CursorIcon;
 
 /// Application payload. The type is erased only for storage; targets compare
 /// `TypeId` before they downcast, so a value is never reinterpreted.
-pub(crate) struct Payload {
+pub struct Payload {
     pub type_id: TypeId,
     pub value: Box<dyn Any>,
 }
@@ -45,7 +43,7 @@ impl Payload {
 /// Registered by a source on every pass in which it is enabled. Hits refer to
 /// it by index, which stays valid because both are replaced together.
 #[derive(Clone, Copy)]
-pub(crate) struct SourceInfo {
+pub struct SourceInfo {
     /// Scoped id, also the id of the passive hit.
     pub id: Id,
     /// The application's id, reported in results.
@@ -61,7 +59,7 @@ pub(crate) struct SourceInfo {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct TargetInfo {
+pub struct TargetInfo {
     pub id: Id,
     pub key: Id,
     pub depth: u16,
@@ -74,7 +72,7 @@ pub(crate) struct TargetInfo {
 
 /// The target and zone currently under the pointer.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Hover {
+pub struct Hover {
     pub id: Id,
     pub key: Id,
     pub accepts: bool,
@@ -86,12 +84,12 @@ pub(crate) struct Hover {
 
 /// What the source painted when the drag began, replayed under the pointer.
 #[derive(Clone)]
-pub(crate) struct Snapshot {
+pub struct Snapshot {
     pub rect: Rect,
     pub items: Vec<(Id, Vec<Paint>)>,
 }
 
-pub(crate) struct Pending {
+pub struct Pending {
     pub hit: HitRegion,
     pub info: SourceInfo,
     pub press: Vec2,
@@ -100,7 +98,7 @@ pub(crate) struct Pending {
     pub passive: bool,
 }
 
-pub(crate) struct Session {
+pub struct Session {
     pub info: SourceInfo,
     pub window: Id,
     pub rect: Rect,
@@ -120,7 +118,7 @@ pub(crate) struct Session {
     pub last_tick: Option<Instant>,
 }
 
-pub(crate) struct Ended {
+pub struct Ended {
     pub info: SourceInfo,
     pub target: Hover,
     pub position: Vec2,
@@ -129,7 +127,7 @@ pub(crate) struct Ended {
 }
 
 /// Preview flying back to its source after a cancelled drag.
-pub(crate) struct Returning {
+pub struct Returning {
     pub snapshot: Snapshot,
     pub from: Vec2,
     pub to: Vec2,
@@ -140,7 +138,7 @@ pub(crate) struct Returning {
 }
 
 #[derive(Default)]
-pub(crate) struct DragRuntime {
+pub struct DragRuntime {
     pub pending: Option<Pending>,
     pub session: Option<Session>,
     pub ended: Option<Ended>,

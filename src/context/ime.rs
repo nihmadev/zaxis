@@ -31,30 +31,4 @@ impl Context {
             );
         }
     }
-    pub(crate) fn clipboard_text(&mut self) -> Result<String, arboard::Error> {
-        let result = self.clipboard().and_then(|clipboard| clipboard.get_text());
-        self.report_clipboard(result.as_ref().err());
-        result
-    }
-    pub(crate) fn copy_text(&mut self, text: String) -> Result<(), arboard::Error> {
-        let result = self
-            .clipboard()
-            .and_then(|clipboard| clipboard.set_text(text));
-        self.report_clipboard(result.as_ref().err());
-        result
-    }
-    fn clipboard(&mut self) -> Result<&mut arboard::Clipboard, arboard::Error> {
-        if self.clipboard.is_none() {
-            self.clipboard = Some(arboard::Clipboard::new()?);
-        }
-        Ok(self.clipboard.as_mut().unwrap())
-    }
-    /// A clipboard that holds no text is normal; anything else reaches `Context::diagnostics`.
-    fn report_clipboard(&mut self, error: Option<&arboard::Error>) {
-        if let Some(error) = error.filter(|e| !matches!(e, arboard::Error::ContentNotAvailable)) {
-            self.report(crate::DiagnosticKind::External, None, None, || {
-                format!("clipboard unavailable: {error}")
-            });
-        }
-    }
 }

@@ -150,6 +150,12 @@ impl SharedResources {
         self.inner.images.lock().set_waker(Some(Arc::new(waker)));
     }
 
+    /// Decode images on the drawing thread within a per-frame budget; see
+    /// [`Context::decode_images_inline`].
+    pub fn decode_images_inline(&self, frame_budget: Option<std::time::Duration>) {
+        self.inner.images.lock().set_inline_decoding(frame_budget);
+    }
+
     /// Image cache counters summed over every window.
     pub fn image_metrics(&self) -> ImageMetrics {
         self.inner.images.lock().metrics()

@@ -7,7 +7,7 @@ impl Context {
     pub(super) fn split_pointer(&mut self, id: Id, pointer: Vec2, phase: u8) {
         let event = match phase {
             1 => {
-                let now = std::time::Instant::now();
+                let now = crate::time::Instant::now();
                 let double = self.split_click.as_ref().is_some_and(|last| {
                     last.id == id
                         && now.duration_since(last.time).as_millis() <= 500

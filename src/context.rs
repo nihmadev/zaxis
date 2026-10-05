@@ -1,19 +1,18 @@
 //! Global UI state, winit input integration, repaint scheduling, and geometry cache.
 
 mod animation;
+mod carousel;
+pub(crate) mod clipboard;
 mod cursor;
 mod debug_overlay;
 mod diagnostics;
-#[cfg(test)]
-mod diagnostics_tests;
 mod disclosure;
-#[cfg(test)]
-#[path = "../tests/disclosure/interaction.rs"]
-mod disclosure_tests;
-pub(crate) mod drag;
-mod events;
+pub mod drag;
+#[doc(hidden)]
+pub mod events;
 mod frame;
-mod geometry;
+#[doc(hidden)]
+pub mod geometry;
 mod gesture;
 mod id;
 mod images;
@@ -23,7 +22,8 @@ mod input;
 mod interaction;
 mod keyboard;
 pub(crate) mod modal;
-pub(crate) mod native_chrome;
+#[doc(hidden)]
+pub mod native_chrome;
 mod paint;
 pub(crate) mod placement;
 mod pointer;
@@ -31,99 +31,31 @@ pub(crate) mod popup;
 mod repaint;
 pub(crate) mod scroll;
 mod scroll_input;
-#[cfg(test)]
-mod scroll_input_tests;
+pub(crate) mod selection;
 mod shared;
 mod split;
-#[cfg(test)]
-#[path = "../tests/split/button.rs"]
-mod split_button_tests;
-#[cfg(test)]
-#[path = "../tests/split/events.rs"]
-mod split_tests;
+#[doc(hidden)]
+pub mod testing;
 mod text_api;
 mod theme;
-#[cfg(test)]
-mod theme_regression_tests;
-#[cfg(test)]
-mod theme_tests;
 pub(crate) mod toast;
-pub(crate) mod tooltip;
+#[doc(hidden)]
+pub mod tooltip;
 mod tree;
 mod viewport;
 mod windows;
 
-#[cfg(test)]
-mod animation_compose_tests;
-#[cfg(test)]
-mod animation_control_tests;
-#[cfg(test)]
-mod animation_motion_tests;
-#[cfg(test)]
-mod animation_tests;
-#[cfg(test)]
-mod api_ergonomics_tests;
-#[cfg(test)]
-mod card_tests;
-#[cfg(test)]
-mod color_picker_tests;
-#[cfg(test)]
-mod combo_box_tests;
-#[cfg(test)]
-#[path = "../tests/context_menu/interaction.rs"]
-mod context_menu_tests;
-#[cfg(test)]
-mod cursor_tests;
-#[cfg(test)]
-mod drag_tests;
-#[cfg(test)]
-mod field_tests;
-#[cfg(test)]
-mod font_weight_tests;
-#[cfg(test)]
-mod grid_tests;
-#[cfg(test)]
-mod interact_tests;
-#[cfg(test)]
-mod layout_motion_tests;
-#[cfg(test)]
-#[path = "../tests/menu_bar/interaction.rs"]
-mod menu_bar_tests;
-#[cfg(test)]
-mod modal_tests;
-#[cfg(test)]
-mod monospace_tests;
-#[cfg(test)]
-mod motion_presets_tests;
-#[cfg(test)]
-mod number_tests;
-#[cfg(test)]
-mod response_events_tests;
-#[cfg(test)]
-mod scroll_tests;
-#[cfg(test)]
-mod slider_tests;
-#[cfg(test)]
-mod switch_tests;
-#[cfg(test)]
-mod tab_bar_tests;
-#[cfg(test)]
-mod table_tests;
-#[cfg(test)]
-mod text_area_tests;
-#[cfg(test)]
-mod text_edit_tests;
-
+use crate::time::Instant;
 use crate::{text::TextSystem, DrawData, Style, Vec2};
 use geometry::{Element, ElementKey, MeshSlot};
 use interaction::Capture;
 use paint::CachedElement;
-use std::{
-    collections::{HashMap, HashSet},
-    time::Instant,
-};
+use std::collections::{HashMap, HashSet};
 use winit::keyboard::KeyCode;
 
+#[cfg(target_arch = "wasm32")]
+pub(crate) use clipboard::web::install as install_web_clipboard;
+pub use clipboard::{ClipboardBackend, ClipboardError};
 pub(crate) use diagnostics::{invalid_value, Diagnostics};
 pub use diagnostics::{DebugOverlay, Diagnostic, DiagnosticKind};
 pub use id::Id;
@@ -189,12 +121,14 @@ pub struct Context {
     mesh_slots: Vec<MeshSlot>,
     seen: HashSet<Id>,
     modified: HashSet<Id>,
-    hits: Vec<HitRegion>,
+    pub(crate) hits: Vec<HitRegion>,
     /// First registration of each hit ID: its order and, unless merely reserved, its window.
     hit_order: HashMap<Id, (usize, Option<Id>)>,
-    previous_hits: Vec<HitRegion>,
+    pub(crate) previous_hits: Vec<HitRegion>,
     capture: Option<Capture>,
     text_click: Option<interaction::ClickSequence>,
+    /// Selection and retained state of static text; see [`selection`].
+    pub(crate) selection: selection::SelectionState,
     clicked: HashSet<Id>,
     slider_input: HashMap<Id, Vec<SliderInput>>,
     text_edit_input: HashMap<Id, Vec<TextEditInput>>,
@@ -220,7 +154,7 @@ pub struct Context {
     pub(crate) key_capture: crate::components::key_box::KeyCapture,
     pub(crate) color_pickers: HashMap<Id, crate::components::color_picker::ColorPickerState>,
     pub(crate) text_edits: HashMap<Id, crate::components::text_edit::TextEditState>,
-    clipboard: Option<arboard::Clipboard>,
+    clipboard: Option<Box<dyn ClipboardBackend>>,
     ime_composing: bool,
     pub(crate) ime_area: Option<crate::Rect>,
     ime_target: Option<Id>,
@@ -238,6 +172,8 @@ pub struct Context {
     pub(crate) placements: placement::Placements,
     pub(crate) grids: HashMap<Id, crate::components::grid::GridState>,
     pub(crate) cards: HashMap<Id, crate::components::card::CardState>,
+    pub(crate) carousels: HashMap<Id, crate::components::carousel::CarouselState>,
+    pub(crate) carousel_wheel: carousel::CarouselWheel,
     pub(crate) layouts: HashMap<Id, crate::components::ui::FlowState>,
     pub(crate) tables: HashMap<Id, crate::components::table::TableState>,
     column_resize: HashMap<(Id, Id), f32>,
@@ -247,9 +183,12 @@ pub struct Context {
     pub(crate) collapsing_headers:
         HashMap<Id, crate::components::collapsing_header::CollapsingState>,
     pub(crate) trees: HashMap<Id, crate::components::tree_view::TreeState>,
+    pub(crate) list_boxes: HashMap<Id, crate::components::list_box::ListState>,
     pub(crate) tree_input: HashMap<Id, Vec<crate::components::tree_view::TreeInput>>,
     tree_click: Option<interaction::ClickSequence>,
     pub(crate) drag: drag::DragRuntime,
+    /// Nodes described for assistive technology and the tree built from them.
+    pub(crate) a11y: crate::accessibility::State,
 }
 
 impl Context {

@@ -1,7 +1,7 @@
 //! UI pass lifecycle and retained-state cleanup.
 
 use super::Context;
-use std::time::Instant;
+use crate::time::Instant;
 
 impl Context {
     /// Build the UI on every host redraw, comparing paint descriptions to reuse geometry.
@@ -27,6 +27,7 @@ impl Context {
             self.next_repaint = None;
         }
         self.sync_appearance();
+        self.poll_clipboard();
         // Clear before the callback so repaint requests made by widgets survive it.
         self.dirty = false;
         self.ime_area = None;
@@ -48,7 +49,10 @@ impl Context {
         self.modals.begin_pass();
         self.tick_auto_scroll();
         self.drag_begin_frame();
+        self.tick_selection_autoscroll();
         self.scrolling.begin_frame();
+        self.carousel_wheel.begin_frame();
+        self.a11y.begin_pass();
         build(self);
         self.finish_frame();
         self.in_pass = false;
@@ -78,6 +82,8 @@ impl Context {
         self.finish_tooltips();
         self.finish_toasts();
         self.drag_emit_preview();
+        #[cfg(feature = "accesskit")]
+        self.audit_accessibility();
         self.finish_diagnostics();
         let ranks: std::collections::HashMap<_, _> = self
             .layers
@@ -98,6 +104,9 @@ impl Context {
                 self.hit_order.get(&hit.id).map_or(0, |slot| slot.0),
             )
         });
+        if self.a11y.active {
+            self.a11y_resolve_geometry();
+        }
         self.hits.retain(|h| !h.rect.intersect(h.clip).is_empty());
         self.scrolling.finish_frame(self.frame);
         self.finish_auto_scroll();
@@ -126,6 +135,9 @@ impl Context {
         self.input_transforms = std::mem::take(&mut self.current_transforms);
         self.grids.retain(|_, state| state.last_frame == self.frame);
         self.cards.retain(|_, state| state.last_frame == self.frame);
+        self.carousels
+            .retain(|_, state| state.last_frame == self.frame);
+        self.carousel_wheel.finish_frame();
         self.layouts
             .retain(|_, state| state.last_frame == self.frame);
         self.local_styles.retain(|_, s| s.2 == self.frame);
@@ -149,6 +161,9 @@ impl Context {
                 .previous_hits
                 .iter()
                 .any(|h| h.id == capture.hit.id && h.action == capture.hit.action)
+                // A selection keeps following the pointer after scrolling carried the text
+                // it began in out of sight.
+                && !self.selection_holds(capture.hit.id)
                 && !matches!(capture.hit.action, super::HitAction::ColumnResize { table, column }
                     if self.tables.get(&table).is_some_and(|state| state.last_frame == self.frame && state.resize_columns.contains(&column))
                         && self.visible_windows.contains(&capture.hit.window))
@@ -156,13 +171,20 @@ impl Context {
             self.capture = None;
             self.gesture_cancel();
         }
+        self.finish_selection();
         self.splits
             .retain(|_, state| state.last_frame == self.frame);
         self.trees.retain(|_, state| state.last_frame == self.frame);
+        self.list_boxes
+            .retain(|_, state| state.last_frame == self.frame);
         self.tree_input.clear();
         self.finish_collapsing_headers();
         self.split_input.clear();
         self.clicked.clear();
+        for id in self.a11y.take_late_clicks() {
+            self.clicked.insert(id);
+            self.request_repaint();
+        }
         self.slider_input.clear();
         self.text_edit_input.clear();
         self.number_input.clear();
@@ -177,6 +199,9 @@ impl Context {
             .retain(|id, _| self.seen.contains(&id.with("swatch")));
         self.text_edits
             .retain(|id, _| self.seen.contains(&id.with("body")));
+        #[cfg(feature = "accesskit")]
+        self.finish_accessibility();
+        self.a11y.end_pass(self.frame);
         self.input.finish_frame();
     }
 }

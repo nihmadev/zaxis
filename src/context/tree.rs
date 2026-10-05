@@ -51,7 +51,7 @@ impl Context {
             return;
         };
         let pointer = self.input.pointer.unwrap_or(hit.rect.center());
-        let now = std::time::Instant::now();
+        let now = crate::time::Instant::now();
         let double = self.tree_click.as_ref().is_some_and(|last| {
             last.id == hit.id
                 && last.count == 1

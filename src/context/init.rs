@@ -56,7 +56,7 @@ impl Context {
             dirty: true,
             next_repaint: None,
             frame: 0,
-            frame_time: std::time::Instant::now(),
+            frame_time: crate::time::Instant::now(),
             in_pass: false,
             animations: Default::default(),
             text: TextSystem::with_store(
@@ -89,6 +89,7 @@ impl Context {
             previous_hits: Vec::new(),
             capture: None,
             text_click: None,
+            selection: Default::default(),
             clicked: HashSet::new(),
             slider_input: HashMap::new(),
             text_edit_input: HashMap::new(),
@@ -130,6 +131,8 @@ impl Context {
             placements: Default::default(),
             grids: HashMap::new(),
             cards: HashMap::new(),
+            carousels: HashMap::new(),
+            carousel_wheel: Default::default(),
             layouts: HashMap::new(),
             tables: HashMap::new(),
             column_resize: HashMap::new(),
@@ -138,9 +141,11 @@ impl Context {
             split_click: None,
             collapsing_headers: HashMap::new(),
             trees: HashMap::new(),
+            list_boxes: HashMap::new(),
             tree_input: HashMap::new(),
             tree_click: None,
             drag: Default::default(),
+            a11y: Default::default(),
         }
     }
 }

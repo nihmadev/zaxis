@@ -13,7 +13,7 @@ use crate::{components::drag_drop::DragReason, Vec2};
 use std::collections::{HashMap, HashSet};
 use winit::{event::ElementState, keyboard::KeyCode};
 
-pub(crate) struct ModalState {
+pub struct ModalState {
     pub id: Id,
     pub return_focus: Option<Id>,
     pub pending_focus: bool,
@@ -23,7 +23,7 @@ pub(crate) struct ModalState {
 }
 
 #[derive(Default)]
-pub(crate) struct Modals {
+pub struct Modals {
     /// Open modals, oldest first. Closing modals leave the stack immediately.
     pub stack: Vec<ModalState>,
     /// Modals whose content is being built right now, outermost first.
@@ -207,6 +207,16 @@ impl Context {
         });
         self.set_focus(target);
         self.request_repaint();
+    }
+
+    /// A layer that is only fading out is closed for assistive technology already:
+    /// without the bounds of its nodes, they and everything in them stay out of the tree.
+    pub(crate) fn drop_layer_semantics(&mut self, id: Id) {
+        let gone = |hit: &HitRegion| hit.window == id && hit.action == HitAction::Semantic;
+        if let Some(placement) = self.placements.stack.last_mut() {
+            placement.hits.retain(|(hit, _)| !gone(hit));
+        }
+        self.hits.retain(|hit| !gone(hit));
     }
 
     /// Escape while a modal is open belongs to the modal and nothing below it.

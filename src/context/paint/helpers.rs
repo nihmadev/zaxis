@@ -105,7 +105,9 @@ impl Paint {
             Self::Visual {
                 paint, transform, ..
             } => transform.point(paint.first().map_or(Vec2::ZERO, Paint::origin)),
-            Self::Text { position, .. } | Self::Paragraph { position, .. } => *position,
+            Self::Text { position, .. }
+            | Self::Paragraph { position, .. }
+            | Self::Rich { position, .. } => *position,
             Self::Image { rect, .. }
             | Self::ScrollHint { rect, .. }
             | Self::Gradient { rect, .. } => rect.min,
@@ -128,7 +130,9 @@ impl Paint {
                 }
                 transform.translation += delta - transform.vector(delta);
             }
-            Self::Text { position, .. } | Self::Paragraph { position, .. } => *position += delta,
+            Self::Text { position, .. }
+            | Self::Paragraph { position, .. }
+            | Self::Rich { position, .. } => *position += delta,
             Self::Image { rect, .. }
             | Self::ScrollHint { rect, .. }
             | Self::Gradient { rect, .. } => *rect = rect.translate(delta),
