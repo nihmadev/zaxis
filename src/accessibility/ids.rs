@@ -5,6 +5,7 @@
 //! happens to hash into that range is moved out of it.
 
 use crate::Id;
+use std::collections::HashSet;
 
 /// The native window.
 pub(crate) const ROOT: u64 = 1;
@@ -39,4 +40,15 @@ pub(crate) fn run(owner: u64, run: usize) -> u64 {
 /// A replacement for an id already used in this pass; `attempt` starts at one.
 pub(crate) fn alternate(id: u64, attempt: u64) -> u64 {
     outside_reserved(mix(id ^ mix(attempt)))
+}
+
+/// `base`, or its first [`alternate`] not in `used`, marked used. The same sequence of
+/// requests in a pass gives the same ids in every pass.
+pub(crate) fn unique(base: u64, used: &mut HashSet<u64>) -> u64 {
+    let (mut id, mut attempt) = (base, 0);
+    while !used.insert(id) {
+        attempt += 1;
+        id = alternate(base, attempt);
+    }
+    id
 }
