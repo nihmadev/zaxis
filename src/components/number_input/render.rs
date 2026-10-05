@@ -46,6 +46,22 @@ fn step<T: Numeric>(
     }
     state.invalid = false;
 }
+/// Step from the value as it is now: a value that is not where the last steps left it (it
+/// was typed, committed or set meanwhile) becomes the new origin.
+pub(super) fn step_from<T: Numeric>(
+    state: &mut NumberState,
+    value: &mut T,
+    options: &NumberOptions<'_, T>,
+    units: f64,
+) {
+    let (min, max) = (*options.range.start(), *options.range.end());
+    let origin = state.origin.parse::<T>().ok();
+    if origin.is_none_or(|o| !o.offset(options.step, state.units, min, max).same(*value)) {
+        state.origin = value.to_string();
+        state.units = 0.0;
+    }
+    step(state, value, options, units);
+}
 fn arrow(key: KeyCode) -> f64 {
     match key {
         KeyCode::ArrowUp | KeyCode::ArrowRight => 1.0,
@@ -55,7 +71,11 @@ fn arrow(key: KeyCode) -> f64 {
         _ => 0.0,
     }
 }
-fn commit<T: Numeric>(buffer: &str, value: &mut T, options: &NumberOptions<'_, T>) -> bool {
+pub(super) fn commit<T: Numeric>(
+    buffer: &str,
+    value: &mut T,
+    options: &NumberOptions<'_, T>,
+) -> bool {
     if let Some(next) = T::parse(buffer) {
         *value = next.normalized(*options.range.start(), *options.range.end());
         true
@@ -106,6 +126,8 @@ pub(super) fn show<T: Numeric>(
     if !drag && focused && !state.editing && options.enabled {
         begin(&mut state, *value);
     }
+    let node = id.with("spin");
+    access::requests(ui, node, &mut state, value, &options);
     let events = ui.context.take_number_input(id);
     if drag && options.enabled {
         for event in events {
@@ -177,7 +199,10 @@ pub(super) fn show<T: Numeric>(
     }
     let mut submitted = false;
     let mut cancelled = false;
-    let mut response = if !drag || state.editing {
+    // One spin button either way; the text field of an edit is its child.
+    let editor = !drag || state.editing;
+    let scope = ui.a11y_begin(node, crate::AccessRole::SpinButton, |_| {});
+    let mut response = if editor {
         let mut buffer = std::mem::take(&mut state.buffer);
         if !state.editing {
             buffer = options.display(*value);
@@ -233,28 +258,22 @@ pub(super) fn show<T: Numeric>(
                 TextEditInput::Key(key @ (KeyCode::ArrowUp | KeyCode::ArrowDown), mods) => {
                     // Incomplete drafts must not turn into zero on a step.
                     if commit(buffer, value, &options) {
-                        if state.origin.parse::<T>().ok().is_none_or(|origin| {
-                            !origin
-                                .offset(
-                                    options.step,
-                                    state.units,
-                                    *options.range.start(),
-                                    *options.range.end(),
-                                )
-                                .same(*value)
-                        }) {
-                            state.origin = value.to_string();
-                            state.units = 0.0;
-                        }
-                        step(
-                            &mut state,
-                            value,
-                            &options,
-                            arrow(*key) * multiplier(*mods, &style),
-                        );
+                        let units = arrow(*key) * multiplier(*mods, &style);
+                        step_from(&mut state, value, &options, units);
                         *buffer = value.to_string();
                     } else {
                         state.invalid = true;
+                    }
+                    true
+                }
+                TextEditInput::SetValue(text) => {
+                    // Assistive technology set the field's text: that is a typed commit.
+                    if access::set_text(&mut state, value, &options, text) {
+                        *buffer = if state.editing {
+                            value.to_string()
+                        } else {
+                            options.display(*value)
+                        };
                     }
                     true
                 }
@@ -405,6 +424,15 @@ pub(super) fn show<T: Numeric>(
             )],
         );
     }
+    access::describe(
+        ui,
+        scope,
+        (id, editor),
+        response.rect,
+        *value,
+        &options,
+        &state,
+    );
     response.changed = !before.same(*value);
     response.submitted = submitted;
     response.lost_focus |= state.focused && !focused;

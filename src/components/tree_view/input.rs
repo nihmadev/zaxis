@@ -10,6 +10,11 @@ pub(crate) enum TreeInput {
         double: bool,
     },
     Context(Id),
+    /// Open or close a branch; does nothing when it already is. From assistive technology.
+    SetOpen {
+        node: Id,
+        open: bool,
+    },
 }
 impl TreeState {
     pub(super) fn input(
@@ -25,7 +30,11 @@ impl TreeState {
                 if model.node(id).is_some_and(|n| n.enabled) {
                     events.push(TreeEvent::ContextAction { node: id });
                 }
-                return;
+            }
+            TreeInput::SetOpen { node, open } => {
+                if model.node(node).is_some_and(|n| n.enabled) {
+                    self.set_open(node, open, model, events);
+                }
             }
             TreeInput::Click {
                 node,
@@ -48,7 +57,6 @@ impl TreeState {
                         }
                     }
                 }
-                return;
             }
             TreeInput::Key(key) => {
                 let Some(id) = self.focused else {

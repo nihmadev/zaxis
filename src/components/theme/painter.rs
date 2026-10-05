@@ -12,6 +12,10 @@ pub enum PaintPart {
     Button,
     CheckboxBody,
     CheckboxIndicator,
+    /// Ring and halo of a radio button; `value` is `1.0` when selected.
+    RadioIndicator,
+    /// Inner dot of a radio button; `value` is the animated scale (may overshoot `1.0`).
+    RadioDot,
     SliderTrack,
     SliderThumb,
 }

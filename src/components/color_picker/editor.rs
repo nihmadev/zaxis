@@ -1,4 +1,40 @@
 use super::*;
+
+/// One pointer or key event on the palette (saturation across, brightness up) or on the hue
+/// strip.
+pub(super) fn adjust(hsv: &mut [f32; 3], rect: Rect, is_hue: bool, event: SliderInput) {
+    match event {
+        SliderInput::Pointer(pointer) if !rect.is_empty() => {
+            let t = ((pointer - rect.min) / rect.size()).clamp(Vec2::ZERO, Vec2::ONE);
+            if is_hue {
+                hsv[0] = t.x;
+            } else {
+                hsv[1] = t.x;
+                hsv[2] = 1.0 - t.y;
+            }
+        }
+        SliderInput::Key(key) => {
+            let channel = if is_hue {
+                0
+            } else if matches!(key, KeyCode::ArrowUp | KeyCode::ArrowDown) {
+                2
+            } else {
+                1
+            };
+            hsv[channel] = match key {
+                KeyCode::Home => 0.0,
+                KeyCode::End => 1.0,
+                KeyCode::ArrowRight | KeyCode::ArrowUp => (hsv[channel] + 0.01).min(1.0),
+                KeyCode::ArrowLeft | KeyCode::ArrowDown => (hsv[channel] - 0.01).max(0.0),
+                KeyCode::PageUp => (hsv[channel] + 0.1).min(1.0),
+                KeyCode::PageDown => (hsv[channel] - 0.1).max(0.0),
+                _ => hsv[channel],
+            };
+        }
+        _ => {}
+    }
+}
+
 impl ColorPicker<'_> {
     pub(super) fn editor(
         &mut self,
@@ -24,6 +60,7 @@ impl ColorPicker<'_> {
         let focused = field_ids
             .iter()
             .position(|field| self.enabled && ui.context.has_focus(*field));
+        access::field_requests(ui, &field_ids, self.enabled, state, self.color);
         // Include fields that received input and lost focus between two UI passes.
         let previous = state.edit.as_ref().map(|edit| edit.field);
         let fields = previous
@@ -82,40 +119,11 @@ impl ColorPicker<'_> {
                 if !self.enabled {
                     continue;
                 }
-                match event {
-                    SliderInput::Pointer(pointer) if !rect.is_empty() => {
-                        let t = ((pointer - rect.min) / rect.size()).clamp(Vec2::ZERO, Vec2::ONE);
-                        if is_hue {
-                            state.hsv[0] = t.x;
-                        } else {
-                            state.hsv[1] = t.x;
-                            state.hsv[2] = 1.0 - t.y;
-                        }
-                    }
-                    SliderInput::Key(key) => {
-                        let channel = if is_hue {
-                            0
-                        } else if matches!(key, KeyCode::ArrowUp | KeyCode::ArrowDown) {
-                            2
-                        } else {
-                            1
-                        };
-                        state.hsv[channel] = match key {
-                            KeyCode::Home => 0.0,
-                            KeyCode::End => 1.0,
-                            KeyCode::ArrowRight | KeyCode::ArrowUp => {
-                                (state.hsv[channel] + 0.01).min(1.0)
-                            }
-                            KeyCode::ArrowLeft | KeyCode::ArrowDown => {
-                                (state.hsv[channel] - 0.01).max(0.0)
-                            }
-                            KeyCode::PageUp => (state.hsv[channel] + 0.1).min(1.0),
-                            KeyCode::PageDown => (state.hsv[channel] - 0.1).max(0.0),
-                            _ => state.hsv[channel],
-                        };
-                    }
-                    _ => {}
-                }
+                adjust(&mut state.hsv, rect, is_hue, event);
+                *self.color = from_hsv(state.hsv, self.color.0[3]);
+            }
+            let surface = (control_id, rect, is_hue);
+            if access::sliders(ui, surface, self.enabled, state.open, &mut state.hsv) {
                 *self.color = from_hsv(state.hsv, self.color.0[3]);
             }
         }
@@ -222,6 +230,9 @@ impl ColorPicker<'_> {
             let edit = state.edit.as_ref().filter(|edit| edit.field == field);
             let text =
                 edit.map_or_else(|| field_text(*self.color, field), |edit| edit.text.clone());
+            if state.open {
+                access::field(ui, field_id, rect, field, &text, self.enabled);
+            }
             let prefix = if field == 3 {
                 ""
             } else {

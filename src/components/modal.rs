@@ -3,6 +3,7 @@
 //! A modal is a popup-class layer: it shares the popup paint order and the one
 //! hit-test path (`Context::top_window`), so everything under it stops
 //! receiving pointer, wheel, keys, text and shortcuts while it is open.
+mod access;
 mod dialog;
 mod geometry;
 mod parts;
@@ -62,6 +63,9 @@ pub struct Modal {
     return_focus: Option<Id>,
     style: ModalStyle,
     bodyless: bool,
+    label: Option<String>,
+    role: crate::AccessRole,
+    described: bool,
 }
 
 type Part<'a> = Box<dyn FnOnce(&mut Ui<'_>) + 'a>;
@@ -79,11 +83,27 @@ impl Modal {
             return_focus: None,
             style: Default::default(),
             bodyless: false,
+            label: None,
+            role: crate::AccessRole::Dialog,
+            described: false,
         }
     }
     /// No scrolling body: only header and actions (confirmations).
     pub(super) fn bodyless(mut self) -> Self {
         self.bodyless = true;
+        self
+    }
+    /// What the dialog is to a screen reader, and whether the second text of its header
+    /// describes it.
+    pub(super) fn access(mut self, role: crate::AccessRole, described: bool) -> Self {
+        (self.role, self.described) = (role, described);
+        self
+    }
+    /// The name a screen reader announces when the modal opens. Without it the modal is
+    /// named after the first text of its header ([`Self::show_parts`]); a modal that has
+    /// neither is reported as [`DiagnosticKind::MissingAccessibleName`](crate::DiagnosticKind).
+    pub fn accessible_label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
         self
     }
     /// Escape closes the modal (default). When false Escape is still consumed.
@@ -177,7 +197,7 @@ impl Modal {
             return None;
         }
         // `Style` is large: copy out only what is needed instead of cloning it.
-        let look = Look::of(ui.style());
+        let look = parts::Look::of(ui.style());
         let mut component = look.modal;
         component.merge(self.style);
         let motion = super::sanitize::forward("Modal motion", look.presence.clone());
@@ -315,6 +335,11 @@ impl Modal {
         };
         let mut close_clicked = false;
         let mut inner = None;
+        // The dialog node keeps the settled bounds of the surface while it animates.
+        let (node, mut titles) = (root.context.a11y_len(), 0..0);
+        let dialog = root.context.a11y_begin_layer(id, id, self.role, |node| {
+            access::dialog(node, self.label.as_deref());
+        });
         root.layout = LayoutCursor::new(rect, Layout::Vertical, 0.0);
         root.visual("surface", transform, if measured { t } else { 0.0 }, |s| {
             // The effect measures this child: report the surface so it counts as visible.
@@ -341,8 +366,10 @@ impl Modal {
             );
             parts::region(s, tall, gap, id.with("content"), |c| {
                 if let Some(header) = header {
+                    let start = c.context.a11y_len();
                     next.header =
                         parts::measure_item(c, |u| indented(u, bleed, width - reserve, header));
+                    titles = start..c.context.a11y_len();
                 }
                 if self.bodyless {
                     inner = Some(body(c));
@@ -370,6 +397,11 @@ impl Modal {
         });
         next.width = next.width.max(0.0);
         let ctx = &mut *root.context;
+        access::name(ctx, node, titles, self.described);
+        ctx.a11y_end(dialog, Some((rect, viewport)));
+        if !is_open {
+            ctx.drop_layer_semantics(id);
+        }
         let changed = (next.width - measure.width).abs() > 0.5
             || (next.header - measure.header).abs() > 0.5
             || (next.body - measure.body).abs() > 0.5
@@ -405,42 +437,6 @@ impl Modal {
             default_action: enter && is_open,
             rect,
         })
-    }
-}
-
-/// The few theme values the modal reads.
-struct Look {
-    modal: ModalStyle,
-    presence: crate::TweenOptions,
-    window_fill: crate::Color,
-    border: crate::Border,
-    text_color: crate::Color,
-    rounding: crate::CornerRadius,
-    blur_radius: f32,
-    elevation: crate::Shadow,
-    opacity: f32,
-    window_padding: Padding,
-    spacing: f32,
-    scroll: super::ScrollStyle,
-    control_height: f32,
-}
-impl Look {
-    fn of(style: &super::Style) -> Self {
-        Self {
-            modal: style.modal,
-            presence: style.motion.presence.clone(),
-            window_fill: style.window_fill,
-            border: style.border,
-            text_color: style.text_color,
-            rounding: style.rounding,
-            blur_radius: style.blur_radius,
-            elevation: style.elevation,
-            opacity: style.opacity,
-            window_padding: style.window_padding,
-            spacing: style.spacing,
-            scroll: style.scroll,
-            control_height: style.control_height,
-        }
     }
 }
 

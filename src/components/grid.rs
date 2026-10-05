@@ -37,8 +37,8 @@ impl Default for GridStyle {
     }
 }
 #[derive(Default)]
-pub(crate) struct GridState {
-    pub(crate) last_frame: u64,
+pub struct GridState {
+    pub last_frame: u64,
     measured: HashMap<Id, f32>,
     offsets: HashMap<Id, Vec2>,
 }
@@ -54,6 +54,7 @@ pub struct Grid {
     cell_padding: Option<Padding>,
     fill: Option<Color>,
     drag_rows: bool,
+    access_row: Option<u32>,
 }
 pub struct GridOutput<R> {
     pub inner: R,
@@ -80,6 +81,7 @@ impl Grid {
             cell_padding: None,
             fill: None,
             drag_rows: false,
+            access_row: None,
         }
     }
     pub fn column(mut self, column: Column) -> Self {
@@ -121,6 +123,12 @@ impl Grid {
     /// `Id::new(source)` of the `row` call. The model is yours to change.
     pub fn drag_rows(mut self, drag: bool) -> Self {
         self.drag_rows = drag;
+        self
+    }
+    /// The grid is one row of a table: its cells are cells of row `row` for assistive
+    /// technology. A grid on its own only lays widgets out and adds no nodes.
+    pub(super) fn access_row(mut self, row: u32) -> Self {
+        self.access_row = Some(row);
         self
     }
     pub(super) fn resolved(mut self, widths: Vec<f32>, height: Option<f32>) -> Self {
@@ -208,6 +216,7 @@ impl Grid {
             rows: Vec::new(),
             height: 0.0,
             fixed_height: self.fixed_height,
+            access_row: self.access_row,
         };
         let inner = build(&mut grid);
         let widths = self.resolved.unwrap_or_else(|| {
@@ -289,6 +298,10 @@ impl Grid {
                     target - cell.origin,
                     grid.ui.clip.intersect(bounds),
                 );
+                if cell.access.is_some() {
+                    let scope = crate::accessibility::Scope(cell.access);
+                    grid.ui.a11y_end(scope, Some(bounds));
+                }
                 cell_rects.push(bounds);
                 x += widths[i] + style.spacing.x;
             }
@@ -329,6 +342,8 @@ struct Cell {
     origin: Vec2,
     size: Vec2,
     placement: Placement,
+    /// The cell's node in the accessibility tree, placed once the row has its height.
+    access: Option<u32>,
 }
 struct Row {
     y: f32,
@@ -351,6 +366,7 @@ pub struct GridUi<'a, 'ctx> {
     rows: Vec<Row>,
     height: f32,
     fixed_height: Option<f32>,
+    access_row: Option<u32>,
 }
 impl Ui<'_> {
     pub fn grid<R>(

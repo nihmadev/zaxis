@@ -1,5 +1,7 @@
 //! Single-pass multi-panel layout. See `docs/content/docs/components/split-pane.mdx`.
-mod allocation;
+mod access;
+#[doc(hidden)]
+pub mod allocation;
 mod interaction;
 mod paint;
 mod show;
@@ -209,6 +211,7 @@ pub struct SplitUi<'a, 'ctx> {
     outputs: &'a [SplitPanelOutput],
     style: SplitStyle,
     built: std::collections::HashSet<Id>,
+    handles: access::Handles,
 }
 impl Ui<'_> {
     pub fn split_horizontal<R>(

@@ -7,7 +7,7 @@
 use std::{fmt::Display, hash::Hash};
 
 use super::{SemanticStatus, Text, TypographyRole, Ui};
-use crate::{Color, Id, Vec2};
+use crate::{AccessLive, AccessNode, AccessRole, Color, Id, Vec2};
 
 /// Outcome of the application's validation of one value: a status and the text
 /// to show under the control. The default is "nothing to say".
@@ -123,7 +123,10 @@ impl Field {
             // The layout spacing is the gap between label, control and message.
             ui.layout.spacing = gap;
             ui.push_id(("field", id), |ui| {
+                // Where this pass's nodes of the label, the controls and the message begin.
+                let mut nodes = [None; 3];
                 if !self.label.is_empty() {
+                    nodes[0] = Some(ui.context.a11y_len());
                     ui.add(
                         Text::new(self.label.clone())
                             .typography(TypographyRole::Small)
@@ -131,9 +134,11 @@ impl Field {
                     );
                 }
                 let previous = std::mem::replace(&mut ui.context.field_status, status);
+                nodes[1] = Some(ui.context.a11y_len());
                 let result = build(ui);
                 ui.context.field_status = previous;
                 if !message.is_empty() {
+                    nodes[2] = Some(ui.context.a11y_len());
                     ui.add(
                         Text::new(message.to_owned())
                             .typography(TypographyRole::Small)
@@ -151,9 +156,95 @@ impl Field {
                         .y;
                     ui.allocate_space(Vec2::new(0.0, line));
                 }
+                if ui.context.a11y_on() {
+                    let validated = !self.validation.message.is_empty();
+                    describe(ui, nodes, message, status, validated);
+                }
                 result
             })
         })
+    }
+}
+
+/// Roles a field's label names: the first node of one of them built inside the field is
+/// its control.
+fn is_control(role: AccessRole) -> bool {
+    matches!(
+        role,
+        AccessRole::Button
+            | AccessRole::CheckBox
+            | AccessRole::Switch
+            | AccessRole::RadioGroup
+            | AccessRole::RadioButton
+            | AccessRole::Slider
+            | AccessRole::SpinButton
+            | AccessRole::TextInput
+            | AccessRole::MultilineTextInput
+            | AccessRole::ComboBox
+            | AccessRole::ListBox
+            | AccessRole::ColorWell
+            | AccessRole::Tree
+            | AccessRole::Table
+            | AccessRole::Grid
+    )
+}
+
+/// Tie the field together for assistive technology: its first control is named by the label
+/// and described by the message, which is the control's error when the status says so. A
+/// validation message is a live region, so it is spoken when it appears or changes.
+fn describe(
+    ui: &mut Ui<'_>,
+    [label, controls, text]: [Option<usize>; 3],
+    message: &str,
+    status: SemanticStatus,
+    validated: bool,
+) {
+    let mut id_of = |index: Option<usize>| Some(ui.context.a11y_node_mut(index?)?.id);
+    let (label, message_id) = (id_of(label), id_of(text));
+    let error = status == SemanticStatus::Error;
+    if let Some(node) = text.and_then(|index| ui.context.a11y_node_mut(index)) {
+        if validated {
+            node.live(if error {
+                AccessLive::Assertive
+            } else {
+                AccessLive::Polite
+            });
+        }
+    }
+    let control = controls.and_then(|start| ui.context.a11y_find(start, |n| is_control(n.role)));
+    let Some(control) = control else {
+        return;
+    };
+    let id = control.id;
+    if let Some(label) = label {
+        control.labelled_by(label);
+    }
+    if error {
+        control.invalid(true);
+    }
+    if let Some(text) = message_id {
+        control.described_by(text);
+        if error && validated {
+            control.error_message(text);
+        }
+        // Not every platform follows the relation; all of them speak a description.
+        if control.description.is_none() {
+            control.description(message);
+        }
+    }
+    // A part named after its control (the text field of a number input) is not named
+    // through the control's own relation: it takes the label as well.
+    let Some(label) = label else {
+        return;
+    };
+    for index in controls.unwrap_or(0)..ui.context.a11y_len() {
+        let named = |node: &&mut AccessNode| {
+            let more = node.more.as_ref();
+            more.is_some_and(|more| more.labelled_by.contains(&id))
+        };
+        if let Some(node) = ui.context.a11y_node_mut(index).filter(named) {
+            node.labelled_by(label);
+        }
     }
 }
 

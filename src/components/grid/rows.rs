@@ -106,6 +106,12 @@ impl GridRow<'_, '_, '_> {
             local_style: ui.local_style.clone(),
             local_style_revision: ui.local_style_revision,
         };
+        let access = match self.grid.access_row.filter(|_| !hidden) {
+            Some(row) => child.a11y_begin(id, crate::AccessRole::Cell, |node| {
+                (node.table().row, node.table().column) = (Some(row), Some(i as u32));
+            }),
+            None => crate::accessibility::Scope::NONE,
+        };
         child.begin_layout(crate::Align::Start);
         let result = if self.grid.columns[i].tabular {
             let patch = crate::StyleOverrides {
@@ -120,6 +126,9 @@ impl GridRow<'_, '_, '_> {
             build(&mut child)
         };
         child.finish_layout();
+        // Content is inside the cell; the cell itself is placed when the row is laid out.
+        let node = access.0;
+        child.a11y_end(access, None);
         let size = child.layout.used;
         let placement = child.context.end_placement();
         if hidden {
@@ -133,6 +142,7 @@ impl GridRow<'_, '_, '_> {
             origin,
             size,
             placement,
+            access: node,
         });
         result
     }

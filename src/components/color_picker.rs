@@ -105,7 +105,7 @@ impl ColorPicker<'_> {
             + 6.0
     }
 }
-pub(crate) struct ColorPickerState {
+pub struct ColorPickerState {
     open: bool,
     hsv: [f32; 3],
     last_color: Color,
@@ -159,7 +159,7 @@ fn field_text(color: Color, field: usize) -> String {
     }
 }
 
-fn to_hsv(color: Color) -> [f32; 3] {
+pub fn to_hsv(color: Color) -> [f32; 3] {
     let [r, g, b] = [color.0[0], color.0[1], color.0[2]].map(|c| f32::from(c) / 255.0);
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -176,7 +176,7 @@ fn to_hsv(color: Color) -> [f32; 3] {
     [hue, if max == 0.0 { 0.0 } else { delta / max }, max]
 }
 
-fn from_hsv([h, s, v]: [f32; 3], alpha: u8) -> Color {
+pub fn from_hsv([h, s, v]: [f32; 3], alpha: u8) -> Color {
     let h = h.rem_euclid(1.0) * 6.0;
     let c = v * s;
     let x = c * (1.0 - (h % 2.0 - 1.0).abs());
@@ -218,8 +218,7 @@ impl Ui<'_> {
     }
 }
 
+mod access;
 mod editor;
 mod fields;
 mod show;
-#[cfg(test)]
-mod tests;

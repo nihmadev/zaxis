@@ -8,6 +8,9 @@ pub(crate) enum SplitInput {
     Move(Vec2),
     End(Vec2),
     Key(KeyCode, ModifiersState),
+    /// A size for the panel before the boundary, from assistive technology; clamped like
+    /// any other resize.
+    Set(f32),
 }
 pub(super) struct Drag {
     pub id: Id,
@@ -72,7 +75,8 @@ pub(super) fn inputs(
             resize_ended: false,
             cancelled: false,
         };
-        let events = ui.context.take_split_input(bid);
+        let mut events = ui.context.take_split_input(bid);
+        super::access::requests(ui, bid, axis, &mut events);
         if enabled {
             if let Some(d) = state.drag.as_mut().filter(|d| d.id == bid) {
                 // Authoritative external changes, constraints, or viewport changes
@@ -143,12 +147,13 @@ pub(super) fn inputs(
                         } else {
                             allocation::resize(panels, sizes, i, sizes[i] + delta);
                         }
-                        if state.drag.as_ref().is_some_and(|d| d.id == bid) {
-                            // Keyboard adjustment during capture rebases the pointer.
-                            let d = state.drag.as_mut().unwrap();
-                            d.pointer = d.last_pointer;
-                            d.size = sizes[i];
+                        rebase(state, bid, sizes[i]);
+                    }
+                    SplitInput::Set(size) => {
+                        if size.is_finite() {
+                            allocation::resize(panels, sizes, i, size);
                         }
+                        rebase(state, bid, sizes[i]);
                     }
                 }
                 if before != (sizes[i], sizes[i + 1]) {
@@ -167,6 +172,13 @@ pub(super) fn inputs(
         outputs.push(out);
     }
     (outputs, ended)
+}
+/// An adjustment that did not come from the pointer rebases the drag that holds `boundary`.
+fn rebase(state: &mut SplitState, boundary: Id, size: f32) {
+    if let Some(d) = state.drag.as_mut().filter(|d| d.id == boundary) {
+        d.pointer = d.last_pointer;
+        d.size = size;
+    }
 }
 fn reset_pair(panels: &[SplitPanel], sizes: &mut [f32], i: usize) {
     // Reset the ratio within this pair; all other panels keep their allocation.

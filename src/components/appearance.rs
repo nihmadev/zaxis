@@ -7,7 +7,7 @@ use crate::{
 /// Resolved hover properties share one track, including gradient/shadow fades.
 /// Hit geometry and control values never move with hover.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Appearance {
+pub struct Appearance {
     pub fill: Gradient,
     pub border: Border,
     pub text_color: Color,
@@ -331,7 +331,7 @@ fn apply_hover(base: &mut Appearance, preset: HoverStyle, hovered: Color) {
     }
 }
 
-pub(crate) fn resolve_control(
+pub fn resolve_control(
     style: &super::Style,
     mut base: Appearance,
     preset: HoverStyle,

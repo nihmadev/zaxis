@@ -106,13 +106,33 @@ impl Widget for Badge {
             .scope
             .with(("badge", self.id.unwrap_or_else(|| Id::new(&self.text))));
         let response = ui.response(id, rect, false);
+        let optical = ui.context.centered_line_offset(label, size, weight);
+        let position = Vec2::new(
+            rect.min.x + self.padding.left,
+            rect.center().y - text.y * 0.5 + optical,
+        );
+        // A chip without text is a dot: decoration, nothing to announce.
+        if ui.context.a11y_on() && !label.is_empty() {
+            let layout = ui.context.paragraph_layout(
+                label,
+                size,
+                weight,
+                f32::INFINITY,
+                crate::text::DEFAULT_TAB,
+            );
+            let lines = ui.context.a11y_text(label, &layout);
+            ui.a11y(id, rect, crate::AccessRole::Label, |node| {
+                node.value(label)
+                    .text(lines, None)
+                    .text_origin(position - rect.min);
+            });
+        }
         let rounding = self.rounding.unwrap_or(CornerRadius::all(4.0));
         let mut shape =
             Shape::rect(rect, self.fill.unwrap_or(style.button_fill)).corner_radius(rounding);
         if let Some(border) = self.border {
             shape = shape.border(border);
         }
-        let optical = ui.context.centered_line_offset(label, size, weight);
         ui.context.paint(
             id,
             ui.window,
@@ -121,10 +141,7 @@ impl Widget for Badge {
                 Paint::Shape(shape.into()),
                 Paint::Text {
                     text: label.to_owned(),
-                    position: Vec2::new(
-                        rect.min.x + self.padding.left,
-                        rect.center().y - text.y * 0.5 + optical,
-                    ),
+                    position,
                     size,
                     weight,
                     wrap_width: f32::INFINITY,

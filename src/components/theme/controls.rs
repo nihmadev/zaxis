@@ -120,6 +120,61 @@ pub struct SwitchStyle {
     pub gap: Option<f32>,
     pub thumb_inset: Option<f32>,
 }
+/// Look of [`RadioGroup`](crate::RadioGroup): a thin ring (`body`), an inner `dot` and a soft
+/// `halo` around the indicator. Unset surfaces fall back to the muted outline, the accent
+/// dot and a translucent accent halo (selected, and while pressed); `body.hover` replaces the
+/// darkened outline, `halo` the pressed glow. Metrics are logical pixels for the Medium size.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RadioStyle {
+    pub body: ControlStyle,
+    pub dot: ControlStyle,
+    pub halo: ControlStyle,
+    /// Diameter of the indicator.
+    pub size: Option<f32>,
+    /// Diameter of the inner dot.
+    pub dot_size: Option<f32>,
+    /// How far the halo reaches beyond the indicator.
+    pub halo_size: Option<f32>,
+    pub border_width: Option<f32>,
+    /// Distance between the indicator and the label.
+    pub gap: Option<f32>,
+    pub row_gap: Option<f32>,
+    pub column_gap: Option<f32>,
+    /// Lower bound of a row's height; defaults to `Style::control_height`.
+    pub row_height: Option<f32>,
+    pub font_size: Option<f32>,
+    pub font_weight: Option<FontWeight>,
+    /// Spring of the dot growing in; a value below critical damping gives the overshoot.
+    pub dot_spring: Option<crate::SpringOptions>,
+}
+/// Look of [`SegmentedControl`](crate::SegmentedControl): a plate (`track`) holding a row of
+/// segments, with a raised `thumb` under the selected one. `segment` colors the labels and
+/// icons per state (`foreground`). A transparent track with a bordered, shadowless thumb gives
+/// an outlined variant; a transparent thumb with a bottom-heavy border, an underlined one.
+/// The thumb radius is the track radius minus `padding` unless `thumb.rounding` is set.
+/// [`Style::segmented_outlined`](crate::Style) holds the same fields for the outlined
+/// variant, where `thumb.fill` is the tonal fill of the selected segment.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SegmentedStyle {
+    pub track: SurfaceStyle,
+    pub thumb: SurfaceStyle,
+    pub segment: ControlStyle,
+    /// Inset between the plate and the segments, in logical pixels.
+    pub padding: Option<f32>,
+    /// Distance between segments.
+    pub gap: Option<f32>,
+    pub icon_size: Option<f32>,
+    /// Distance between an icon and its label.
+    pub icon_gap: Option<f32>,
+    /// Horizontal padding inside one segment.
+    pub segment_padding: Option<f32>,
+    pub font_size: Option<f32>,
+    pub font_weight: Option<FontWeight>,
+    /// Line between neighbouring segments, drawn by the outlined variant.
+    pub divider: Option<Border>,
+    /// Draw a check mark on the selected segment (in place of its icon); outlined variant.
+    pub mark: Option<bool>,
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SliderStyle {
     pub track: ControlStyle,
@@ -239,6 +294,8 @@ macro_rules! merge_fields {
 merge_fields!(ButtonStyle; padding,min_size,font_size,font_weight; surface);
 merge_fields!(CheckboxStyle; size,gap,indicator_width; body,indicator);
 merge_fields!(SwitchStyle; width,height,gap,thumb_inset; track,thumb);
+merge_fields!(SegmentedStyle; padding,gap,icon_size,icon_gap,segment_padding,font_size,font_weight,divider,mark; track,thumb,segment);
+merge_fields!(RadioStyle; size,dot_size,halo_size,border_width,gap,row_gap,column_gap,row_height,font_size,font_weight,dot_spring; body,dot,halo);
 merge_fields!(SliderStyle; width,height,track_height,thumb_radius; track,fill,thumb);
 merge_fields!(TextEditStyle; width,height,font_size,font_weight,font_family,padding,rounding,placeholder,selection,cursor_width,blink_interval,caret,selection_foreground,area_padding,area_min_height; surface);
 merge_fields!(WindowStyle; padding,title_height,title_font_size,title_font_weight; body,title);

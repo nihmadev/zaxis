@@ -1,28 +1,66 @@
 //! The always-visible part of a menu: title buttons, or a single hamburger button.
-use super::MenuItem;
+use super::{Kind, MenuItem};
 use crate::{
     components::{Button, ButtonVariant, Ui},
-    Color, Id, Padding, PaintMode, Rect, Shape, Vec2,
+    AccessAction, AccessActionKind, AccessNode, AccessRole, Color, Id, Padding, PaintMode, Rect,
+    Shape, Vec2,
 };
 
-/// Draws the triggers and returns each one's rectangle (separators have none) with the
-/// index of the one clicked in this pass.
+/// What the triggers did in one pass.
+pub(super) struct Triggers {
+    /// Each trigger's rectangle; separators have none.
+    pub anchors: Vec<Option<Rect>>,
+    /// Index of the trigger activated in this pass.
+    pub pressed: Option<usize>,
+    /// Assistive technology asked to close the open menu.
+    pub collapse: bool,
+}
+
+/// A trigger that opens a panel says so, and whether it is open. While it is, a click goes
+/// where the pointer's would: to the popup's proxy of the trigger, which closes the menu.
+fn opener(node: &mut AccessNode, bar: Id, open: bool) {
+    node.toggled = None;
+    node.has_popup()
+        .expanded(open)
+        .action(AccessActionKind::Expand)
+        .action(AccessActionKind::Collapse);
+    if open {
+        node.clicks(bar).controls(bar.with(("level", 0)));
+    }
+}
+
+/// Requests to open (first) or close (second) the panel of trigger `id`.
+fn requests(ui: &mut Ui<'_>, id: Id, open: bool) -> (bool, bool) {
+    let mut asked = (false, false);
+    for request in ui.context.take_access_actions(id) {
+        match request {
+            AccessAction::Expand if !open => asked.0 = true,
+            AccessAction::Collapse if open => asked.1 = true,
+            _ => {}
+        }
+    }
+    asked
+}
+
+/// Draws the triggers of the menu `bar`; `open_index` is the one whose panel is shown.
 pub(super) fn show(
     ui: &mut Ui<'_>,
-    source: Id,
+    bar: Id,
     items: &[MenuItem],
     compact: bool,
     open_index: Option<usize>,
-) -> (Vec<Option<Rect>>, Option<usize>) {
+) -> Triggers {
     if compact {
         let side = ui.style().control_height;
+        let open = open_index.is_some();
+        let node = ui.context.a11y_len();
         let response = ui.add(
             Button::new("##menu")
-                .id_source(source)
+                .id_source(bar)
                 .variant(ButtonVariant::Ghost)
                 .padding(Padding::all(0.0))
                 .min_size(Vec2::splat(side))
-                .selected(open_index.is_some())
+                .selected(open)
                 .painter(PaintMode::After, |painter, info| {
                     let color = info.style.foreground.unwrap_or(Color::WHITE);
                     let center = info.bounds.center();
@@ -36,27 +74,52 @@ pub(super) fn show(
                     }
                 }),
         );
-        return (vec![Some(response.rect)], response.clicked().then_some(0));
+        if let Some(node) = ui.context.a11y_node_mut(node) {
+            node.label("Menu");
+            opener(node, bar, open);
+        }
+        let (expand, collapse) = requests(ui, response.id, open);
+        return Triggers {
+            anchors: vec![Some(response.rect)],
+            pressed: (response.clicked() || expand).then_some(0),
+            collapse,
+        };
     }
-    let mut rects = vec![None; items.len()];
-    let mut clicked = None;
+    let mut triggers = Triggers {
+        anchors: vec![None; items.len()],
+        pressed: None,
+        collapse: false,
+    };
+    let scope = ui.a11y_begin(bar.with("bar"), AccessRole::MenuBar, |_| {});
     ui.horizontal(|ui| {
         for (index, item) in items.iter().enumerate() {
             if item.is_separator() {
                 continue;
             }
+            let open = open_index == Some(index);
+            let node = ui.context.a11y_len();
             let response = ui.add(
                 Button::new(item.text.as_str())
-                    .id_source((source, index))
+                    .id_source((bar, index))
                     .variant(ButtonVariant::Ghost)
                     .enabled(item.enabled)
-                    .selected(open_index == Some(index)),
+                    .selected(open),
             );
-            rects[index] = Some(response.rect);
-            if response.clicked() {
-                clicked = Some(index);
+            triggers.anchors[index] = Some(response.rect);
+            let submenu = matches!(item.kind, Kind::Submenu(_));
+            if let Some(node) = ui.context.a11y_node_mut(node) {
+                node.role(AccessRole::MenuItem).toggled = None;
+                if submenu {
+                    opener(node, bar, open);
+                }
             }
+            let (expand, collapse) = requests(ui, response.id, open);
+            if response.clicked() || expand && submenu {
+                triggers.pressed = Some(index);
+            }
+            triggers.collapse |= collapse;
         }
     });
-    (rects, clicked)
+    ui.a11y_end(scope, None);
+    triggers
 }

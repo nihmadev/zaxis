@@ -6,6 +6,7 @@ use crate::{
 use std::{hash::Hash, panic::Location, time::Duration};
 use winit::keyboard::KeyCode;
 
+mod access;
 mod options;
 mod paint;
 mod show;
@@ -245,7 +246,7 @@ impl<'a, T> ComboBox<'a, T> {
 }
 
 #[derive(Default)]
-pub(crate) struct ComboBoxState {
+pub struct ComboBoxState {
     pub last_frame: u64,
     pub open: bool,
     pub active: Option<Id>,

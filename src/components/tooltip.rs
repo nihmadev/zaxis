@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use super::{Response, Ui, Widget};
-use crate::{context::HitRegion, Border, Color, CornerRadius, Padding};
+use crate::{
+    context::HitRegion, AccessAction, AccessActionKind, Border, Color, CornerRadius, Id, Padding,
+};
 
 /// Defaults inherited by every tooltip. Measurements use logical pixels.
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +46,22 @@ pub struct TooltipWidget<W> {
     widget: W,
 }
 
+/// How a tooltip finds the node of the widget it belongs to.
+enum Target {
+    /// By the widget's id among the nodes described before the tooltip.
+    Find,
+    /// The first node of the wrapped widget with the requests that waited for it, or
+    /// `None` when that widget described nothing.
+    Wrapped(Option<(usize, Vec<AccessAction>)>),
+}
+
+fn asks(request: &AccessAction) -> bool {
+    matches!(
+        request,
+        AccessAction::ShowTooltip | AccessAction::HideTooltip
+    )
+}
+
 impl Tooltip {
     pub fn new(text: impl Into<String>) -> Self {
         Self {
@@ -73,9 +91,58 @@ impl Tooltip {
     /// Call in the same UI scope as the target response.
     /// Disabled controls can still explain why they are unavailable.
     pub fn show(self, ui: &mut Ui<'_>, response: Response) {
+        self.attach(ui, response, Target::Find);
+    }
+
+    /// The text is the description of the widget for a screen reader, shown or not, unless
+    /// the widget has one already or the text only repeats its name. A widget whose tooltip
+    /// can be shown also accepts the requests to show and to hide it.
+    fn describe(text: &str, ui: &mut Ui<'_>, id: Id, target: Target, showable: bool) {
+        let (node, requests) = match target {
+            Target::Wrapped(None) => return,
+            Target::Wrapped(Some((node, requests))) => (ui.context.a11y_node_mut(node), requests),
+            Target::Find => {
+                let waiting = ui.context.a11y_requests(asks).into_iter();
+                let requests = waiting.filter(|(node, _)| *node == id);
+                let requests = requests.map(|(_, request)| request).collect();
+                (ui.context.a11y_node_of(id), requests)
+            }
+        };
+        let Some(node) = node else {
+            return;
+        };
+        let named = node.label.as_deref() == Some(text)
+            || node.role.is_text() && node.value.as_deref() == Some(text);
+        if node.description.is_none() && !named {
+            node.description(text);
+        }
+        if !showable {
+            return;
+        }
+        node.action(AccessActionKind::ShowTooltip);
+        for request in requests {
+            let shown = &mut ui.context.tooltips.shown;
+            match request {
+                AccessAction::ShowTooltip => *shown = Some(id),
+                AccessAction::HideTooltip if *shown == Some(id) => *shown = None,
+                _ => continue,
+            }
+            ui.context.request_repaint();
+        }
+    }
+
+    fn attach(self, ui: &mut Ui<'_>, response: Response, target: Target) {
+        // A tooltip that is switched off for this widget says nothing; one the theme
+        // switches off for everyone is still the widget's description.
+        if self.enabled == Some(false) || self.text.trim().is_empty() {
+            return;
+        }
         let mut style = self.style.unwrap_or_else(|| ui.style().tooltip.clone());
         style.enabled = self.enabled.unwrap_or(style.enabled);
-        if !style.enabled || self.text.trim().is_empty() {
+        if ui.context.a11y_on() {
+            Self::describe(&self.text, ui, response.id, target, style.enabled);
+        }
+        if !style.enabled {
             return;
         }
         let anchor = response.id.with("tooltip-anchor");
@@ -114,8 +181,10 @@ impl Tooltip {
 
 impl<W: Widget> Widget for TooltipWidget<W> {
     fn ui(self, ui: &mut Ui<'_>) -> Response {
+        let before = ui.context.a11y_wrap(asks);
         let response = self.widget.ui(ui);
-        self.tooltip.show(ui, response);
+        let wrapped = ui.context.a11y_wrapped(before);
+        self.tooltip.attach(ui, response, Target::Wrapped(wrapped));
         response
     }
 }

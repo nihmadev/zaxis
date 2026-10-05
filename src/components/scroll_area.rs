@@ -1,8 +1,10 @@
 use std::{hash::Hash, panic::Location};
 
 mod chrome;
-mod rows;
+pub(crate) mod rows;
 pub use chrome::ScrollStyle;
+pub use rows::RowMetrics;
+pub(crate) use rows::RowPass;
 
 use super::Ui;
 use crate::{
@@ -26,6 +28,7 @@ pub struct ScrollArea {
     overlay_bars: bool,
     hints: bool,
     middle_mouse_scroll: bool,
+    a11y: bool,
 }
 
 pub struct ScrollAreaOutput<R> {
@@ -64,6 +67,7 @@ impl ScrollArea {
             overlay_bars: false,
             hints: true,
             middle_mouse_scroll: true,
+            a11y: true,
         }
     }
     pub fn id(mut self, id: Id) -> Self {
@@ -76,6 +80,13 @@ impl ScrollArea {
     }
     pub fn id_source(self, source: impl Hash) -> Self {
         self.id(Id::new(source))
+    }
+    /// Add no node to the accessibility tree: the widget that owns this area (a list, a
+    /// table, a text field) publishes the scroll state on its own node with
+    /// [`Context::a11y_scroll`](crate::Context::a11y_scroll).
+    pub(crate) fn a11y_hidden(mut self) -> Self {
+        self.a11y = false;
+        self
     }
     pub fn max_width(mut self, width: f32) -> Self {
         self.max_size.x = length(width);
@@ -224,7 +235,18 @@ impl ScrollArea {
         if self.target.is_none() && self.offset.is_none() || known_height.is_some() {
             state.offset = state.offset.clamp(Vec2::ZERO, state.max_offset());
         }
-        let offset = state.offset;
+        if self.offset.is_some() || self.target.is_some() {
+            state.glide = false;
+        }
+        let smooth = !ui.context.style().motion.reduced_motion;
+        let now = ui.context.frame_time();
+        let state = ui.context.scrolling.states.get_mut(&id).unwrap();
+        let gliding = state.glide_to(now, smooth);
+        let offset = state.shown;
+        if gliding {
+            ui.context
+                .request_repaint_after(std::time::Duration::from_millis(8));
+        }
         let origin = viewport.min - offset;
         let width = self
             .content_width
@@ -256,6 +278,12 @@ impl ScrollArea {
         });
         ui.context.scrolling.stack.push(scope);
         ui.context.scrolling.order.push(id);
+        // The node is placed outside its own scroll scope; its content inside.
+        let access = if self.a11y {
+            ui.a11y_begin(id, crate::AccessRole::ScrollView, |_| {})
+        } else {
+            crate::accessibility::Scope::NONE
+        };
         let mut child = Ui {
             flow: None,
             context: ui.context,
@@ -285,10 +313,8 @@ impl ScrollArea {
         }
         let inner = build(&mut child);
         child.finish_layout();
-        let mut content = child.layout.used;
-        if let Some(height) = known_height {
-            content.y = height;
-        }
+        // Virtualized rows set `used` themselves, after measuring (known_height is the estimate).
+        let content = child.layout.used;
         let target = child.context.scrolling.scopes[scope].target;
         let state = child.context.scrolling.states.get_mut(&id).unwrap();
         state.content = content;
@@ -296,13 +322,20 @@ impl ScrollArea {
             state.offset = reveal(state.offset, viewport.size(), target, self.axes);
         }
         state.offset = state.offset.clamp(Vec2::ZERO, state.max_offset());
-        let final_offset = state.offset;
-        child.context.scrolling.scopes[scope].correction = offset - final_offset;
-        if final_offset != offset {
+        if !state.glide {
+            // Reveals and clamping after measuring move the drawn offset with the real one.
+            state.shown = state.offset;
+        }
+        state.shown = state.shown.clamp(Vec2::ZERO, state.max_offset());
+        let (final_offset, final_shown) = (state.offset, state.shown);
+        child.context.scrolling.scopes[scope].correction = offset - final_shown;
+        if final_shown != offset {
             child.context.request_repaint();
         }
         child.context.end_scroll();
-        self.paint_chrome(ui, id, outer, viewport, content, final_offset, style);
+        ui.context.a11y_scroll(&access, id);
+        ui.a11y_end(access, Some(viewport));
+        self.paint_chrome(ui, id, outer, viewport, content, final_shown, style);
         ScrollAreaOutput {
             inner,
             id,
@@ -329,6 +362,23 @@ fn reveal(mut offset: Vec2, size: Vec2, target: Rect, axes: [bool; 2]) -> Vec2 {
         }
     }
     offset.max(Vec2::ZERO)
+}
+impl crate::Context {
+    /// Publish the offset and range of scroll area `area` on the node of `scope`. Requests
+    /// to scroll that node, and to reveal anything inside it, then move `area` the way the
+    /// wheel does. The offset is where the area is going, not the eased one a glide draws.
+    pub(crate) fn a11y_scroll(&mut self, scope: &crate::accessibility::Scope, area: Id) {
+        let Some(index) = scope.0 else {
+            return;
+        };
+        let range = self.scrolling.states.get(&area);
+        let Some((offset, max)) = range.map(|state| (state.offset, state.max_offset())) else {
+            return;
+        };
+        if let Some(node) = self.a11y_node_mut(index as usize) {
+            node.scroll(area, offset, max);
+        }
+    }
 }
 impl Ui<'_> {
     /// Reveal an element/rectangle in screen coordinates in the nearest ScrollArea.

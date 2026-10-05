@@ -147,6 +147,9 @@ impl Widget for Switch<'_> {
             response.changed = true;
         }
         let on = *self.on;
+        ui.a11y(id, rect, crate::AccessRole::Switch, |node| {
+            node.label(label).toggled(on).disabled(!enabled).clicks(id);
+        });
         let track = Rect::from_min_size(
             rect.min + Vec2::new(0.0, (rect.size().y - height) * 0.5),
             Vec2::new(width, height),

@@ -134,7 +134,7 @@ fn length(value: f32) -> f32 {
 /// Every value resolved against the current [`Style`]; `Copy` so sessions can
 /// keep it without holding the style.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Resolved {
+pub struct Resolved {
     pub threshold: f32,
     pub delay: Duration,
     pub preview_opacity: f32,
@@ -148,7 +148,7 @@ pub(crate) struct Resolved {
 }
 
 impl DragStyle {
-    pub(crate) fn resolve(&self, style: &Style) -> Resolved {
+    pub fn resolve(&self, style: &Style) -> Resolved {
         let local = &style.drag;
         let pick = |f: fn(&DragStyle) -> Option<f32>, default: f32| {
             f(self).or_else(|| f(local)).unwrap_or(default)

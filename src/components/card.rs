@@ -5,7 +5,7 @@ use super::ui::Ui;
 use crate::{Color, Id, Padding, Rect, Vec2};
 
 /// Retained outer height, so the frame can be painted below its content.
-pub(crate) struct CardState {
+pub struct CardState {
     pub height: f32,
     pub last_frame: u64,
 }
@@ -31,6 +31,9 @@ pub struct CardOutput<R> {
 ///
 /// The frame is painted from the previous pass's content height, so a change
 /// in content size settles after one scheduled redraw.
+///
+/// To assistive technology a card is a group that holds its content. It has no name of
+/// its own; wrap the content in [`Ui::accessible_group`] to give the section one.
 pub struct Card {
     id: Id,
     width: Option<f32>,
@@ -104,7 +107,9 @@ impl Card {
                 .paint(id.with("frame"), card.window, card.clip, paint);
 
             let inner_width = (width - padding.size().x).max(0.0);
-            card.horizontal(|row| {
+            // The group is placed where the frame is painted, in the same layout scope.
+            let group = card.a11y_begin(id, crate::AccessRole::Group, |_| {});
+            let inner = card.horizontal(|row| {
                 row.add_space(padding.left);
                 row.with_width(inner_width, |column| {
                     column.vertical(|content| {
@@ -116,7 +121,10 @@ impl Card {
                         result
                     })
                 })
-            })
+            });
+            let bounds = Rect::from_min_size(origin, Vec2::new(width, height));
+            card.a11y_end(group, Some(bounds));
+            inner
         });
         if (height - previous).abs() > 0.5 {
             ui.context.request_repaint();

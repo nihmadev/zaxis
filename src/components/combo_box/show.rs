@@ -69,6 +69,12 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                 HitAction::Block
             },
         });
+        // Described first, completed once this pass's input has been applied.
+        let node = ui.context.a11y_len();
+        ui.a11y(id, rect, crate::AccessRole::ComboBox, |node| {
+            access::trigger(node, id, label, self.enabled);
+        });
+        let list_id = id.with("listbox");
         let existing = ui.context.combo_boxes.remove(&id);
         let mut was_open = existing.as_ref().is_some_and(|state| state.open);
         let mut state = existing.unwrap_or_else(|| ComboBoxState {
@@ -86,8 +92,25 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
         if !self.enabled || self.options.is_empty() || !visible {
             state.open = false;
         }
-        if self.enabled && !self.options.is_empty() && visible && response.clicked() {
+        let usable = self.enabled && !self.options.is_empty() && visible;
+        if usable && response.clicked() {
             state.open = !state.open;
+        }
+        // Requests from assistive technology: opening and closing are the click's toggle,
+        // a value is the option of that name chosen from the list.
+        let mut requested = None;
+        for request in ui.context.take_access_actions(id) {
+            match request {
+                crate::AccessAction::Expand if usable => state.open = true,
+                crate::AccessAction::Collapse => state.open = false,
+                crate::AccessAction::SetValue(text) if self.enabled => {
+                    requested = self
+                        .options
+                        .iter()
+                        .position(|option| option.enabled && option.label == text);
+                }
+                _ => {}
+            }
         }
         let keys = ui.context.combo_input.remove(&id).unwrap_or_default();
         let mut navigation = Vec::new();
@@ -178,8 +201,10 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
         let open = state.open;
         let mut focus_filter = state.focus_filter;
         popup.show(ui, &mut state.open, |ui| {
+            let mut filter_node = None;
             if self.filterable {
                 let before = query.clone();
+                let at = ui.context.a11y_len();
                 let r = ui.add(
                     TextEdit::new(&mut query)
                         .id_source("filter")
@@ -192,6 +217,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                     focus_filter = false;
                 }
                 reveal |= before != query;
+                filter_node = (ui.context.a11y_len() > at).then_some(at);
             }
             let indices = options.matching(&self.options, &query);
             let enabled: Vec<_> = indices
@@ -239,6 +265,13 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             let size = Vec2::new(ui.available_width(), ui.available_height());
             reveal |= list_size != size;
             list_size = size;
+            // The filter holds focus while it is shown: it says which option is highlighted.
+            if let Some(node) = filter_node.and_then(|at| ui.context.a11y_node_mut(at)) {
+                access::popup_owner(node, id, list_id, active);
+            }
+            let list = ui.a11y_begin(list_id, crate::AccessRole::ListBox, |node| {
+                node.label(label);
+            });
             let scroll_style = ScrollStyle {
                 padding: Padding::default(),
                 spacing: 0.0,
@@ -252,7 +285,8 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                 .overlay_scrollbars(true)
                 .max_height((height - style.popup_padding.size().y - filter_height).max(0.0))
                 .show_hints(false)
-                .middle_mouse_scroll(false);
+                .middle_mouse_scroll(false)
+                .a11y_hidden();
             if reveal {
                 if let Some(row) = indices
                     .iter()
@@ -264,8 +298,8 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                     ));
                 }
             }
-            if indices.is_empty() {
-                paint::empty(ui, &style);
+            let (area, viewport) = if indices.is_empty() {
+                (list_id, paint::empty(ui, &style))
             } else {
                 let mut build_row = |ui: &mut Ui<'_>, row: usize| {
                     let index = indices[row];
@@ -278,6 +312,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                         Some(&option.value) == self.selected.as_ref(),
                         Some(option.id) == active,
                         option.enabled,
+                        (row, indices.len()),
                         &style,
                     ) {
                         choice = Some(index);
@@ -286,16 +321,20 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                 if indices.len() <= style.visible_rows {
                     // Measured short lists exclude the final row gap: five rows
                     // fit without a spurious two-pixel scroll range/scrollbar.
-                    scroll.show(ui, |ui| {
+                    let shown = scroll.show(ui, |ui| {
                         ui.layout.spacing = style.row_gap;
                         for row in 0..indices.len() {
                             build_row(ui, row);
                         }
                     });
+                    (shown.id, shown.viewport)
                 } else {
-                    scroll.show_rows(ui, pitch, indices.len(), build_row);
+                    let shown = scroll.show_rows(ui, pitch, indices.len(), build_row);
+                    (shown.id, shown.viewport)
                 }
-            }
+            };
+            ui.context.a11y_scroll(&list, area);
+            ui.a11y_end(list, Some(viewport));
         });
         state.query = query;
         state.focus_filter = state.open && focus_filter;
@@ -303,7 +342,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
         state.active_row = active_row;
         state.list_size = list_size;
         state.options = options;
-        if let Some(index) = choice.filter(|_| state.open) {
+        if let Some(index) = choice.filter(|_| state.open).or(requested) {
             let value = &self.options[index].value;
             if self.selected.as_ref() != Some(value) {
                 *self.selected = Some(value.clone());
@@ -321,12 +360,23 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
         response.focus_visible = ui.context.focus_visible(id);
         let layer = if state.open { popup_id } else { ui.window };
         response.hovered = ui.context.hovered(id, layer, rect, ui.clip_rect());
-        let caption = self
+        let chosen = self
             .options
             .iter()
-            .find(|o| Some(&o.value) == self.selected.as_ref())
-            .map_or(self.placeholder.as_str(), |o| o.label.as_str());
+            .find(|o| Some(&o.value) == self.selected.as_ref());
+        let caption = chosen.map_or(self.placeholder.as_str(), |o| o.label.as_str());
         let status = ui.field_status(self.status);
+        if let Some(node) = ui.context.a11y_node_mut(node) {
+            match chosen {
+                Some(option) => node.value(option.label.as_str()),
+                None => node.placeholder(self.placeholder.as_str()),
+            };
+            node.expanded(state.open)
+                .invalid(status == crate::SemanticStatus::Error);
+            if state.open {
+                access::popup_owner(node, id, list_id, state.active);
+            }
+        }
         paint::trigger(
             ui,
             response,

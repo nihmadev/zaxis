@@ -21,6 +21,9 @@ pub struct Style {
     pub button: super::theme::ButtonStyle,
     pub checkbox: super::theme::CheckboxStyle,
     pub switch: super::theme::SwitchStyle,
+    pub segmented: super::theme::SegmentedStyle,
+    pub radio: super::theme::RadioStyle,
+    pub segmented_outlined: super::theme::SegmentedStyle,
     pub slider: super::theme::SliderStyle,
     pub text_edit: super::theme::TextEditStyle,
     pub window: super::theme::WindowStyle,
@@ -28,7 +31,9 @@ pub struct Style {
     pub popup: super::theme::PopupStyle,
     pub modal: super::theme::ModalStyle,
     pub card: super::theme::CardStyle,
+    pub carousel: super::CarouselStyle,
     pub tooltip: super::TooltipStyle,
+    pub hyperlink: super::HyperlinkStyle,
     pub color_picker: super::theme::ColorPickerStyle,
     pub text: super::theme::TextStyle,
     pub separator: super::theme::SeparatorStyle,
@@ -38,6 +43,7 @@ pub struct Style {
     pub split: super::SplitStyle,
     pub collapsing: super::CollapsingStyle,
     pub tree: super::TreeStyle,
+    pub list_box: super::ListBoxStyle,
     pub number: super::NumberStyle,
     pub grid: super::GridStyle,
     pub table: super::TableStyle,
@@ -105,6 +111,9 @@ impl Default for Style {
             button: Default::default(),
             checkbox: Default::default(),
             switch: Default::default(),
+            segmented: Default::default(),
+            radio: Default::default(),
+            segmented_outlined: Default::default(),
             slider: Default::default(),
             text_edit: Default::default(),
             window: Default::default(),
@@ -112,7 +121,9 @@ impl Default for Style {
             popup: Default::default(),
             modal: Default::default(),
             card: Default::default(),
+            carousel: Default::default(),
             tooltip: Default::default(),
+            hyperlink: Default::default(),
             color_picker: Default::default(),
             text: Default::default(),
             separator: Default::default(),
@@ -121,6 +132,7 @@ impl Default for Style {
             split: super::SplitStyle::default(),
             collapsing: super::CollapsingStyle::default(),
             tree: super::TreeStyle::default(),
+            list_box: super::ListBoxStyle::default(),
             number: super::NumberStyle::default(),
             grid: super::GridStyle::default(),
             table: super::TableStyle::default(),
@@ -171,7 +183,7 @@ impl Style {
         self
     }
 
-    pub(crate) fn backdrop_fill(&self, mut color: Color, radius: f32) -> Color {
+    pub fn backdrop_fill(&self, mut color: Color, radius: f32) -> Color {
         if radius > 0.0 {
             // Smooth the opaque-to-glass boundary when sigma animates from zero.
             let mix = radius.min(1.0);

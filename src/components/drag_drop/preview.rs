@@ -36,6 +36,7 @@ pub(super) fn build_custom(ui: &mut Ui<'_>, build: Box<dyn FnOnce(&mut Ui<'_>) +
         local_style_revision: ui.local_style_revision,
     };
     child.begin_layout(Align::Start);
+    let nodes = child.context.a11y_len();
     child.visual(
         "opacity",
         Transform::IDENTITY,
@@ -43,6 +44,13 @@ pub(super) fn build_custom(ui: &mut Ui<'_>, build: Box<dyn FnOnce(&mut Ui<'_>) +
         |ui| build(ui),
     );
     child.finish_layout();
+    // The preview is a picture of what is being dragged: the thing itself is in the tree
+    // already, and a second copy following the pointer would only be noise.
+    if child.context.a11y_on() {
+        for slot in &mut child.context.a11y.slots[nodes..] {
+            slot.removed = true;
+        }
+    }
     let frame = child.context.frame;
     child.context.drag.custom_preview = frame;
 }

@@ -8,6 +8,7 @@ use crate::{
     Id, Padding, Rect, Vec2,
 };
 
+mod access;
 mod cache;
 pub(in crate::components) mod paint;
 
@@ -156,6 +157,7 @@ pub struct ContextMenu<'a> {
     items: &'a [ContextMenuItem],
     style: ContextMenuStyle,
     position: Option<Vec2>,
+    target: access::Target,
 }
 impl<'a> ContextMenu<'a> {
     pub fn new(source: impl Hash, items: &'a [ContextMenuItem]) -> Self {
@@ -164,6 +166,7 @@ impl<'a> ContextMenu<'a> {
             items,
             style: Default::default(),
             position: None,
+            target: access::Target::Find,
         }
     }
     pub fn style(mut self, style: ContextMenuStyle) -> Self {
@@ -203,9 +206,14 @@ impl<'a> ContextMenu<'a> {
         }
         // The same secondary-click signal that `Response::secondary_clicked` reports.
         let pointer_open = ui.context.gestures.secondary_position(anchor_id);
-        if let Some(position) = self.position.or(pointer_open) {
+        // A request from assistive technology opens the menu at the target, with the first
+        // item highlighted as the keyboard would leave it.
+        let asked = access::asked(ui, self.target, target, anchor_id, !self.items.is_empty());
+        let placed = self.position.or(pointer_open);
+        let opening = placed.or(asked);
+        if let Some(position) = opening {
             state.position = position;
-            state.keyboard = false;
+            state.keyboard = placed.is_none();
             state.open = ui.enabled;
             state.active = self
                 .items
@@ -268,8 +276,21 @@ impl<'a> ContextMenu<'a> {
                 .style(popup_style);
             // The shared keyboard queue preserves multiple key events per redraw.
             popup.key_target = Some(id);
+            if placed.is_none() && asked.is_some() {
+                // Asked for without a pointer: focus goes back to the widget it belongs to.
+                popup = popup.return_focus(target.id);
+            }
             let active = state.keyboard.then_some(state.active).flatten();
+            let focus = id.with("focus");
             let shown = popup.show(ui, &mut state.open, |ui| {
+                // The open menu holds keyboard focus, on a region under its rows.
+                ui.context.register_hit(HitRegion {
+                    id: focus,
+                    window: ui.window,
+                    rect: ui.layout.bounds,
+                    clip: ui.clip,
+                    action: HitAction::Focus,
+                });
                 let mut scroll = ui.style().scroll;
                 scroll.padding = Padding::all(0.0);
                 scroll.spacing = 0.0;
@@ -280,7 +301,15 @@ impl<'a> ContextMenu<'a> {
                     .overlay_scrollbars(true)
                     .style(scroll)
                     .show_hints(false)
-                    .middle_mouse_scroll(false);
+                    .middle_mouse_scroll(false)
+                    .a11y_hidden();
+                // The highlighted row speaks for the menu that holds focus.
+                let menu = ui.a11y_begin(id, crate::AccessRole::Menu, |node| {
+                    node.focus_on(focus);
+                    if let Some(active) = active {
+                        node.active_descendant(id.with(("item", active)));
+                    }
+                });
                 if reveal {
                     if let Some(index) = self
                         .items
@@ -293,7 +322,7 @@ impl<'a> ContextMenu<'a> {
                         ));
                     }
                 }
-                scroll_area.show(ui, |ui| {
+                let area = scroll_area.show(ui, |ui| {
                     ui.layout.spacing = 0.0;
                     let origin = ui.layout.bounds.min;
                     let visible = ui.clip_rect();
@@ -321,8 +350,13 @@ impl<'a> ContextMenu<'a> {
                     }
                     ui.add_space(metrics.height - cache.offsets[end]);
                 });
+                ui.context.a11y_scroll(&menu, area.id);
+                ui.a11y_end(menu, Some(area.viewport));
             });
             output.rect = shown.map(|p| p.rect);
+            if opening.is_some() && state.open {
+                ui.context.set_focus(Some(focus));
+            }
             if output.selected.is_some() {
                 ui.context.close_popup();
                 state.open = false;
@@ -347,10 +381,11 @@ impl<'a, W> ContextMenuWidget<'a, W> {
 }
 impl<W: super::Widget> super::Widget for ContextMenuWidget<'_, W> {
     fn ui(self, ui: &mut Ui<'_>) -> Response {
+        let before = access::before(ui);
         let mut response = self.widget.ui(ui);
-        response.menu_selected = ContextMenu::new(response.id, self.items)
-            .show(ui, response)
-            .selected;
+        let mut menu = ContextMenu::new(response.id, self.items);
+        menu.target = access::wrapped(ui, before);
+        response.menu_selected = menu.show(ui, response).selected;
         response
     }
 }

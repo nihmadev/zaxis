@@ -1,5 +1,5 @@
 use super::{button::Button, Response, Ui};
-use crate::{context::Paint, CornerRadius, Id, Rect, Vec2};
+use crate::{context::Paint, AccessRole, CornerRadius, Id, Rect, Vec2};
 use std::hash::Hash;
 
 impl Ui<'_> {
@@ -72,11 +72,21 @@ impl Ui<'_> {
             (natural, Some(total))
         };
         let build = |ui: &mut Ui<'_>| -> Vec<(Response, bool)> {
+            // The buttons describe themselves; the strip turns them into the tabs of a list.
+            let list = ui.a11y_begin(
+                ui.scope.with(("tab-list", first)),
+                AccessRole::TabList,
+                |_| {},
+            );
+            let mut nodes = Vec::new();
             let rows: Vec<(Response, bool)> = tabs
                 .into_iter()
                 .zip(&widths)
                 .map(|((value, label), width)| {
                     let active = *selected == value;
+                    if ui.context.a11y_on() {
+                        nodes.push(ui.context.a11y_len());
+                    }
                     let mut response = ui.add(
                         tab_button(&value, &label, active).min_size(Vec2::new(*width, height)),
                     );
@@ -90,6 +100,22 @@ impl Ui<'_> {
                     (response, active)
                 })
                 .collect();
+            // A click selects its tab in this very pass: the tree says so at once.
+            let picked = rows.iter().position(|(response, _)| response.changed);
+            for (index, node) in nodes.iter().enumerate() {
+                let Some(node) = ui.context.a11y_node_mut(*node) else {
+                    continue;
+                };
+                if node.role != AccessRole::Button {
+                    continue;
+                }
+                let selected = picked.map_or(rows[index].1, |picked| picked == index);
+                node.toggled = None;
+                node.role(AccessRole::Tab)
+                    .selected(selected)
+                    .position_in_set(index, rows.len());
+            }
+            ui.a11y_end(list, None);
             // One hairline under the row; the active tab overdraws it with the accent.
             if let (Some((first, _)), Some((last, _))) = (rows.first(), rows.last()) {
                 let line = |from: f32, to: f32, top: f32, bottom: f32, color| {

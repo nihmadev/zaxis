@@ -2,7 +2,8 @@ use std::{hash::Hash, time::Duration};
 
 use super::{Response, Sense, Tooltip, Ui, Widget};
 use crate::{
-    context::Paint, Border, Color, Easing, Id, ImageSource, Rect, Shape, TweenOptions, Vec2,
+    context::Paint, AccessOrientation, AccessRole, Border, Color, Easing, Id, ImageSource, Rect,
+    Shape, TweenOptions, Vec2,
 };
 
 struct IconTab<T> {
@@ -157,6 +158,11 @@ impl<T: PartialEq + Hash + Clone> Widget for IconTabs<'_, T> {
         let fill = self.fill.unwrap_or(style.selected_fill);
         let outline = self.border.unwrap_or(style.border.color);
         let ease = || TweenOptions::new(self.duration).easing(Easing::QuadOut);
+        let list = ui.a11y_begin(id, AccessRole::TabList, |node| {
+            node.orientation(AccessOrientation::Vertical);
+        });
+        let mut nodes = Vec::new();
+        let mut picked = None;
         for (index, tab) in self.tabs.into_iter().enumerate() {
             let key = Id::new(&tab.value);
             let rect = Rect::from_min_size(
@@ -169,8 +175,19 @@ impl<T: PartialEq + Hash + Clone> Widget for IconTabs<'_, T> {
                 *self.selected = tab.value.clone();
                 whole.changed = true;
                 response.changed = true;
+                picked = Some(index);
             }
             let selected = *self.selected == tab.value;
+            if ui.context.a11y_on() {
+                // An icon alone says nothing: the tab is named by the label its tooltip shows.
+                nodes.push(ui.context.a11y_len());
+                ui.a11y(response.id, rect, AccessRole::Tab, |node| {
+                    node.label(tab.label.as_str())
+                        .selected(selected)
+                        .position_in_set(index, count)
+                        .clicks(response.id);
+                });
+            }
             let fill_opacity = if selected {
                 self.selected_opacity
             } else if response.hovered && response.enabled {
@@ -228,6 +245,15 @@ impl<T: PartialEq + Hash + Clone> Widget for IconTabs<'_, T> {
             ui.paint_image_in(response.id.with("icon"), tab.icon, glyph, icon);
             Tooltip::new(tab.label).show(ui, response);
         }
+        // A tab selected by this pass's click deselects the one described before it.
+        if let Some(picked) = picked {
+            for (index, node) in nodes.into_iter().enumerate() {
+                if let Some(node) = ui.context.a11y_node_mut(node) {
+                    node.selected(index == picked);
+                }
+            }
+        }
+        ui.a11y_end(list, Some(bounds));
         whole
     }
 }

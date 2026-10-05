@@ -1,8 +1,8 @@
 use super::Ui;
-use crate::{layout::LayoutCursor, Id, Layout, Rect, Vec2};
+use crate::{layout::LayoutCursor, AccessRole, Id, Layout, Rect, Vec2};
 use std::hash::Hash;
 
-pub(crate) struct TabPagesState {
+pub struct TabPagesState {
     pub last_frame: u64,
     current: usize,
     outgoing: Option<usize>,
@@ -182,6 +182,11 @@ impl Ui<'_> {
         let switching = state.outgoing.is_some();
         let distance = (rect.size().x + 20.0) * state.direction;
         if let Some(outgoing) = state.outgoing {
+            // The page sliding away is decoration: assistive technology sees one page.
+            let leaving = id.with(("page", outgoing));
+            let scope = self.a11y_begin(leaving, AccessRole::TabPanel, |node| {
+                node.hidden(true);
+            });
             self.build_page(
                 id,
                 outgoing,
@@ -191,7 +196,15 @@ impl Ui<'_> {
                 dim,
                 &mut build,
             );
+            self.a11y_end(scope, None);
         }
+        let panel = id.with(("page", state.current));
+        let tab = self.selected_tab(panel);
+        let scope = self.a11y_begin(panel, AccessRole::TabPanel, |node| {
+            if let Some(tab) = tab {
+                node.labelled_by(tab);
+            }
+        });
         self.build_page(
             id,
             state.current,
@@ -205,7 +218,26 @@ impl Ui<'_> {
             dim,
             &mut build,
         );
+        self.a11y_end(scope, Some(rect));
         self.context.tab_pages.insert(id, state);
+    }
+
+    /// The tab that `panel` belongs to: the selected tab of the tab list built last before
+    /// the pages in this window (`tab_bar`, `IconTabs`). The pages take an index and know no
+    /// tab, so the order of building is the link; the tab is told which panel it controls.
+    fn selected_tab(&mut self, panel: Id) -> Option<Id> {
+        if !self.context.a11y_on() {
+            return None;
+        }
+        let window = self.window;
+        for index in (0..self.context.a11y_len()).rev() {
+            let node = self.context.a11y_node_mut(index)?;
+            if node.layer == window && node.role == AccessRole::Tab && node.selected == Some(true) {
+                node.controls(panel);
+                return Some(node.id);
+            }
+        }
+        None
     }
 
     fn build_page(

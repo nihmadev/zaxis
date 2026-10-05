@@ -71,6 +71,14 @@ impl TitleBar {
         let title_weight = component
             .font_weight
             .unwrap_or(style.typography.weights.body);
+        let access = context.a11y_begin_layer(
+            owner,
+            owner.with("title-bar"),
+            crate::AccessRole::TitleBar,
+            |node| {
+                node.label(self.title.as_str());
+            },
+        );
         let mut paint = Vec::new();
         title.paint_shadow(rect, title.rounding, &mut paint);
         title.paint_body(rect, title.rounding, &style, title.blur, &mut paint);
@@ -202,6 +210,20 @@ impl TitleBar {
                 clip: rect,
                 action: HitAction::Activate,
             });
+            context.a11y_leaf(
+                owner,
+                id,
+                crate::AccessRole::Button,
+                (button, rect),
+                |node| {
+                    node.clicks(id).label(match index {
+                        0 => "Minimize",
+                        1 if self.maximized => "Restore",
+                        1 => "Maximize",
+                        _ => "Close",
+                    });
+                },
+            );
             if context.clicked(id) {
                 match index {
                     0 => output.minimize = true,
@@ -210,6 +232,7 @@ impl TitleBar {
                 }
             }
         }
+        context.a11y_end(access, Some((rect, rect)));
         output
     }
 }

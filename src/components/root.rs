@@ -61,6 +61,7 @@ impl Root {
             clip: rect,
             action: HitAction::Block,
         });
+        let scope = context.a11y_begin_layer(id, id, crate::AccessRole::Group, |_| {});
         let bounds = self
             .padding
             .or(style.window.padding)
@@ -88,6 +89,7 @@ impl Root {
         ui.begin_layout(crate::Align::Start);
         let result = build(&mut ui);
         ui.finish_layout();
+        ui.context.a11y_end(scope, Some((rect, rect)));
         result
     }
 }

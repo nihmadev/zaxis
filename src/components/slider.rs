@@ -262,7 +262,16 @@ impl<T: Numeric> Widget for Slider<'_, T> {
         let max = self.range.end().to_f64();
         let span = max - min;
         let mut value = self.normalized(self.value.to_f64());
-        let input = ui.context.take_slider_input(id);
+        let mut input = ui.context.take_slider_input(id);
+        // Requests from assistive technology go through the same steps as the keys.
+        for action in ui.context.take_access_actions(id) {
+            input.push(match action {
+                crate::AccessAction::Increment => SliderInput::Key(KeyCode::ArrowRight),
+                crate::AccessAction::Decrement => SliderInput::Key(KeyCode::ArrowLeft),
+                crate::AccessAction::SetNumericValue(value) => SliderInput::Set(value),
+                _ => continue,
+            });
+        }
         if self.enabled {
             for event in input {
                 let next = match event {
@@ -270,6 +279,8 @@ impl<T: Numeric> Widget for Slider<'_, T> {
                         let t = f64::from(((pointer.x - left) / (right - left)).clamp(0.0, 1.0));
                         min + span * t
                     }
+                    SliderInput::Set(target) if target.is_finite() => target,
+                    SliderInput::Set(_) => value.to_f64(),
                     SliderInput::Key(KeyCode::Home) => min,
                     SliderInput::Key(KeyCode::End) => max,
                     SliderInput::Key(key) => {
@@ -336,6 +347,24 @@ impl<T: Numeric> Widget for Slider<'_, T> {
             } else {
                 HitAction::Block
             },
+        });
+        ui.a11y(id, rect, crate::AccessRole::Slider, |node| {
+            use crate::AccessActionKind as Kind;
+            let caption = self.text.as_deref().map(visible_label).unwrap_or_default();
+            node.label(caption)
+                .value(format!(
+                    "{}{}",
+                    value.formatted(Some(precision)),
+                    self.suffix
+                ))
+                .numeric(value.to_f64(), min, max)
+                .step(self.step_f64().unwrap_or(span / 100.0))
+                .jump(self.step_f64().unwrap_or(span / 100.0) * 10.0)
+                .orientation(crate::AccessOrientation::Horizontal)
+                .disabled(!self.enabled)
+                .action(Kind::Increment)
+                .action(Kind::Decrement)
+                .action(Kind::SetValue);
         });
         let t = if span > 0.0 {
             (value.to_f64() - min) / span

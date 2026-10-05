@@ -8,7 +8,8 @@ use crate::{
     Vec2,
 };
 
-mod binding;
+#[doc(hidden)]
+pub mod binding;
 pub use binding::{KeyBinding, MouseBinding};
 
 /// Which key box is waiting for input. Only one captures at a time; the pass number
@@ -187,6 +188,14 @@ impl Widget for KeyBox<'_> {
                 capturing = false;
             }
         }
+        // A button that is pressed while it listens; its value is the binding it shows.
+        ui.a11y(id, row, crate::AccessRole::Button, |node| {
+            node.label(visible_label(&self.label))
+                .value(self.binding.label())
+                .toggled(capturing)
+                .disabled(!enabled)
+                .clicks(id);
+        });
         let hovered = enabled && response.hovered;
         let engaged = capturing || hovered;
         let ease = || TweenOptions::new(Duration::from_millis(160)).easing(Easing::QuadOut);

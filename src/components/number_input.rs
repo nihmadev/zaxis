@@ -3,6 +3,7 @@ use super::{Numeric, Response, Ui, Widget};
 use crate::{Color, CornerRadius, Id, Padding};
 use std::{hash::Hash, ops::RangeInclusive, panic::Location};
 
+mod access;
 mod render;
 
 /// Compact appearance and gesture defaults for both numeric controls.

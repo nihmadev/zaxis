@@ -4,7 +4,10 @@ use super::{
     disclosure::{self, Header},
     Response, Ui,
 };
-use crate::{context::HitAction, Id, ImageSource, Layout, Padding, Rect, Vec2};
+use crate::{
+    context::HitAction, AccessAction, AccessActionKind, AccessRole, Id,
+    ImageSource, Layout, Padding, Rect, Vec2,
+};
 use std::hash::Hash;
 
 pub(crate) struct CollapsingState {
@@ -133,6 +136,25 @@ impl<'a> CollapsingHeader<'a> {
             style.merge(&patch);
         }
         let enabled = self.enabled && ui.enabled;
+        let before = state.open;
+        // Assistive technology names the state it wants, so a repeated request changes nothing.
+        for action in ui.context.take_access_actions(id) {
+            match action {
+                AccessAction::Expand if enabled && self.expandable => state.open = true,
+                AccessAction::Collapse if enabled && self.expandable => state.open = false,
+                _ => {}
+            }
+        }
+        // The header is described before its row is built, so it precedes the row's own
+        // actions in the tree without containing them; the row gives it its bounds below.
+        let node = ui.a11y_declare(id, AccessRole::Button, |node| {
+            node.label(self.caption.as_str()).disabled(!enabled);
+            if self.expandable {
+                node.clicks(id)
+                    .action(AccessActionKind::Expand)
+                    .action(AccessActionKind::Collapse);
+            }
+        });
         let output = disclosure::header(
             ui,
             Header {
@@ -155,9 +177,15 @@ impl<'a> CollapsingHeader<'a> {
             },
             actions,
         );
-        let changed = enabled && self.expandable && output.response.clicked();
-        if changed {
+        if enabled && self.expandable && output.response.clicked() {
             state.open = !state.open;
+        }
+        if let Some(node) = ui.context.a11y_scope_mut(&node) {
+            node.expanded(state.open);
+        }
+        ui.a11y_end(node, Some(output.response.rect));
+        let changed = state.open != before;
+        if changed {
             if let Some(open) = self.controlled.as_mut() {
                 **open = state.open;
             }

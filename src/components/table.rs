@@ -1,4 +1,5 @@
 //! Data-agnostic table composition, sharing Grid columns and ScrollArea routing.
+mod access;
 mod body;
 mod header;
 mod style;
@@ -49,6 +50,7 @@ pub struct Table {
     selectable: bool,
     resizable: bool,
     drag_rows: bool,
+    label: String,
 }
 pub struct TableOutput<R> {
     pub inner: R,
@@ -84,6 +86,7 @@ impl Table {
             selectable: true,
             resizable: true,
             drag_rows: false,
+            label: String::new(),
         }
     }
     pub fn column(mut self, column: Column) -> Self {
@@ -188,6 +191,7 @@ impl Table {
         let row_height = super::sanitize::positive("Table::show_rows row_height", row_height)
             .unwrap_or(ui.style().control_height.max(1.0));
         self.show_impl(ui, |scroll, ui, setup| {
+            setup.total = Some(total);
             let out = scroll.show_rows(ui, row_height, total, |ui, index| {
                 let before = setup.rows.len();
                 let mut body = TableBody::new(ui, setup, Some(row_height));
@@ -318,6 +322,7 @@ impl Table {
             Vec2::new(bounds.size().x, style.header_height.min(bounds.size().y)),
         );
         let body_rect = Rect::from_min_max(Vec2::new(bounds.min.x, header_rect.max.y), bounds.max);
+        let nodes = access::begin(ui, id, &self.label, self.columns.len());
         let mut child = Ui {
             flow: None,
             context: ui.context,
@@ -334,6 +339,7 @@ impl Table {
         };
         let mut scroll = ScrollArea::both()
             .id_source("body")
+            .a11y_hidden()
             .max_height(body_rect.size().y)
             .content_width(content_width)
             .style(ScrollStyle {
@@ -355,6 +361,7 @@ impl Table {
             clicked: None,
             measured: measured.clone(),
             rows: Vec::new(),
+            total: None,
             seen: Default::default(),
             origin: None,
             drag: self.drag_rows,
@@ -380,6 +387,7 @@ impl Table {
             state.measured.insert(column.id, new);
         }
         child.clip = ui.clip.intersect(header_rect);
+        nodes.open_header(child.context);
         let sort_request = header::paint(
             &mut child,
             id,
@@ -394,6 +402,9 @@ impl Table {
         );
         let selected_row = state.selected;
         child.context.tables.insert(id, state);
+        let body = ScrollArea::state_id(&child, Id::new("body"));
+        let total = setup.total.unwrap_or(setup.rows.len());
+        nodes.finish(ui, header_rect, rect, total, body);
         TableOutput {
             inner,
             rect,

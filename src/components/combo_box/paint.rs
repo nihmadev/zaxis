@@ -154,6 +154,7 @@ pub(super) fn trigger(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn option(
     ui: &mut Ui<'_>,
     id: Id,
@@ -161,6 +162,8 @@ pub(super) fn option(
     selected: bool,
     active: bool,
     enabled: bool,
+    // Zero-based position among the listed options, and how many there are.
+    set: (usize, usize),
     style: &ComboBoxStyle,
 ) -> bool {
     let rect = ui.allocate_space(Vec2::new(ui.available_width(), style.row_height));
@@ -175,6 +178,13 @@ pub(super) fn option(
         } else {
             HitAction::Block
         },
+    });
+    ui.a11y(id, rect, crate::AccessRole::ListBoxOption, |node| {
+        node.label(label)
+            .selected(selected)
+            .position_in_set(set.0, set.1)
+            .disabled(!enabled)
+            .clicks(id);
     });
     let effective = ui.style().clone();
     let mut base = crate::components::appearance::Appearance::new(
@@ -251,9 +261,13 @@ pub(super) fn option(
     response.clicked()
 }
 
-pub(super) fn empty(ui: &mut Ui<'_>, style: &ComboBoxStyle) {
+/// Returns where the note is, in place of the list's viewport.
+pub(super) fn empty(ui: &mut Ui<'_>, style: &ComboBoxStyle) -> Rect {
     let rect = ui.allocate_space(Vec2::new(ui.available_width(), style.row_height));
     let id = ui.next_id("empty");
+    ui.a11y(id, rect, crate::AccessRole::Label, |node| {
+        node.value("No matches");
+    });
     text(
         ui,
         id,
@@ -262,4 +276,5 @@ pub(super) fn empty(ui: &mut Ui<'_>, style: &ComboBoxStyle) {
         style.font_size,
         style.muted_text,
     );
+    rect
 }

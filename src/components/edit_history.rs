@@ -1,10 +1,8 @@
 //! Per-field undo history stored as text replacements plus cursor and selection, so an
 //! edit costs the size of the change rather than the size of the document.
 use super::edit_buffer::{Change, Delta, EditBuffer};
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use crate::time::Instant;
+use std::{collections::VecDeque, time::Duration};
 
 const MAX_ENTRIES: usize = 200;
 /// Memory cap for retained text; the newest entry is always kept.
@@ -116,10 +114,5 @@ impl EditHistory {
             self.redo.push(entry);
         }
         Some(delta)
-    }
-
-    #[cfg(test)]
-    pub fn entries(&self) -> (usize, usize) {
-        (self.undo.len(), self.redo.len())
     }
 }

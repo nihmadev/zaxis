@@ -148,6 +148,12 @@ pub(in crate::components) fn row(
             HitAction::Block
         },
     });
+    let role = if item.checked {
+        crate::AccessRole::MenuItemCheckBox
+    } else {
+        crate::AccessRole::MenuItem
+    };
+    ui.a11y(id, rect, role, |node| super::access::row(node, id, item));
     let effective = ui.style().clone();
     let highlighted = response.enabled && active.map_or(response.hovered, |a| a == item_id);
     let mut base = Appearance::new(

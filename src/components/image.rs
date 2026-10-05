@@ -14,13 +14,19 @@ pub enum ImageFit {
 }
 
 /// Local image component. Layout uses logical pixels; raster resolution uses DPI
-/// and enclosing visual scale. The default is decorative and preserves aspect.
+/// and enclosing visual scale. The default preserves aspect.
+///
+/// Screen readers announce an image by its [`Image::alt`] text. One that only decorates
+/// is marked [`Image::decorative`] and skipped; an image with neither is reported as
+/// [`DiagnosticKind::MissingAccessibleName`](crate::DiagnosticKind) while assistive
+/// technology is connected.
 ///
 /// ```no_run
 /// # fn images(ui: &mut zaxis::Ui<'_>) {
 /// use zaxis::{Image, ImageFit, ImageSource, TextureFilter, vec2};
 /// ui.image("assets/photo.jpg");
-/// ui.add(Image::new("assets/icon.svg").size(vec2(96.0, 96.0)).corner_radius(12.0));
+/// ui.add(Image::new("assets/photo.jpg").alt("Harbour at dusk"));
+/// ui.add(Image::new("assets/icon.svg").size(vec2(96.0, 96.0)).corner_radius(12.0).decorative());
 /// let pixels = ImageSource::rgba([2, 2], vec![255; 16]);
 /// ui.add(Image::new(&pixels).size(vec2(64.0,64.0)).filter(TextureFilter::Nearest).fit(ImageFit::Cover));
 /// # }
@@ -39,6 +45,8 @@ pub struct Image {
     filter: TextureFilter,
     interactive: bool,
     placeholder: bool,
+    alt: Option<String>,
+    decorative: bool,
 }
 #[derive(Clone, Debug)]
 pub struct ImageOutput {
@@ -62,7 +70,25 @@ impl Image {
             filter: TextureFilter::Linear,
             interactive: false,
             placeholder: true,
+            alt: None,
+            decorative: false,
         }
+    }
+    /// What the image shows, in words: the name screen readers announce. An empty text
+    /// marks the image [`Self::decorative`].
+    pub fn alt(mut self, text: impl Into<String>) -> Self {
+        let text = text.into();
+        self.decorative = text.is_empty();
+        self.alt = (!text.is_empty()).then_some(text);
+        self
+    }
+    /// The image adds nothing the text around it does not say: assistive technology skips
+    /// it. An [`Self::interactive`] image is a control and stays in the tree, so it still
+    /// needs [`Self::alt`].
+    pub fn decorative(mut self) -> Self {
+        self.decorative = true;
+        self.alt = None;
+        self
     }
     pub fn id_source(mut self, id: impl Hash) -> Self {
         self.id = Some(Id::new(id));
@@ -193,6 +219,20 @@ impl Widget for Image {
                 },
             });
         }
+        if !self.decorative || self.interactive {
+            ui.a11y(id, rect, crate::AccessRole::Image, |node| {
+                node.busy(matches!(state, ImageState::Loading { .. }));
+                if let Some(alt) = &self.alt {
+                    node.label(alt.as_str());
+                }
+                if let ImageState::Error(error) = &state {
+                    node.description(format!("image failed: {error}"));
+                }
+                if self.interactive {
+                    node.clicks(id);
+                }
+            });
+        }
         if let Ok(handle) = handle {
             let (paint_rect, uv) = fit(rect, intrinsic, uv, self.fit);
             let texture = ui
@@ -263,7 +303,7 @@ impl Ui<'_> {
         self.add(Image::new(source))
     }
 }
-pub(crate) fn fit(rect: Rect, intrinsic: Vec2, uv: Rect, mode: ImageFit) -> (Rect, Rect) {
+pub fn fit(rect: Rect, intrinsic: Vec2, uv: Rect, mode: ImageFit) -> (Rect, Rect) {
     if rect.is_empty() || intrinsic.min_element() <= 0.0 {
         return (rect, uv);
     }

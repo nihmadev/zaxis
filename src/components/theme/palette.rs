@@ -52,12 +52,13 @@ macro_rules! blend {
  fn blend(&self,to:&Self,t:f32)->Self {let mut v=to.clone(); $(v.$field=self.$field.blend(&to.$field,t);)* v}
  }};
 }
-blend!(Style; accent,on_accent,disabled_text,selected_fill,selected_text,success,on_success,warning,on_warning,error,on_error,elevation,button,checkbox,switch,slider,text_edit,window,title_bar,popup,modal,card,color_picker,text,separator,loader,progress,split,number,grid,table,combo_box,scroll,drag,background,window_fill,title_fill,text_color,muted_text,border,button_fill,button_hovered,hover_style,button_pressed,text_edit_fill,text_edit_hovered,text_edit_placeholder,text_edit_selection,focus_border);
+blend!(Style; accent,on_accent,disabled_text,selected_fill,selected_text,success,on_success,warning,on_warning,error,on_error,elevation,button,checkbox,switch,radio,slider,text_edit,window,title_bar,popup,modal,card,color_picker,text,separator,loader,progress,split,number,grid,table,combo_box,scroll,drag,background,window_fill,title_fill,text_color,muted_text,border,button_fill,button_hovered,hover_style,button_pressed,text_edit_fill,text_edit_hovered,text_edit_placeholder,text_edit_selection,focus_border);
 blend!(SurfaceStyle; fill,foreground,border,shadow);
 blend!(ControlStyle; idle,hover,pressed,disabled,selected,focus,success,warning,error);
 blend!(ButtonStyle; surface);
 blend!(CheckboxStyle; body,indicator);
 blend!(SwitchStyle; track,thumb);
+blend!(RadioStyle; body,dot,halo);
 blend!(SliderStyle; track,fill,thumb);
 blend!(TextEditStyle; placeholder,selection,surface,caret,selection_foreground);
 blend!(WindowStyle; body,title);

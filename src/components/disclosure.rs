@@ -1,6 +1,6 @@
 //! Shared row composition; action callbacks are measured and placed exactly once.
 mod style;
-use super::{appearance::Appearance, Image, Response, Ui};
+use super::{appearance::Appearance, Image, Response, Ui, Widget};
 use crate::{
     context::{HitAction, HitRegion, Paint},
     layout::LayoutCursor,
@@ -227,7 +227,9 @@ pub(super) fn header<R>(
             Vec2::splat(size),
         );
         let mut icon_ui = child(ui, h.id.with("icon"), icon_rect, Layout::Vertical);
-        icon_ui.add(Image::new(icon).size(Vec2::splat(size)).placeholder(false));
+        // The label names the row; its icon is decoration.
+        let image = Image::new(icon).size(Vec2::splat(size)).placeholder(false);
+        icon_ui.add(image.accessibility_hidden());
         text_left = (left + size + gap).min(text_right);
     }
     let font = super::font_size(s.font_size.unwrap_or(style.typography.small));

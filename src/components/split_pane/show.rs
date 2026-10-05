@@ -153,6 +153,7 @@ impl SplitPane {
             });
             offset += gap as f64;
         }
+        let handles = access::Handles::new(ui, self.axis, &self.panels, &sizes, &boundaries, style);
         let mut split = SplitUi {
             ui,
             id,
@@ -160,9 +161,12 @@ impl SplitPane {
             outputs: &panels,
             style,
             built: std::collections::HashSet::new(),
+            handles,
         };
         let inner = build(&mut split);
-        let ui = split.ui;
+        let SplitUi {
+            ui, mut handles, ..
+        } = split;
         // Boundaries win in their narrow zone, including panel-edge mode. Popups
         // still have a higher layer, so their controls keep portal precedence.
         for (i, out) in boundaries.iter_mut().enumerate() {
@@ -180,6 +184,7 @@ impl SplitPane {
                     },
                 });
             }
+            handles.place(ui, i, out.bounds, ui.clip.intersect(bounds));
             out.hovered = out.enabled && ui.context.hovered(out.id, ui.window, out.bounds, ui.clip);
             out.focused = out.enabled && ui.context.has_focus(out.id);
             paint::handle(
@@ -239,6 +244,17 @@ impl SplitUi<'_, '_> {
             None => (Rect::default(), self.style.panel),
         };
         let clip = self.ui.clip.intersect(bounds);
+        // The tree reads panel, boundary, panel: the boundary before this panel comes first.
+        let group = match known.filter(|_| unique) {
+            Some(index) => {
+                if let Some(before) = index.checked_sub(1) {
+                    self.handles.describe(self.ui, before);
+                }
+                let scope = self.id.with(("panel", id));
+                self.ui.a11y_begin(scope, crate::AccessRole::Group, |_| {})
+            }
+            None => crate::accessibility::Scope::NONE,
+        };
         self.ui.context.begin_placement(self.ui.window);
         self.ui.context.visual_clips.push((self.ui.window, clip));
         let mut child = Ui {
@@ -265,6 +281,9 @@ impl SplitUi<'_, '_> {
         child.context.visual_clips.pop();
         let placement = child.context.end_placement();
         child.context.place(placement, Vec2::ZERO, clip);
+        if let Some(index) = known.filter(|_| group.0.is_some()) {
+            self.ui.a11y_end(group, Some(self.outputs[index].bounds));
+        }
         result
     }
     /// Bounds of a panel; an unknown id gives an empty rectangle.

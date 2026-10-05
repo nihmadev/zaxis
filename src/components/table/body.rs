@@ -15,6 +15,8 @@ pub(super) struct BodySetup {
     pub clicked: Option<Id>,
     pub measured: Vec<f32>,
     pub rows: Vec<(Id, Rect)>,
+    /// Rows in the whole data set when the body is virtualized.
+    pub total: Option<usize>,
     pub seen: HashSet<Id>,
     pub origin: Option<Vec2>,
     pub drag: bool,
@@ -61,6 +63,15 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
                 });
         }
         let id = self.setup.id.with(("selection", row));
+        // The header is row zero. A click request is the click that selects the row.
+        let line = self.index.saturating_add(1).min(u32::MAX as usize) as u32;
+        let (selectable, chosen) = (self.setup.selectable, self.setup.selected == Some(row));
+        let access = self.ui.a11y_begin(id, crate::AccessRole::Row, |node| {
+            node.table().row = Some(line);
+            if selectable {
+                node.selected(chosen).clicks(id);
+            }
+        });
         let old_scope = self.ui.scope;
         self.ui.scope = self.setup.id.with("cells");
         self.ui.context.begin_placement(self.ui.window);
@@ -93,6 +104,7 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
                     rounding: 0.0,
                 })
                 .resolved(self.setup.widths.to_vec(), self.height)
+                .access_row(line)
                 .show(ui, |grid| grid.row(row, build))
         });
         let placement = self.ui.context.end_placement();
@@ -158,6 +170,7 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
         self.ui
             .context
             .place(placement, Vec2::ZERO, self.ui.clip.intersect(rect));
+        self.ui.a11y_end(access, Some(rect));
         if self.setup.drag && self.ui.enabled {
             let mut handle = response;
             handle.enabled = true;

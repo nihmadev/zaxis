@@ -112,6 +112,12 @@ pub(super) fn apply(
             ui.context.request_repaint();
         }
     }
+    if let Some(index) = events.collapsed {
+        if state.path.get(level) == Some(&index) && state.depth > level + 1 {
+            state.depth = level + 1;
+            ui.context.request_repaint();
+        }
+    }
     let item = items.get(events.clicked?)?;
     let index = events.clicked?;
     match &item.kind {

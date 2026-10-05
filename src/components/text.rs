@@ -132,6 +132,23 @@ impl Widget for Text {
             .context
             .measure_text_layout_tab(&self.text, size, font, wrap_width, tab);
         let rect = ui.allocate_space(text_size);
+        if ui.context.a11y_on() {
+            let layout = ui
+                .context
+                .paragraph_layout(&self.text, size, font, wrap_width, tab);
+            let lines = ui.context.a11y_text(&self.text, &layout);
+            let (role, level) = match self.role {
+                crate::TypographyRole::Title => (crate::AccessRole::Heading, Some(1)),
+                crate::TypographyRole::Heading => (crate::AccessRole::Heading, Some(2)),
+                _ => (crate::AccessRole::Label, None),
+            };
+            ui.a11y(id, rect, role, |node| {
+                node.value(self.text.as_str()).text(lines, None);
+                if let Some(level) = level {
+                    node.level(level);
+                }
+            });
+        }
         ui.context.paint(
             id,
             ui.window,

@@ -4,8 +4,12 @@ use std::{hash::Hash, panic::Location, time::Duration};
 
 /// Lucide `loader`, eight round-capped strokes in a 24x24 viewbox.
 /// Geometry: <https://lucide.dev/icons/loader> (ISC/Feather MIT; assets/LUCIDE-LICENSE).
-/// Decorative, no hit registration, constant size regardless of rotation.
+/// No hit registration, constant size regardless of rotation.
+///
+/// While active it is a busy progress indicator to screen readers; give it a name with
+/// [`Loader::label`]. An inactive loader is decoration and is not announced.
 pub struct Loader {
+    label: Option<String>,
     id: Option<Id>,
     source: &'static Location<'static>,
     active: bool,
@@ -25,6 +29,7 @@ impl Loader {
     #[track_caller]
     pub fn new() -> Self {
         Self {
+            label: None,
             id: None,
             source: Location::caller(),
             active: true,
@@ -45,6 +50,11 @@ impl Loader {
     }
     pub fn active(mut self, active: bool) -> Self {
         self.active = active;
+        self
+    }
+    /// What is being waited for, for screen readers ("Loading messages"). Nothing is drawn.
+    pub fn label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
         self
     }
     #[track_caller]
@@ -89,6 +99,16 @@ impl Widget for Loader {
         });
         let period = self.period.unwrap_or(ui.style().motion.cycle_period);
         let rect = ui.allocate_space(Vec2::splat(size));
+        if self.active {
+            ui.a11y(id, rect, crate::AccessRole::ProgressIndicator, |node| {
+                node.busy(true);
+                match &self.label {
+                    Some(label) => node.label(label.as_str()),
+                    // A spinner next to the text that explains it needs no name.
+                    None => node.unnamed(),
+                };
+            });
+        }
         let channel = id.with("rotation");
         let visible = self.active
             && !ui.style().motion.reduced_motion

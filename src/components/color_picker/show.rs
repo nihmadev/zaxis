@@ -1,4 +1,6 @@
 use super::*;
+use crate::{accessibility::Scope, AccessAction, AccessActionKind, AccessRole};
+
 impl Widget for ColorPicker<'_> {
     fn ui(mut self, ui: &mut Ui<'_>) -> Response {
         self.enabled &= ui.is_enabled();
@@ -33,8 +35,17 @@ impl Widget for ColorPicker<'_> {
             .min(ui.available_width());
         let row = Rect::from_min_size(ui.layout.cursor, Vec2::new(width, row_height));
         let mut response = ui.response(id, row, self.enabled);
-        if response.clicked() {
-            state.open = !state.open;
+        let mut open = state.open ^ response.clicked();
+        // Assistive technology names the state it wants; a click toggles.
+        for action in ui.context.take_access_actions(id) {
+            match action {
+                AccessAction::Expand if self.enabled => open = true,
+                AccessAction::Collapse if self.enabled => open = false,
+                _ => {}
+            }
+        }
+        if open != state.open {
+            state.open = open;
             if !state.open {
                 state.commit(self.color);
             }
@@ -56,6 +67,15 @@ impl Widget for ColorPicker<'_> {
         let mut rect = ui.allocate_space(Vec2::new(width, row_height));
         response.rect = rect;
         hit(ui, id, row, self.enabled, HitAction::Activate);
+        // The row is the color well; its value is filled in once the editor has run.
+        let well = ui.context.a11y_len();
+        ui.a11y(id, row, AccessRole::ColorWell, |node| {
+            node.label(visible_label(&self.text))
+                .disabled(!self.enabled)
+                .clicks(id)
+                .action(AccessActionKind::Expand)
+                .action(AccessActionKind::Collapse);
+        });
         // Content is inset from the hover surface; the disclosure chevron leads the
         // label and the color swatch is the only trailing element.
         let inset = 8.0_f32.min(width * 0.25);
@@ -135,7 +155,15 @@ impl Widget for ColorPicker<'_> {
                     ui.reveal(id, open, |ui| {
                         let origin =
                             ui.layout.cursor + Vec2::new(0.0, component.gap.unwrap_or(10.0));
+                        let group = if open {
+                            ui.a11y_begin(id.with("editor"), AccessRole::Group, |node| {
+                                node.label(visible_label(&self.text));
+                            })
+                        } else {
+                            Scope::NONE
+                        };
                         self.editor(ui, id, origin, width, &mut state, &mut response);
+                        ui.a11y_end(group, None);
                         ui.allocate_space(Vec2::new(width, editor_height));
                     });
                     let height = ui
@@ -190,6 +218,13 @@ impl Widget for ColorPicker<'_> {
                                 clip: window.intersect(popup.context.viewport()),
                                 action: HitAction::Activate,
                             });
+                            let place = (close, window.intersect(popup.context.viewport()));
+                            let button = AccessRole::Button;
+                            popup
+                                .context
+                                .a11y_leaf(floating_id, close_id, button, place, |node| {
+                                    node.label("Close").clicks(close_id);
+                                });
                             let preset = self
                                 .hover_style
                                 .or(popup.hover_style)
@@ -335,6 +370,11 @@ impl Widget for ColorPicker<'_> {
                 },
             )],
         );
+        if let Some(node) = ui.context.a11y_node_mut(well).filter(|node| node.id == id) {
+            node.value(field_text(*self.color, 3))
+                .color(*self.color)
+                .expanded(state.open);
+        }
         response.changed = original != *self.color;
         state.last_color = *self.color;
         ui.context.color_pickers.insert(id, state);

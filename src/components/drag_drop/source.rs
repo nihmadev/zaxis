@@ -142,6 +142,14 @@ impl<'a, P: Any> DragSource<'a, P> {
         if let (true, Some(focus)) = (enabled, focus) {
             ui.context.drag_reserve_order(focus);
         }
+        // A source that is a Tab stop is a node, so that focus has somewhere to be in the
+        // accessibility tree; its content is inside. Dragging itself has no request.
+        let access = match focus.filter(|_| enabled) {
+            Some(focus) => ui.a11y_begin(id, crate::AccessRole::Group, |node| {
+                node.focus_on(focus);
+            }),
+            None => crate::accessibility::Scope::NONE,
+        };
         let (inner, size, placement) = ui.measure_effect(id.with("content"), true, build);
         ui.context.drag_exit();
         let rect = Rect::from_min_size(ui.layout.cursor, size);
@@ -165,6 +173,7 @@ impl<'a, P: Any> DragSource<'a, P> {
         } else {
             ui.context.place(placement, Vec2::ZERO, clip);
         }
+        ui.a11y_end(access, Some(rect));
         ui.allocate_space(size);
         let mut response = ui.response(id, rect, enabled);
         if let Some(focus) = focus.filter(|_| enabled) {

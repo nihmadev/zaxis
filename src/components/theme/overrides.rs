@@ -178,6 +178,9 @@ pub struct StyleOverrides {
     pub button: ButtonStyle,
     pub checkbox: CheckboxStyle,
     pub switch: SwitchStyle,
+    pub segmented: SegmentedStyle,
+    pub radio: RadioStyle,
+    pub segmented_outlined: SegmentedStyle,
     pub slider: SliderStyle,
     pub text_edit: TextEditStyle,
     pub window: WindowStyle,
@@ -281,6 +284,9 @@ impl StyleOverrides {
         style.button.merge(self.button);
         style.checkbox.merge(self.checkbox);
         style.switch.merge(self.switch);
+        style.segmented.merge(self.segmented);
+        style.radio.merge(self.radio);
+        style.segmented_outlined.merge(self.segmented_outlined);
         style.slider.merge(self.slider);
         style.text_edit.merge(self.text_edit);
         style.window.merge(self.window);

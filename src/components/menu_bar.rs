@@ -169,7 +169,11 @@ impl<'a> MenuBar<'a> {
         let mut output = MenuBarOutput::default();
 
         let shown = state.open.then_some(if compact { 0 } else { state.menu });
-        let (anchors, pressed) = trigger::show(ui, bar, self.items, compact, shown);
+        let trigger::Triggers {
+            anchors,
+            pressed,
+            collapse,
+        } = trigger::show(ui, bar, self.items, compact, shown);
         if let Some(index) = pressed {
             let item = &self.items[index];
             if compact && !self.items.is_empty() || item.is_submenu() {
@@ -189,7 +193,7 @@ impl<'a> MenuBar<'a> {
         let valid = anchor.is_some() && (compact || self.items[state.menu].is_submenu());
         state.open &= valid && ui.enabled;
         // A press on the title that owns the open panel closes it.
-        if state.open && ui.context.clicked(bar) {
+        if state.open && (ui.context.clicked(bar) || collapse) {
             state.open = false;
             ui.context.close_popup();
         }
@@ -243,6 +247,24 @@ impl<'a> MenuBar<'a> {
         let surface = paint::popup_style(ui, style);
         let padding = style.padding;
         let active = active_id(state, 0, &rows);
+        let panel_id = |level: usize| match level {
+            0 => bar.with(("level", 0)),
+            level => bar.with(("panel", level)),
+        };
+        // The row the keyboard is on, for the node that holds focus while the menu is open.
+        let deepest = state.depth.saturating_sub(1);
+        let keyboard_row = state.path.get(deepest).filter(|_| state.keyboard);
+        let access = cascade::Access {
+            label: if compact {
+                "Menu"
+            } else {
+                items[state.menu].text.as_str()
+            },
+            focus: Some(bar),
+            active: keyboard_row
+                .map(|index| panel_id(deepest).with(("item", Id::new(("menu-item", *index))))),
+            open: state.path.first().copied().filter(|_| state.depth > 1),
+        };
         let reveal = moved
             .then(|| state.path.first().copied().filter(|_| state.depth == 1))
             .flatten();
@@ -260,13 +282,14 @@ impl<'a> MenuBar<'a> {
         let root = popup.show(ui, &mut state.open, |ui| {
             events = cascade::body(
                 ui,
-                bar.with(("level", 0)),
+                panel_id(0),
                 &rows,
                 &metrics,
                 style,
                 active,
                 reveal,
                 pointer_moved,
+                access,
             );
         });
         let Some(root) = root else { return };
@@ -283,6 +306,10 @@ impl<'a> MenuBar<'a> {
             ) {
                 output.selected = Some(selected);
                 ui.context.close_popup();
+                // The panels built before the choice was read close in this pass as well.
+                for (layer, _) in &extra {
+                    ui.context.remove_popup_hits(*layer);
+                }
                 state.open = false;
                 return;
             }
@@ -312,8 +339,20 @@ impl<'a> MenuBar<'a> {
                 metrics.height + padding.size().y,
             );
             let rect = cascade::submenu_rect(parent, row, size, padding, ui.context.viewport());
-            let layer = bar.with(("panel", level_index));
+            let layer = panel_id(level_index);
             let active = active_id(state, level_index, &rows);
+            let parent_row = state.path[level_index - 1];
+            let access = cascade::Access {
+                label: root_or(items, compact, state, level_index - 1)
+                    .get(parent_row)
+                    .map_or("", |item| item.text.as_str()),
+                open: state
+                    .path
+                    .get(level_index)
+                    .copied()
+                    .filter(|_| state.depth > level_index + 1),
+                ..Default::default()
+            };
             let reveal = moved
                 .then(|| {
                     state
@@ -333,6 +372,7 @@ impl<'a> MenuBar<'a> {
                     active,
                     reveal,
                     pointer_moved,
+                    access,
                 )
             });
             extra.push((layer, rect));

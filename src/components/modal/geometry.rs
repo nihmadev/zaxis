@@ -28,7 +28,7 @@ impl ModalAnchor {
 
 /// Sizes of the previous pass. Retained per modal until it has fully closed.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct Measure {
+pub struct Measure {
     pub width: f32,
     pub header: f32,
     pub body: f32,

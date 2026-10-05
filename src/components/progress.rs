@@ -10,6 +10,10 @@ pub enum ProgressState {
 }
 /// No fabricated percentage for indeterminate work. Application state switches
 /// immediately; the animated segment is purely decorative and owns no input.
+///
+/// Screen readers get a progress indicator with the state's own value (never the animated
+/// one): a percentage when determinate, "busy" while indeterminate work is active. Name
+/// it with `.accessible_label("Downloading")`.
 pub struct Progress {
     state: ProgressState,
     id: Option<Id>,
@@ -101,6 +105,15 @@ impl Widget for Progress {
                 0.3,
             ),
         };
+        ui.a11y(id, rect, crate::AccessRole::ProgressIndicator, |node| {
+            node.busy(busy);
+            if !matches!(self.state, ProgressState::Indeterminate { .. }) {
+                // Tenths of a percent: the state's value without the noise of its `f32`.
+                let percent = (f64::from(width) * 1000.0).round() / 10.0;
+                node.numeric(percent, 0.0, 100.0)
+                    .value(format!("{}%", percent.round()));
+            }
+        });
         let segment = Rect::from_min_size(
             rect.min + Vec2::new(rect.size().x * offset, 0.0),
             Vec2::new(rect.size().x * width, rect.size().y),

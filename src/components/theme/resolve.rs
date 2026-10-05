@@ -72,6 +72,17 @@ impl Theme {
         s.checkbox.body.idle.rounding = Some(CornerRadius::all((m.corner_radius - 2.0).max(2.0)));
         s.checkbox.size = Some(16.0 * d);
         s.checkbox.gap = Some(8.0 * d);
+        s.radio.size = Some(18.0 * d);
+        s.radio.dot_size = Some(8.0 * d);
+        s.radio.halo_size = Some(3.0 * d);
+        s.radio.border_width = Some(1.5);
+        s.radio.gap = Some(10.0 * d);
+        s.radio.row_gap = Some(2.0 * d);
+        s.radio.column_gap = Some(20.0 * d);
+        s.radio.dot_spring = Some(crate::SpringOptions::duration_bounce(
+            std::time::Duration::from_millis(380),
+            0.3,
+        ));
         s.switch.height = Some(20.0 * d);
         s.switch.width = Some(36.0 * d);
         s.switch.gap = Some(8.0 * d);
@@ -99,6 +110,58 @@ impl Theme {
         };
         s.switch.thumb.selected = SurfaceStyle::fill(crate::Color::WHITE);
         s.switch.thumb_inset = Some(2.0 * d);
+        // Segmented control: a grey plate with a raised selection; on dark palettes the
+        // selection is lighter than the plate, on light ones it is the raised surface.
+        let light_palette = p.surface.0[0] > 128;
+        s.segmented.track = SurfaceStyle {
+            border: Some(Border::NONE),
+            rounding: Some(radius),
+            ..SurfaceStyle::fill(if light_palette { p.hover } else { p.background })
+        };
+        s.segmented.thumb = SurfaceStyle {
+            border: Some(Border::NONE),
+            shadow: Some(handle_shadow()),
+            ..SurfaceStyle::fill(if light_palette {
+                p.surface_raised
+            } else {
+                p.surface_control
+            })
+        };
+        s.segmented.segment.idle.foreground = Some(p.muted);
+        s.segmented.segment.hover.foreground = Some(p.foreground);
+        s.segmented.segment.pressed.foreground = Some(p.foreground);
+        s.segmented.segment.selected.foreground = Some(p.foreground);
+        s.segmented.padding = Some(3.0 * d);
+        s.segmented.gap = Some(2.0 * d);
+        s.segmented.icon_size = Some(16.0 * d);
+        s.segmented.icon_gap = Some(6.0 * d);
+        s.segmented.segment_padding = Some(12.0 * d);
+        // Outlined (Material 3 like): a pill with a hairline outline, dividers between flat
+        // segments, a tonal fill and a check mark on the selected one.
+        let outline = Border::new(
+            m.border_width.max(1.0),
+            if light_palette { p.muted } else { p.border },
+        );
+        s.segmented_outlined.track = SurfaceStyle {
+            border: Some(outline),
+            rounding: Some(CornerRadius::all(1000.0)),
+            ..SurfaceStyle::fill(crate::Color::TRANSPARENT)
+        };
+        s.segmented_outlined.thumb = SurfaceStyle {
+            border: Some(Border::NONE),
+            ..SurfaceStyle::fill(p.selected)
+        };
+        s.segmented_outlined.segment.idle.foreground = Some(p.foreground);
+        s.segmented_outlined.segment.hover.foreground = Some(p.foreground);
+        s.segmented_outlined.segment.pressed.foreground = Some(p.foreground);
+        s.segmented_outlined.segment.selected.foreground = Some(p.on_selected);
+        s.segmented_outlined.divider = Some(outline);
+        s.segmented_outlined.mark = Some(true);
+        s.segmented_outlined.padding = Some(outline.width);
+        s.segmented_outlined.gap = Some(0.0);
+        s.segmented_outlined.icon_size = Some(18.0 * d);
+        s.segmented_outlined.icon_gap = Some(8.0 * d);
+        s.segmented_outlined.segment_padding = Some(16.0 * d);
         s.popup.surface.rounding = Some(radius);
         s.popup.surface.fill = Some(crate::Gradient::new(p.surface_raised, p.surface_raised));
         s.popup.surface.shadow = Some(floating_shadow(&p, 8.0, 24.0, 110));

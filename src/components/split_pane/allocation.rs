@@ -31,7 +31,7 @@ pub(super) fn limits(p: &SplitPanel) -> (f64, f64) {
 }
 
 /// Bounded water filling in f64. Container fit outranks infeasible limits.
-pub(super) fn resolve(panels: &[SplitPanel], prefs: &[SplitSize], available: f32) -> Vec<f32> {
+pub fn resolve(panels: &[SplitPanel], prefs: &[SplitSize], available: f32) -> Vec<f32> {
     let total = dimension(available) as f64;
     let prefs: Vec<SplitSize> = prefs.iter().map(|pref| pref.normalized()).collect();
     let prefs = prefs.as_slice();
@@ -194,9 +194,9 @@ fn finish(sizes: Vec<f64>, total: f32) -> Vec<f32> {
         .collect()
 }
 
-/// Clamp both neighbours simultaneously. Infeasible layouts use effective
-/// bounds including the current compressed/expanded sizes; no jump on press.
-pub(super) fn resize(panels: &[SplitPanel], sizes: &mut [f32], i: usize, desired: f32) {
+/// The sizes panel `i` can take while panel `i + 1` absorbs the difference: what
+/// [`resize`] clamps to.
+pub fn range(panels: &[SplitPanel], sizes: &[f32], i: usize) -> (f64, f64) {
     let sum = sizes[i] as f64 + sizes[i + 1] as f64;
     let (a_min, a_max) = limits(&panels[i]);
     let (b_min, b_max) = limits(&panels[i + 1]);
@@ -206,11 +206,15 @@ pub(super) fn resize(panels: &[SplitPanel], sizes: &mut [f32], i: usize, desired
     let high = a_max
         .max(sizes[i] as f64)
         .min(sum - b_min.min(sizes[i + 1] as f64));
-    let a = (desired as f64).clamp(low.max(0.0), high.max(low)) as f32;
+    (low.max(0.0), high.max(low))
+}
+
+/// Clamp both neighbours simultaneously. Infeasible layouts use effective
+/// bounds including the current compressed/expanded sizes; no jump on press.
+pub fn resize(panels: &[SplitPanel], sizes: &mut [f32], i: usize, desired: f32) {
+    let sum = sizes[i] as f64 + sizes[i + 1] as f64;
+    let (low, high) = range(panels, sizes, i);
+    let a = (desired as f64).clamp(low, high) as f32;
     sizes[i] = a;
     sizes[i + 1] = (sum - a as f64).max(0.0) as f32;
 }
-
-#[cfg(test)]
-#[path = "../../../tests/split/allocation.rs"]
-mod tests;

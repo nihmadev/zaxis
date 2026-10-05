@@ -1,4 +1,5 @@
 //! Fixed-height virtualized tree. The application owns the model and loading.
+mod access;
 mod drag;
 mod input;
 mod model;
@@ -25,6 +26,7 @@ pub struct TreeView<'a> {
     height: f32,
     style: Option<TreeStyle>,
     reveal: Option<Id>,
+    label: String,
 }
 #[derive(Debug)]
 pub struct TreeOutput {
@@ -56,6 +58,7 @@ impl<'a> TreeView<'a> {
             height: 300.0,
             style: None,
             reveal: None,
+            label: String::new(),
         }
     }
     pub fn id_source(mut self, source: impl Hash) -> Self {
@@ -118,6 +121,12 @@ impl<'a> TreeView<'a> {
     /// Pass only when requested (for example `pending_reveal.take()`).
     pub fn reveal_node(mut self, node: Id) -> Self {
         self.reveal = Some(node);
+        self
+    }
+    /// The name a screen reader speaks for the tree ("Project files"). The tree draws no
+    /// caption of its own, so without this it is announced as an unnamed tree.
+    pub fn accessible_label(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
         self
     }
     pub fn show(self, ui: &mut Ui<'_>, model: &impl TreeModel) -> TreeOutput {

@@ -284,6 +284,9 @@ impl Window {
                 action: HitAction::Move,
             });
         }
+        let scope = context.a11y_begin_layer(self.id, self.id, crate::AccessRole::Window, |node| {
+            node.label(visible_label(&self.title)).clips();
+        });
         let padding = self
             .padding
             .or(style.window.padding)
@@ -356,6 +359,7 @@ impl Window {
                 action: HitAction::Resize,
             });
         }
+        ui.context.a11y_end(scope, Some((rect, clip)));
         if let Some((scale, opacity)) = visual {
             let context = &mut *ui.context;
             context.visual_depth -= 1;

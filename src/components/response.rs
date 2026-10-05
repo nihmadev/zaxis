@@ -36,6 +36,7 @@ pub struct Response {
     pub(super) drag_stopped: bool,
     pub(super) drag_delta: Vec2,
     pub(super) menu_selected: Option<Id>,
+    pub(super) link: Option<super::LinkActivation>,
 }
 
 impl Response {
@@ -111,6 +112,18 @@ impl Response {
         self.changed = true;
     }
 
+    /// How a link was activated during this pass: a primary click or Enter/Space, or a
+    /// middle click or Ctrl+click. Reported once per user action; `None` for anything that
+    /// is not a link. [`Self::clicked`] is true for the primary kind only.
+    pub fn link_activation(self) -> Option<super::LinkActivation> {
+        self.link
+    }
+
+    pub(super) fn set_link(&mut self, activation: Option<super::LinkActivation>) {
+        self.link = activation;
+        self.clicked = activation == Some(super::LinkActivation::Primary);
+    }
+
     /// The context menu attached with [`super::Widget::context_menu`] chose this item.
     pub fn menu_selected(self) -> Option<Id> {
         self.menu_selected
@@ -129,6 +142,7 @@ impl Response {
             || self.drag_stopped
             || self.drag_delta != Vec2::ZERO
             || self.menu_selected.is_some()
+            || self.link.is_some()
     }
 
     /// True when this widget changed its bound value during the current UI pass.

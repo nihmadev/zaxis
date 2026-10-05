@@ -2,7 +2,7 @@ use std::hash::Hash;
 
 use crate::{
     context::{HitAction, HitRegion, Paint},
-    Border, CornerRadius, Id, Padding, Vec2,
+    Border, CornerRadius, Id, Padding, Rect, Vec2,
 };
 
 use super::appearance::Appearance;
@@ -20,12 +20,15 @@ pub struct Button<F = fn(&mut crate::Painter<'_>, crate::ControlPaint)> {
     rounding: Option<CornerRadius>,
     border: Option<Border>,
     selected: bool,
+    /// `selected` was set: the button is a two-state control, not a plain command.
+    toggle: bool,
     status: crate::SemanticStatus,
     variant: super::button_variant::ButtonVariant,
     blur: Option<f32>,
     hover_style: Option<HoverStyle>,
     style: super::theme::ButtonStyle,
     painter: Option<super::theme::painter::PaintCallbackHook<F>>,
+    icon: Option<crate::ImageSource>,
 }
 
 impl Button {
@@ -41,16 +44,25 @@ impl Button {
             rounding: None,
             border: None,
             selected: false,
+            toggle: false,
             status: Default::default(),
             variant: Default::default(),
             blur: None,
             hover_style: None,
             style: Default::default(),
             painter: None,
+            icon: None,
         }
     }
 }
 impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
+    /// A leading icon before the caption, drawn in the caption's color and one line tall.
+    /// It makes the button wider by the icon and a small gap; alignment, hover, pressed and
+    /// disabled looks apply to icon and caption together.
+    pub fn icon(mut self, icon: impl Into<crate::ImageSource>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
     pub fn style(mut self, style: super::theme::ButtonStyle) -> Self {
         self.style = style;
         self
@@ -71,11 +83,13 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
             rounding: self.rounding,
             border: self.border,
             selected: self.selected,
+            toggle: self.toggle,
             status: self.status,
             variant: self.variant,
             blur: self.blur,
             hover_style: self.hover_style,
             style: self.style,
+            icon: self.icon,
             painter: Some(super::theme::painter::PaintCallbackHook {
                 mode,
                 callback: paint,
@@ -99,8 +113,11 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
         self.variant = variant;
         self
     }
+    /// Draw the button as chosen. A button given a selected state is announced as a
+    /// toggle button by screen readers.
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self.toggle = true;
         self
     }
     pub fn corner_radius(mut self, radius: impl Into<CornerRadius>) -> Self {
@@ -149,7 +166,19 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
     }
 }
 
+/// Space between a leading icon and the caption.
+const ICON_GAP: f32 = 6.0;
+
 impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
+    /// Width the icon takes before the caption: its side (one line tall) and the gap.
+    fn icon_lead(&self, font_size: f32) -> f32 {
+        if self.icon.is_some() {
+            (font_size * 1.15).round() + ICON_GAP
+        } else {
+            0.0
+        }
+    }
+
     /// Size the button takes when nothing constrains it: text plus padding, never
     /// below its minimum sizes. Matches what `ui` allocates before clamping.
     pub(crate) fn natural_size(&self, ui: &mut Ui<'_>) -> Vec2 {
@@ -164,11 +193,12 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
         let text_size =
             ui.context
                 .measure_text(visible_label(&self.text), size, weight, f32::INFINITY);
+        let content = text_size + Vec2::new(self.icon_lead(size), 0.0);
         let padding = self
             .padding
             .or(component.padding)
             .unwrap_or(style.button_padding);
-        let mut size = (text_size + padding.size())
+        let mut size = (content + padding.size())
             .max(self.min_size)
             .max(component.min_size.unwrap_or(Vec2::ZERO))
             .max(Vec2::new(24.0, style.control_height));
@@ -195,11 +225,13 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
             .with(("button", self.id.unwrap_or_else(|| Id::new(&self.text))));
         let label = visible_label(&self.text);
         let text_size = ui.context.measure_text(label, size, weight, f32::INFINITY);
+        let lead = self.icon_lead(size);
+        let content = text_size + Vec2::new(lead, 0.0);
         let padding = self
             .padding
             .or(component.padding)
             .unwrap_or(style.button_padding);
-        let mut desired_size = (text_size + padding.size())
+        let mut desired_size = (content + padding.size())
             .max(self.min_size)
             .max(component.min_size.unwrap_or(Vec2::ZERO))
             .max(Vec2::new(24.0, style.control_height));
@@ -221,6 +253,12 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
             } else {
                 HitAction::Block
             },
+        });
+        ui.a11y(id, rect, crate::AccessRole::Button, |node| {
+            node.label(label).disabled(!self.enabled).clicks(id);
+            if self.toggle {
+                node.toggled(self.selected);
+            }
         });
         let preset = self
             .hover_style
@@ -340,7 +378,7 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
         ui.context.paint(id.with("body"), ui.window, ui.clip, body);
         // Fixed-height Grid/Table cells may be shorter than the theme's button.
         // Fit the allocation first, then reduce padding before clipping its label.
-        let spare = (rect.size() - text_size).max(Vec2::ZERO);
+        let spare = (rect.size() - content).max(Vec2::ZERO);
         let psize = padding.size();
         let x = if psize.x > 0.0 {
             (spare.x / psize.x).min(1.0)
@@ -361,24 +399,31 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
         .inset(rect)
         .intersect(rect);
         let optical = ui.context.centered_line_offset(label, size, weight);
+        let color = super::appearance::alpha(hover.text_color, hover.opacity);
+        let start = match self.align {
+            crate::Align::Start => text_rect.min.x,
+            crate::Align::Center => rect.center().x - content.x * 0.5,
+            crate::Align::End => text_rect.max.x - content.x,
+        };
+        if let Some(icon) = self.icon.clone() {
+            let side = lead - ICON_GAP;
+            let glyph = Rect::from_min_size(
+                Vec2::new(start, rect.center().y - side * 0.5),
+                Vec2::splat(side),
+            );
+            ui.paint_image_in(id.with("icon"), icon, glyph, color);
+        }
         ui.context.paint(
             id.with("caption"),
             ui.window,
             ui.clip.intersect(text_rect),
             vec![Paint::Text {
                 text: label.to_owned(),
-                position: Vec2::new(
-                    match self.align {
-                        crate::Align::Start => text_rect.min.x,
-                        crate::Align::Center => rect.center().x - text_size.x * 0.5,
-                        crate::Align::End => text_rect.max.x - text_size.x,
-                    },
-                    rect.center().y - text_size.y * 0.5 + optical,
-                ),
+                position: Vec2::new(start + lead, rect.center().y - text_size.y * 0.5 + optical),
                 size,
                 weight,
                 wrap_width: f32::INFINITY,
-                color: super::appearance::alpha(hover.text_color, hover.opacity),
+                color,
             }],
         );
         response

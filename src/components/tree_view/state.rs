@@ -9,6 +9,8 @@ pub(super) struct Row {
     pub depth: usize,
     pub enabled: bool,
     pub children: TreeChildren,
+    /// Position among the children of `parent`, and how many there are.
+    pub set: (u32, u32),
 }
 pub(crate) struct TreeState {
     pub last_frame: u64,
@@ -25,6 +27,16 @@ pub(crate) struct TreeState {
     pub(super) pending_reveal: Option<Id>,
     pub(crate) action_ids: HashMap<Id, Id>,
     pub(super) owner_focused: bool,
+}
+/// A node waiting to become a row: id, parent, depth, and its place among its siblings.
+type Pending = (Id, Option<Id>, usize, (u32, u32));
+/// Give freshly pushed siblings their count and put the first one on top of the stack.
+fn number_siblings(siblings: &mut [Pending]) {
+    let count = siblings.len() as u32;
+    for sibling in siblings.iter_mut() {
+        sibling.3 .1 = count;
+    }
+    siblings.reverse();
 }
 impl TreeState {
     pub(super) fn new(open: Vec<Id>, selected: Option<Id>) -> Self {
@@ -64,10 +76,11 @@ impl TreeState {
         self.index.clear();
         self.accessible.clear();
         self.issues.clear();
-        let mut stack: Vec<_> = model.roots().map(|id| (id, None, 0)).collect();
-        stack.reverse();
+        let roots = (0..).zip(model.roots());
+        let mut stack: Vec<_> = roots.map(|(n, id)| (id, None, 0, (n, 0))).collect();
+        number_siblings(&mut stack);
         let mut visited = HashSet::new();
-        while let Some((id, parent, depth)) = stack.pop() {
+        while let Some((id, parent, depth, set)) = stack.pop() {
             if !visited.insert(id) {
                 self.issues.push(TreeIssue::DuplicateOrCycle(id));
                 continue;
@@ -87,11 +100,13 @@ impl TreeState {
                 depth,
                 enabled: node.enabled,
                 children: node.children,
+                set,
             });
             if node.children.expandable() && self.open.contains(&id) {
                 let start = stack.len();
-                stack.extend(model.children(id).map(|child| (child, Some(id), depth + 1)));
-                stack[start..].reverse();
+                let children = (0..).zip(model.children(id));
+                stack.extend(children.map(|(n, child)| (child, Some(id), depth + 1, (n, 0))));
+                number_siblings(&mut stack[start..]);
             }
         }
         // Check only UI state IDs, not every closed subtree in the model.

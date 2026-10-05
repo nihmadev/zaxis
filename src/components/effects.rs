@@ -5,7 +5,7 @@ use crate::{
 };
 use std::hash::Hash;
 
-pub(crate) struct EffectState {
+pub struct EffectState {
     pub last_frame: u64,
     pub revision: u64,
     pub value: f32,
@@ -190,8 +190,22 @@ impl Ui<'_> {
         opacity: f32,
         build: impl FnOnce(&mut Ui<'_>) -> R,
     ) -> R {
+        self.visual_gated(source, transform, opacity, None, build)
+    }
+
+    /// Like [`Self::visual`], but whether the content takes input is decided by `input`.
+    /// The content keeps the enabled look of its parent even when it takes no input, so a
+    /// layer that is only passing through (a card on its way in) is not drawn greyed out.
+    pub(crate) fn visual_gated<R>(
+        &mut self,
+        source: impl Hash,
+        transform: Transform,
+        opacity: f32,
+        input: Option<bool>,
+        build: impl FnOnce(&mut Ui<'_>) -> R,
+    ) -> R {
         if self.flow.is_some() {
-            return self.layout_item(|ui| ui.visual(source, transform, opacity, build));
+            return self.layout_item(|ui| ui.visual_gated(source, transform, opacity, input, build));
         }
         let (transform, opacity) = if transform.angle.is_finite()
             && transform.scale.is_finite()
@@ -203,8 +217,7 @@ impl Ui<'_> {
         } else {
             self.context
                 .report(crate::DiagnosticKind::InvalidValue, None, None, || {
-                    "Ui::visual: expected a finite transform with scale > 0 and a finite opacity; \
-                 using the identity transform"
+                    "Ui::visual: expected a finite transform with scale > 0 and a finite opacity;                  using the identity transform"
                         .into()
                 });
             (crate::Transform::IDENTITY, 1.0)
@@ -212,7 +225,8 @@ impl Ui<'_> {
         // Input follows axis-aligned geometry: turned content is look-only.
         let interactive = opacity > 0.0 && transform.angle == 0.0;
         let id = self.scope.with(("visual", Id::new(source)));
-        let (inner, size, placement) = self.measure_effect(id, interactive, build);
+        let (inner, size, placement) =
+            self.measure_effect_as(id, self.enabled && (interactive || input.is_some()), build);
         let rect = transform.rect(Rect::from_min_size(self.layout.cursor, size));
         if rect.intersect(self.clip_rect()).is_empty() {
             self.context.hide_placement_animations(&placement);
@@ -222,7 +236,7 @@ impl Ui<'_> {
             transform,
             opacity.clamp(0.0, 1.0),
             self.clip_rect(),
-            interactive,
+            interactive && input.unwrap_or(true),
         );
         self.allocate_space(size);
         inner
@@ -231,6 +245,15 @@ impl Ui<'_> {
         &mut self,
         id: Id,
         interactive: bool,
+        build: impl FnOnce(&mut Ui<'_>) -> R,
+    ) -> (R, Vec2, crate::context::placement::Placement) {
+        self.measure_effect_as(id, self.enabled && interactive, build)
+    }
+    /// Measure `build` in a child UI whose enabled state is `enabled`.
+    pub(super) fn measure_effect_as<R>(
+        &mut self,
+        id: Id,
+        enabled: bool,
         build: impl FnOnce(&mut Ui<'_>) -> R,
     ) -> (R, Vec2, crate::context::placement::Placement) {
         let bounds = Rect::from_min_max(self.layout.cursor, self.layout.bounds.max);
@@ -247,7 +270,7 @@ impl Ui<'_> {
             sequence: 0,
             clip: Rect::from_min_size(Vec2::splat(-1.0e9), Vec2::splat(2.0e9)),
             layout: LayoutCursor::new(bounds, Layout::Vertical, spacing),
-            enabled: self.enabled && interactive,
+            enabled,
             backdrop_blur: self.backdrop_blur,
             hover_style: self.hover_style,
             local_style: self.local_style.clone(),

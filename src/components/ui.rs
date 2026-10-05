@@ -17,12 +17,12 @@ pub(crate) use flow::FlowState;
 /// A vertical or horizontal layout inside a window. Constructed by [`super::Window::show`].
 pub struct Ui<'a> {
     pub(crate) context: &'a mut Context,
-    pub(super) window: Id,
-    pub(super) scope: Id,
+    pub(crate) window: Id,
+    pub(crate) scope: Id,
     pub(super) sequence: u64,
-    pub(super) clip: Rect,
+    pub(crate) clip: Rect,
     pub(super) layout: LayoutCursor,
-    pub(super) enabled: bool,
+    pub(crate) enabled: bool,
     pub(super) backdrop_blur: f32,
     pub(super) hover_style: Option<HoverStyle>,
     pub(super) flow: Option<Flow>,
@@ -197,6 +197,7 @@ impl Ui<'_> {
             drag_stopped: events.drag_stopped,
             drag_delta: events.drag_delta,
             menu_selected: None,
+            link: None,
         }
     }
 
@@ -217,6 +218,11 @@ impl Ui<'_> {
         }
     }
 
+    /// The `Id` that [`Self::interact`] gives `id_source` in the current scope.
+    pub(super) fn interact_id(&self, id_source: impl Hash) -> Id {
+        self.scope.with(("interact", Id::new(id_source)))
+    }
+
     /// Response for custom geometry, through the same hit path as built-in controls.
     ///
     /// Allocate `rect` with [`Self::allocate_space`] (or take it from your own layout)
@@ -225,7 +231,7 @@ impl Ui<'_> {
     /// exactly as they do for a [`super::Button`]; `sense` selects the inputs reported.
     /// A focusable region receives raw keys through [`Context::input`].
     pub fn interact(&mut self, rect: Rect, id_source: impl Hash, sense: Sense) -> Response {
-        let id = self.scope.with(("interact", Id::new(id_source)));
+        let id = self.interact_id(id_source);
         let response = self.response(id, rect, self.enabled);
         if sense.claims_pointer() || !self.enabled {
             self.context.register_hit(HitRegion {

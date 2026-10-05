@@ -19,6 +19,21 @@ pub(super) struct Events {
     pub clicked: Option<usize>,
     /// Screen rectangles of the rows that open a submenu.
     pub submenu_rows: Vec<(usize, Rect)>,
+    /// Assistive technology asked to close the submenu of this row.
+    pub collapsed: Option<usize>,
+}
+
+/// What a panel tells assistive technology besides its rows.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Access<'a> {
+    /// The title or the row the panel belongs to.
+    pub label: &'a str,
+    /// The hit region that holds focus for the whole menu; the root panel answers for it.
+    pub focus: Option<Id>,
+    /// The row the keyboard highlights, in whichever panel it is.
+    pub active: Option<Id>,
+    /// The row of this panel whose submenu is open.
+    pub open: Option<usize>,
 }
 
 pub(super) fn rows(items: &[MenuItem]) -> Vec<ContextMenuItem> {
@@ -55,8 +70,18 @@ pub(super) fn body(
     active: Option<Id>,
     reveal: Option<usize>,
     pointer_moved: bool,
+    access: Access<'_>,
 ) -> Events {
     let mut events = Events::default();
+    let menu = ui.a11y_begin(panel, crate::AccessRole::Menu, |node| {
+        node.label(access.label);
+        if let Some(focus) = access.focus {
+            node.focus_on(focus);
+            if let Some(active) = access.active {
+                node.active_descendant(active);
+            }
+        }
+    });
     let mut scroll = ui.style().scroll;
     scroll.padding = Padding::all(0.0);
     scroll.spacing = 0.0;
@@ -67,7 +92,8 @@ pub(super) fn body(
         .overlay_scrollbars(true)
         .style(scroll)
         .show_hints(false)
-        .middle_mouse_scroll(false);
+        .middle_mouse_scroll(false)
+        .a11y_hidden();
     if let Some(index) = reveal {
         let top = offsets(rows, style)[index];
         area = area.scroll_to_rect(Rect::from_min_size(
@@ -75,9 +101,10 @@ pub(super) fn body(
             Vec2::new(metrics.width, style.row_height),
         ));
     }
-    area.show(ui, |ui| {
+    let shown = area.show(ui, |ui| {
         ui.layout.spacing = 0.0;
         for (index, item) in rows.iter().enumerate() {
+            let node = ui.context.a11y_len();
             let (response, clicked) = paint::row(ui, panel, item, active, metrics, style);
             let Some(response) = response else { continue };
             if pointer_moved && response.hovered && response.enabled {
@@ -88,9 +115,23 @@ pub(super) fn body(
             }
             if item.submenu {
                 events.submenu_rows.push((index, response.rect));
+                let open = access.open == Some(index);
+                if let Some(node) = ui.context.a11y_node_mut(node).filter(|_| open) {
+                    node.expanded(true);
+                }
+                // Opening is the row's click; closing has no pointer gesture of its own.
+                for request in ui.context.take_access_actions(response.id) {
+                    match request {
+                        crate::AccessAction::Expand if !open => events.clicked = Some(index),
+                        crate::AccessAction::Collapse if open => events.collapsed = Some(index),
+                        _ => {}
+                    }
+                }
             }
         }
     });
+    ui.context.a11y_scroll(&menu, shown.id);
+    ui.a11y_end(menu, Some(shown.viewport));
     events
 }
 
@@ -140,6 +181,9 @@ pub(super) fn panel<R>(
     body.opacity = style.opacity;
     body.apply(component.surface);
     ui.context.push_popup_layer(layer);
+    let access =
+        ui.context
+            .a11y_begin_layer(layer, layer.with("layer"), crate::AccessRole::Group, |_| {});
     ui.context.register_hit(HitRegion {
         id: layer.with("block"),
         window: layer,
@@ -179,5 +223,6 @@ pub(super) fn panel<R>(
     child.begin_layout(Align::Start);
     let inner = build(&mut child);
     child.finish_layout();
+    child.context.a11y_end(access, Some((rect, viewport)));
     inner
 }

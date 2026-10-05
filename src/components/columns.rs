@@ -93,12 +93,7 @@ pub(crate) fn dimension(value: f32) -> f32 {
 
 /// Resolve shared widths without shrinking fixed/content columns below their minima.
 /// If minima exceed the viewport, the layout overflows and its container clips/scrolls.
-pub(crate) fn resolve(
-    columns: &[Column],
-    measured: &[f32],
-    available: f32,
-    spacing: f32,
-) -> Vec<f32> {
+pub fn resolve(columns: &[Column], measured: &[f32], available: f32, spacing: f32) -> Vec<f32> {
     let mut widths: Vec<_> = columns
         .iter()
         .enumerate()

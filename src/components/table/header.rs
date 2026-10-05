@@ -54,7 +54,7 @@ pub(super) fn paint(
     );
     let mut x = rect.min.x - offset;
     let mut request = None;
-    for (column, &width) in columns.iter().zip(widths) {
+    for (index, (column, &width)) in columns.iter().zip(widths).enumerate() {
         let bounds = Rect::from_min_size(Vec2::new(x, rect.min.y), Vec2::new(width, rect.size().y));
         let id = table.with(("header", column.id));
         let response = ui.response(id, bounds, column.sortable);
@@ -143,6 +143,17 @@ pub(super) fn paint(
                 action: HitAction::Activate,
             });
         }
+        // A click request on a sortable header is the click that sorts.
+        ui.a11y(id, bounds, crate::AccessRole::ColumnHeader, |node| {
+            node.label(column.title.as_str());
+            (node.table().row, node.table().column) = (Some(0), Some(index as u32));
+            if column.sortable {
+                node.clicks(id);
+            }
+            if let Some(sort) = state.sort.filter(|sort| sort.column == column.id) {
+                node.sort(sort.direction == SortDirection::Ascending);
+            }
+        });
         if resizable && column.resizable && ui.enabled {
             let handle = Rect::from_min_size(
                 Vec2::new(

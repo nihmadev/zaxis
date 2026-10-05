@@ -189,6 +189,10 @@ impl Popup {
             });
         }
         ui.context.push_popup_layer(id);
+        // An unnamed group only carries the layer: whoever fills the popup says what it is.
+        let access = ui
+            .context
+            .a11y_begin_layer(id, id, crate::AccessRole::Group, |_| {});
         if *open {
             ui.context.register_hit(HitRegion {
                 id: id.with("block"),
@@ -197,7 +201,8 @@ impl Popup {
                 clip: viewport,
                 action: HitAction::Block,
             });
-            if let Some(target) = self.key_target {
+            // A popup opened at a point (a context menu) has no trigger to stand in for.
+            if let Some(target) = self.key_target.filter(|_| !self.anchor.is_empty()) {
                 ui.context.register_hit(HitRegion {
                     id: target,
                     window: id,
@@ -259,6 +264,8 @@ impl Popup {
         child.begin_layout(crate::Align::Start);
         let inner = build(&mut child);
         child.finish_layout();
+        // Placed before a closing popup drops its hits: its nodes leave the tree with them.
+        child.context.a11y_end(access, Some((rect, viewport)));
         if *open && !child.context.popup.as_ref().is_some_and(|p| p.id == id) {
             *open = false;
             child.context.dismissed_popups.remove(&id);

@@ -58,7 +58,9 @@ impl TreeView<'_> {
                 state.reveal(node, model, &mut events);
                 ui.context.set_focus(Some(id));
             }
-            for input in ui.context.tree_input.remove(&id).unwrap_or_default() {
+            let mut inputs = ui.context.tree_input.remove(&id).unwrap_or_default();
+            access::requests(ui, id, &state, &mut inputs);
+            for input in inputs {
                 if state.dirty {
                     state.rebuild(model, &mut events);
                     rebuilt = true;
@@ -120,11 +122,13 @@ impl TreeView<'_> {
             },
         });
         let owner_focus = ui.context.focus_visible(id);
+        let tree = access::begin(ui, id, &self.label, enabled, &state);
         if self.drag {
             drag::keep_alive(ui, id, model);
         }
         let mut scroll = ScrollArea::vertical()
             .id_source(id)
+            .a11y_hidden()
             .max_height(self.height)
             .style(style.scroll.unwrap_or(ScrollStyle {
                 padding: Padding::default(),
@@ -155,7 +159,10 @@ impl TreeView<'_> {
                         return;
                     };
                     rows_built += 1;
-                    let row_id = id.with(("node", row.id));
+                    let row_id = access::row_id(id, row.id);
+                    let open = state.open.contains(&row.id);
+                    let selected = state.selected == Some(row.id);
+                    let item = access::row(ui, row_id, &row, node.label, open, selected, enabled);
                     let h = disclosure::header(
                         ui,
                         Header {
@@ -163,9 +170,9 @@ impl TreeView<'_> {
                             label: node.label,
                             icon: node.icon,
                             branch: row.children.expandable(),
-                            open: state.open.contains(&row.id),
+                            open,
                             enabled: row.enabled && enabled,
-                            selected: state.selected == Some(row.id),
+                            selected,
                             focus: owner_focus && state.focused == Some(row.id),
                             indent: row.depth as f32 * indent,
                             action: HitAction::TreeRow {
@@ -182,6 +189,7 @@ impl TreeView<'_> {
                         },
                         |ui| actions(ui, row.id),
                     );
+                    access::end_row(ui, item, h.response.rect);
                     if self.drag && row.enabled && enabled {
                         drag::attach(
                             ui,
@@ -215,6 +223,8 @@ impl TreeView<'_> {
                 },
             )
         });
+        ui.context.a11y_scroll(&tree, output.id);
+        ui.a11y_end(tree, Some(outer));
         if action_focus.is_some_and(|f| !state.action_ids.contains_key(&f)) {
             if ui
                 .context

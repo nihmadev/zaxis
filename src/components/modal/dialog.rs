@@ -121,6 +121,8 @@ impl Dialog {
             .position(|a| a.default)
             .unwrap_or(actions.len().saturating_sub(1));
         let mut chosen = None;
+        let described = description.is_some();
+        let modal = modal.access(crate::AccessRole::Dialog, described);
         let output = modal.style(style).show_parts(
             ui,
             open,
@@ -272,6 +274,7 @@ impl Confirm {
         let output = Modal::new(self.source)
             .close_button(false)
             .bodyless()
+            .access(crate::AccessRole::AlertDialog, description.is_some())
             .dismiss_on_escape(escape)
             .dismiss_on_overlay(overlay)
             .show_parts(

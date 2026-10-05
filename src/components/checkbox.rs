@@ -164,6 +164,12 @@ impl Widget for Checkbox<'_> {
             *self.checked = !*self.checked;
             response.changed = true;
         }
+        ui.a11y(id, rect, crate::AccessRole::CheckBox, |node| {
+            node.label(label)
+                .toggled(*self.checked)
+                .disabled(!self.enabled)
+                .clicks(id);
+        });
         let square = Rect::from_min_size(
             rect.min + Vec2::new(0.0, (rect.size().y - side) * 0.5),
             Vec2::splat(side),

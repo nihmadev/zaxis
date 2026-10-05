@@ -10,7 +10,7 @@ use winit::keyboard::{KeyCode, ModifiersState};
 
 /// A text position plus which side of a soft wrap the caret is drawn on.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct Pos {
+pub struct Pos {
     pub byte: usize,
     /// At a soft wrap the byte ends one visual line and starts the next; upstream draws
     /// the caret at the end of the earlier line.
@@ -18,7 +18,7 @@ pub(crate) struct Pos {
 }
 
 /// Wrap-dependent geometry, supplied by the field's layout.
-pub(crate) trait Surface {
+pub trait Surface {
     /// Logical byte range of the visual line holding `pos`, and whether it ends at a soft wrap.
     fn line(&mut self, text: &str, pos: Pos) -> (Range<usize>, bool);
     /// Move `lines` visual lines keeping the desired column. `None`: not supported.
@@ -53,14 +53,14 @@ impl Surface for OneLine {
 
 /// A text replacement, enough to undo, redo, and update incremental layout state.
 #[derive(Clone, Debug)]
-pub(crate) struct Change {
+pub struct Change {
     pub at: usize,
     pub removed: String,
     pub inserted: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Delta {
+pub struct Delta {
     pub at: usize,
     pub old_len: usize,
     pub new_len: usize,
@@ -77,7 +77,7 @@ impl Change {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct EditBuffer {
+pub struct EditBuffer {
     pub cursor: usize,
     pub anchor: usize,
     pub upstream: bool,

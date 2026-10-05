@@ -2,10 +2,12 @@
 //! corner close button and the shared paint of chrome.
 use super::Ui;
 use crate::{
-    components::{appearance::Appearance, Button, ButtonVariant},
+    components::{
+        appearance::Appearance, theme::ModalStyle, Button, ButtonVariant, ScrollStyle, Style,
+    },
     context::Paint,
     layout::LayoutCursor,
-    Align, Id, Layout, Rect, Shape, Vec2,
+    Align, Id, Layout, Padding, Rect, Shape, Vec2,
 };
 
 /// Run `build` in a vertical flow laid out inside `rect`, returning the extent used.
@@ -47,6 +49,7 @@ pub(super) fn measure_item(ui: &mut Ui<'_>, build: impl FnOnce(&mut Ui<'_>)) -> 
 pub(super) fn close_button(ui: &mut Ui<'_>, rect: Rect) -> bool {
     let size = rect.size();
     let (clicked, color) = region(ui, rect, 0.0, ui.scope.with("close"), |c| {
+        let node = c.context.a11y_len();
         let response = c.add(
             Button::new("")
                 .id_source("close")
@@ -55,6 +58,9 @@ pub(super) fn close_button(ui: &mut Ui<'_>, rect: Rect) -> bool {
                 .width(size.x)
                 .padding(crate::Padding::all(0.0)),
         );
+        if let Some(node) = c.context.a11y_node_mut(node) {
+            node.label("Close");
+        }
         let style = c.style();
         let color = if response.hovered || response.has_focus {
             style.text_color
@@ -105,4 +111,40 @@ pub(super) fn paint_surface(
             .corner_radius(rounding),
     );
     ui.context.paint(id.with("surface"), ui.window, clip, paint);
+}
+
+/// The few theme values the modal reads.
+pub(super) struct Look {
+    pub(super) modal: ModalStyle,
+    pub(super) presence: crate::TweenOptions,
+    pub(super) window_fill: crate::Color,
+    pub(super) border: crate::Border,
+    pub(super) text_color: crate::Color,
+    pub(super) rounding: crate::CornerRadius,
+    pub(super) blur_radius: f32,
+    pub(super) elevation: crate::Shadow,
+    pub(super) opacity: f32,
+    pub(super) window_padding: Padding,
+    pub(super) spacing: f32,
+    pub(super) scroll: ScrollStyle,
+    pub(super) control_height: f32,
+}
+impl Look {
+    pub(super) fn of(style: &Style) -> Self {
+        Self {
+            modal: style.modal,
+            presence: style.motion.presence.clone(),
+            window_fill: style.window_fill,
+            border: style.border,
+            text_color: style.text_color,
+            rounding: style.rounding,
+            blur_radius: style.blur_radius,
+            elevation: style.elevation,
+            opacity: style.opacity,
+            window_padding: style.window_padding,
+            spacing: style.spacing,
+            scroll: style.scroll,
+            control_height: style.control_height,
+        }
+    }
 }
