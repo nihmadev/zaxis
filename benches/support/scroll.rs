@@ -1,10 +1,11 @@
 //! Real scroll input and content, with assertions outside the timed pass.
 use crate::scene::Case;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zaxis::winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
 };
+use zaxis::Instant;
 use zaxis::{vec2, Context, Rect, ScrollArea, Slider, Vec2, Window};
 
 #[derive(Default)]

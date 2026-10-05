@@ -1,8 +1,6 @@
 //! Release CPU/UI stress, with real event routing and geometry generation.
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Duration};
+use zaxis::Instant;
 use zaxis::{
     winit::{
         dpi::{PhysicalPosition, PhysicalSize},

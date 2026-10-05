@@ -1,10 +1,11 @@
 //! Modal scenarios: closed overhead, open/close, steady state and large content.
 //! Assertions run outside the timed pass and use only the public API.
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zaxis::winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, MouseScrollDelta, TouchPhase, WindowEvent},
 };
+use zaxis::Instant;
 use zaxis::{Context, Dialog, DialogAction, Rect, Root, ScrollArea, Vec2};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

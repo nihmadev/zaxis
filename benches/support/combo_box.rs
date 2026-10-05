@@ -1,11 +1,12 @@
 //! Real ComboBox paths: cached/animated popup, keyboard, wheel, filters and live updates.
 use crate::scene::Case;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zaxis::winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::{KeyCode, ModifiersState},
 };
+use zaxis::Instant;
 use zaxis::{vec2, ComboBox, ComboBoxOption, Context, Response, Window};
 
 pub struct Probe {

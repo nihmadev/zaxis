@@ -1,12 +1,13 @@
 //! Drag-and-drop scenarios for the shared performance harness. Input goes
 //! through the same public event dispatcher as a host; every assertion runs in
 //! `verify`, outside the timed intervals.
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zaxis::winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseButton, WindowEvent},
     keyboard::KeyCode,
 };
+use zaxis::Instant;
 use zaxis::{
     Context, DragReason, Id, Padding, Rect, Root, ScrollArea, TreeEvent, TreeModel, TreeNode,
     TreeView, Ui, Vec2,

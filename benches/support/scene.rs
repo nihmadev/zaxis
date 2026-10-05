@@ -1,13 +1,10 @@
-use std::{
-    hint::black_box,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{hint::black_box, sync::Arc, time::Duration};
 use zaxis::winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{DeviceId, ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::KeyCode,
 };
+use zaxis::Instant;
 use zaxis::{
     vec2, Blur, Border, Button, Checkbox, Color, ColorPicker, ColorPickerType, Context,
     CornerRadius, DrawCommand, DrawData, FontWeight, Padding, Rect, Response, Separator, Shape,
@@ -78,7 +75,10 @@ pub struct Scene {
     text_area: Option<crate::text_area::Probe>,
     split: Option<split::Probe>,
     disclosure: Option<crate::disclosure::Probe>,
+    list_box: Option<crate::list_box::Probe>,
+    carousel: Option<crate::carousel::Probe>,
     dnd: Option<crate::dnd::Probe>,
+    access: Option<crate::access::Probe>,
 }
 
 impl Scene {
@@ -108,8 +108,14 @@ impl Scene {
         } else {
             None
         };
+        let access = if let Case::Access(kind) = case {
+            Some(crate::access::Probe::new(&mut context, kind, count))
+        } else {
+            None
+        };
         let mut scene = Self {
             context,
+            access,
             case,
             count,
             size,
@@ -151,6 +157,16 @@ impl Scene {
             text_area,
             dnd: if let Case::Dnd(kind) = case {
                 Some(crate::dnd::Probe::new(kind, count))
+            } else {
+                None
+            },
+            carousel: if let Case::Carousel(kind) = case {
+                Some(crate::carousel::Probe::new(kind, count))
+            } else {
+                None
+            },
+            list_box: if let Case::ListBox(kind) = case {
+                Some(crate::list_box::Probe::new(kind, count))
             } else {
                 None
             },

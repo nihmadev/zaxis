@@ -1,8 +1,11 @@
 use super::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Case {
+    Access(crate::access::AccessCase),
     Dnd(crate::dnd::DndCase),
     Disclosure(crate::disclosure::DisclosureCase),
+    ListBox(crate::list_box::ListCase),
+    Carousel(crate::carousel::CarouselCase),
     Images(crate::images::ImageCase),
     Modal(crate::modal::ModalCase),
     TextArea(crate::text_area::TextAreaCase),
@@ -74,7 +77,12 @@ pub enum Case {
 }
 
 impl Case {
-    pub const ALL: [Self; 118] = [
+    pub const ALL: [Self; 136] = [
+        Self::Access(crate::access::AccessCase::IdleOff),
+        Self::Access(crate::access::AccessCase::IdleOn),
+        Self::Access(crate::access::AccessCase::ChangeOne),
+        Self::Access(crate::access::AccessCase::FullTree),
+        Self::Access(crate::access::AccessCase::Text),
         Self::Dnd(crate::dnd::DndCase::Idle),
         Self::Dnd(crate::dnd::DndCase::BeginEnd),
         Self::Dnd(crate::dnd::DndCase::MoveTargets),
@@ -90,6 +98,19 @@ impl Case {
         Self::Disclosure(crate::disclosure::DisclosureCase::TreeLifecycle),
         Self::Disclosure(crate::disclosure::DisclosureCase::CollapsingCached),
         Self::Disclosure(crate::disclosure::DisclosureCase::CollapsingToggle),
+        Self::ListBox(crate::list_box::ListCase::Cached),
+        Self::ListBox(crate::list_box::ListCase::Scroll),
+        Self::ListBox(crate::list_box::ListCase::Keys),
+        Self::ListBox(crate::list_box::ListCase::Select),
+        Self::ListBox(crate::list_box::ListCase::Revision),
+        Self::ListBox(crate::list_box::ListCase::Measured),
+        Self::ListBox(crate::list_box::ListCase::Lifecycle),
+        Self::Carousel(crate::carousel::CarouselCase::Cached),
+        Self::Carousel(crate::carousel::CarouselCase::Keys),
+        Self::Carousel(crate::carousel::CarouselCase::Swipe),
+        Self::Carousel(crate::carousel::CarouselCase::Jump),
+        Self::Carousel(crate::carousel::CarouselCase::Photos),
+        Self::Carousel(crate::carousel::CarouselCase::Lifecycle),
         Self::Modal(crate::modal::ModalCase::Closed),
         Self::Modal(crate::modal::ModalCase::Toggle),
         Self::Modal(crate::modal::ModalCase::Steady),
@@ -196,8 +217,11 @@ impl Case {
     ];
     pub fn name(self) -> &'static str {
         match self {
+            Self::Access(case) => case.name(),
             Self::Dnd(case) => case.name(),
             Self::Disclosure(case) => case.name(),
+            Self::ListBox(case) => case.name(),
+            Self::Carousel(case) => case.name(),
             Self::Images(case) => case.name(),
             Self::Modal(case) => case.name(),
             Self::TextArea(case) => case.name(),
@@ -279,9 +303,12 @@ impl Case {
         )
     }
     pub fn interactive(self) -> bool {
-        matches!(self, Self::Dnd(c) if c.interactive())
+        matches!(self, Self::Access(c) if c.interactive())
+            || matches!(self, Self::Dnd(c) if c.interactive())
             || matches!(self, Self::Split(c) if c.interactive())
             || matches!(self, Self::Disclosure(c) if c.interactive())
+            || matches!(self, Self::ListBox(c) if c.interactive())
+            || matches!(self, Self::Carousel(c) if c.interactive())
             || matches!(self, Self::Modal(c) if c.interactive())
             || matches!(self, Self::TextArea(c) if c.interactive())
             || self.combo()

@@ -1,8 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use zaxis::winit::{event::ElementState, keyboard::KeyCode};
+use zaxis::Instant;
 use zaxis::{
     CollapsingHeader, Context, Id, Root, ScrollArea, TreeEvent, TreeModel, TreeNode, TreeOutput,
     TreeView,

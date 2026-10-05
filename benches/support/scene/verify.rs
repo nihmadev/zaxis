@@ -6,6 +6,18 @@ impl Scene {
             probe.verify(&self.context);
             return;
         }
+        if let Some(probe) = &self.access {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.carousel {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.list_box {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(probe) = &self.disclosure {
             probe.verify(&self.context);
             return;

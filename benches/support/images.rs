@@ -1,9 +1,6 @@
 //! Deterministic image assets and async probes used by the existing CPU/native suites.
-use std::{
-    io::Cursor,
-    sync::mpsc,
-    time::{Duration, Instant},
-};
+use std::{io::Cursor, sync::mpsc, time::Duration};
+use zaxis::Instant;
 use zaxis::{
     vec2, Context, Image, ImageFit, ImageHandle, ImageSource, ImageState, Rect, ScrollArea,
     TextureFilter, Window,

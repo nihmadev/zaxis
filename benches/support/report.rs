@@ -369,8 +369,6 @@ pub struct Report {
 }
 
 pub fn timer_overhead() -> f64 {
-    let durations: Vec<_> = (0..1000)
-        .map(|_| std::time::Instant::now().elapsed())
-        .collect();
+    let durations: Vec<_> = (0..1000).map(|_| zaxis::Instant::now().elapsed()).collect();
     Distribution::new(&durations).p50_ms
 }

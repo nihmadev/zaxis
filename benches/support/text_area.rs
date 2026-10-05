@@ -1,12 +1,13 @@
 //! Multi-line TextEdit scenarios over documents from small to stress size: an unchanged
 //! frame, typing, a large paste with undo, wheel scrolling and width changes. Input goes
 //! through the public event path; assertions run outside the timed pass.
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zaxis::winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::{KeyCode, ModifiersState},
 };
+use zaxis::Instant;
 use zaxis::{Context, Rect, Root, TextEdit, Vec2};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

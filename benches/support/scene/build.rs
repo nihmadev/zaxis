@@ -12,6 +12,18 @@ impl Scene {
             probe.build(&mut self.context);
             return;
         }
+        if let Some(probe) = &mut self.access {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.carousel {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.list_box {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(probe) = &mut self.disclosure {
             probe.build(&mut self.context);
             return;

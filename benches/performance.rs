@@ -2,6 +2,10 @@
 //! Timings use real public APIs; functional assertions are outside timed regions.
 #![forbid(unsafe_code)]
 
+#[path = "support/access.rs"]
+mod access;
+#[path = "support/carousel.rs"]
+mod carousel;
 #[path = "support/combo_box.rs"]
 mod combo_box;
 #[path = "support/disclosure.rs"]
@@ -10,6 +14,8 @@ mod disclosure;
 mod dnd;
 #[path = "support/images.rs"]
 mod images;
+#[path = "support/list_box.rs"]
+mod list_box;
 #[path = "support/modal.rs"]
 mod modal;
 #[path = "support/report.rs"]
@@ -27,7 +33,7 @@ use std::{
     error::Error,
     path::PathBuf,
     sync::Arc,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use zaxis::winit::{
     application::ApplicationHandler,
@@ -36,6 +42,7 @@ use zaxis::winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
+use zaxis::Instant;
 use zaxis::{CacheStats, PresentationMode, RenderStatus, Renderer, RendererStats};
 
 type BenchResult<T> = Result<T, Box<dyn Error>>;
