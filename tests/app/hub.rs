@@ -1,13 +1,13 @@
-use super::commands::Command;
-use super::hub::Hub;
-use super::registry::OpenRequest;
-use super::{
+use std::collections::HashSet;
+use winit::keyboard::{KeyCode, ModifiersState};
+use zaxis::app::commands::Command;
+use zaxis::app::hub::Hub;
+use zaxis::app::registry::OpenRequest;
+use zaxis::app::{
     App, CloseRequested, CloseSource, ExitPolicy, Frame, GlobalShortcut, OpenOutcome, WindowError,
     WindowKey, WindowOptions, WindowPlan, WindowStatus, Windows,
 };
-use crate::{Context, SharedResources};
-use std::collections::HashSet;
-use winit::keyboard::{KeyCode, ModifiersState};
+use zaxis::{Context, SharedResources};
 
 /// An application written against the original single-window API: `update` only.
 struct Plain;
@@ -82,6 +82,36 @@ fn open(hub: &mut Hub<u32>, name: &str, id: u32) {
         OpenRequest::Queued
     );
     hub.opened(&WindowKey::new(name), id);
+}
+
+#[test]
+fn a_platform_with_one_window_refuses_the_next_as_a_result_not_a_panic() {
+    let mut hub = hub(ExitPolicy::default());
+    hub.control.max_windows = Some(1);
+    let mut windows = Windows::from_control(&mut hub.control);
+    let key = WindowKey::new("second");
+    assert_eq!(
+        windows.open(key.clone(), WindowOptions::new("Second")),
+        OpenOutcome::Unsupported
+    );
+    assert!(!windows.is_open(&key));
+    assert!(matches!(
+        windows.status(&key),
+        Some(WindowStatus::Failed(_))
+    ));
+    assert!(matches!(hub.take_commands()[..], [Command::Refused(..)]));
+    // The window that exists is not refused, and with room there is no refusal at all.
+    let mut windows = Windows::from_control(&mut hub.control);
+    assert_eq!(
+        windows.open(WindowKey::main(), WindowOptions::new("Main")),
+        OpenOutcome::AlreadyOpen
+    );
+    hub.control.max_windows = None;
+    let mut windows = Windows::from_control(&mut hub.control);
+    assert_eq!(
+        windows.open(key, WindowOptions::new("Second")),
+        OpenOutcome::Requested
+    );
 }
 
 #[test]
@@ -168,9 +198,7 @@ fn the_decision_can_close_other_windows_through_the_request() {
 #[test]
 fn opening_a_key_twice_requests_one_window() {
     let mut hub = hub(ExitPolicy::default());
-    let mut windows = Windows {
-        control: &mut hub.control,
-    };
+    let mut windows = Windows::from_control(&mut hub.control);
     let key = WindowKey::new("inspector");
     assert_eq!(
         windows.open(&key, WindowOptions::new("Inspector")),
@@ -185,9 +213,7 @@ fn opening_a_key_twice_requests_one_window() {
     // Once open it stays a no-op: no second window, no new surface.
     hub.begin_open(&key, None, false);
     hub.opened(&key, 5);
-    let mut windows = Windows {
-        control: &mut hub.control,
-    };
+    let mut windows = Windows::from_control(&mut hub.control);
     assert_eq!(
         windows.open(&key, WindowOptions::new("Inspector")),
         OpenOutcome::AlreadyOpen
@@ -201,10 +227,7 @@ fn a_failed_window_is_reported_and_may_be_requested_again_without_touching_other
     let mut hub = hub(ExitPolicy::default());
     open(&mut hub, "stable", 2);
     let key = WindowKey::new("broken");
-    Windows {
-        control: &mut hub.control,
-    }
-    .open(&key, WindowOptions::new("Broken"));
+    Windows::from_control(&mut hub.control).open(&key, WindowOptions::new("Broken"));
     hub.begin_open(&key, None, false);
     let closed = hub.open_failed(&key, "no surface".into());
     assert_eq!(closed.keys, [key.clone()]);
@@ -216,10 +239,7 @@ fn a_failed_window_is_reported_and_may_be_requested_again_without_touching_other
     assert!(hub.registry.contains(&WindowKey::new("stable")));
     assert_eq!(hub.control.stats.windows_failed, 1);
     assert_eq!(
-        Windows {
-            control: &mut hub.control
-        }
-        .open(&key, WindowOptions::new("Broken")),
+        Windows::from_control(&mut hub.control).open(&key, WindowOptions::new("Broken")),
         OpenOutcome::Requested
     );
 }
@@ -309,9 +329,7 @@ fn shortcuts_are_window_local_unless_the_application_takes_them() {
 fn window_info_and_keys_are_addressed_by_key() {
     let mut hub = hub(ExitPolicy::default());
     open(&mut hub, "a", 2);
-    let windows = Windows {
-        control: &mut hub.control,
-    };
+    let windows = Windows::from_control(&mut hub.control);
     let mut keys: Vec<_> = windows.keys().map(WindowKey::to_string).collect();
     keys.sort();
     assert_eq!(keys, ["a", "main"]);

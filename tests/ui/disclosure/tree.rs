@@ -81,7 +81,7 @@ fn tree_virtualization_revision_stable_actions_and_theme() {
     assert!(out.rebuilt);
     assert_eq!(first.unwrap(), controls[&id(1)]);
     let visits = m.visits.get();
-    c.set_theme(crate::Theme::light());
+    c.set_theme(zaxis::Theme::light());
     let (out, _) = build(&mut c, &m);
     assert!(!out.rebuilt);
     assert_eq!(visits, m.visits.get());
@@ -125,8 +125,8 @@ fn tree_deletion_hidden_selection_reveal_cycles() {
     let out = tree(&mut c, &m, |t| t.reveal_node(id(1)));
     assert!(out
         .issues
-        .contains(&crate::TreeIssue::DuplicateOrCycle(id(0))));
+        .contains(&zaxis::TreeIssue::DuplicateOrCycle(id(0))));
     assert!(out
         .issues
-        .contains(&crate::TreeIssue::DuplicateOrCycle(id(1))));
+        .contains(&zaxis::TreeIssue::DuplicateOrCycle(id(1))));
 }

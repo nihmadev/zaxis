@@ -14,6 +14,22 @@ fn context() -> Context {
     context
 }
 
+/// `zaxis::Instant` is the std clock on native targets, so every public deadline keeps its
+/// type; only `wasm32` swaps in `web_time`, which winit also uses there.
+#[test]
+fn instant_is_the_std_clock_on_native_targets() {
+    let now: std::time::Instant = zaxis::Instant::now();
+    let mut context = context();
+    let mut frames = 0;
+    context.run_at(now, |_| frames += 1);
+    context.run_at(now + Duration::from_millis(16), |_| frames += 1);
+    assert_eq!(frames, 2);
+    context.request_repaint_after(Duration::from_millis(50));
+    let deadline: Option<std::time::Instant> = context.next_repaint();
+    assert!(deadline.is_some());
+    assert!(!context.needs_repaint_at(now));
+}
+
 fn build(context: &mut Context, label: &str) -> Response {
     let mut response = None;
     context.run(|context| {

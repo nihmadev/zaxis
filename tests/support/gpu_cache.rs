@@ -135,12 +135,12 @@ pub(super) fn verify_gpu_cache(state: &mut State) {
         for _ in 0..120 {
             state.checked = !state.checked;
             state.context.request_repaint();
-            let start = std::time::Instant::now();
+            let start = zaxis::Instant::now();
             state
                 .context
                 .run(|context| show_ui(context, &mut state.clicks, &mut state.checked));
             ui_time += start.elapsed();
-            let start = std::time::Instant::now();
+            let start = zaxis::Instant::now();
             assert_eq!(
                 state
                     .renderer

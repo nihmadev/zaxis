@@ -1,6 +1,6 @@
-use super::{pipeline, textures, viewport};
-use crate::{shapes::Mesh, Border, Color, CornerRadius, Rect, Shape, Vec2};
 use wgpu::util::DeviceExt;
+use zaxis::renderer::{pipeline, textures, viewport};
+use zaxis::{shapes::Mesh, Border, Color, CornerRadius, Rect, Shape, Vec2};
 
 // Read actual GPU pixels, including the single-sample fallback. Kept opt-in so
 // CPU-only CI does not need a graphics adapter.

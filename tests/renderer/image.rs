@@ -1,6 +1,6 @@
-use super::{pipeline, textures, viewport};
-use crate::{shapes::Mesh, Color, CornerRadius, Rect, Vec2};
 use wgpu::util::DeviceExt;
+use zaxis::renderer::{pipeline, textures, viewport};
+use zaxis::{shapes::Mesh, Color, CornerRadius, Rect, Vec2};
 
 #[test]
 fn image_gpu_alpha_tint_rounding_and_filter_readback() {
@@ -158,7 +158,7 @@ fn image_gpu_alpha_tint_rounding_and_filter_readback() {
                     CornerRadius::all(rounding),
                     tint,
                     opacity,
-                    crate::TextureId(1),
+                    zaxis::TextureId(1),
                     1.0,
                 );
                 ranges.push(start..mesh.indices.len() as u32);

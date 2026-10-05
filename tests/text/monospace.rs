@@ -1,6 +1,9 @@
 //! Monospace cells, tabular figures and the family-aware layout cache.
-use super::*;
+use ab_glyph::Font;
+use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
+use zaxis::text::*;
+use zaxis::{FontFamily, FontWeight};
 
 const SIZE: f32 = 16.0;
 const MONO: TextFont = TextFont {

@@ -1,5 +1,5 @@
-use super::registry::{Closed, OpenRequest, Reconcile, Registry};
-use super::{ExitPolicy, WindowKey};
+use zaxis::app::registry::{Closed, OpenRequest, Reconcile, Registry};
+use zaxis::app::{ExitPolicy, WindowKey};
 
 fn key(name: &str) -> WindowKey {
     WindowKey::new(name)

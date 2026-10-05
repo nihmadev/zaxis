@@ -1,4 +1,5 @@
-use super::*;
+use zaxis::components::split_pane::allocation::{resize, resolve};
+use zaxis::{SplitPanel, SplitSize};
 fn panels(n: usize) -> Vec<SplitPanel> {
     (0..n).map(SplitPanel::new).collect()
 }

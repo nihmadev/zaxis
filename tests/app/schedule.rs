@@ -1,4 +1,7 @@
-use super::*;
+use std::time::Duration;
+use winit::event_loop::ControlFlow;
+use zaxis::app::schedule::{self, repaint_schedule};
+use zaxis::Instant;
 
 #[test]
 fn idle_input_and_animation_schedule_without_polling() {

@@ -1,10 +1,11 @@
-use super::*;
-use crate::{vec2, Context, Image, ImageFit, TextureFilter, Window};
 use std::{
     io::Cursor,
     sync::{mpsc, Arc, Condvar, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use zaxis::images::{decode, resize, source, *};
+use zaxis::Instant;
+use zaxis::{vec2, Context, Image, ImageFit, TextureFilter, Window};
 
 fn encoded(format: image::ImageFormat) -> Vec<u8> {
     let mut out = Cursor::new(Vec::new());
@@ -123,7 +124,7 @@ fn alpha_conversion_area_reduction_and_limits() {
 }
 fn context() -> (Context, mpsc::Receiver<()>) {
     let mut c = Context::new();
-    c.set_viewport(crate::winit::dpi::PhysicalSize::new(800, 600), 1.0);
+    c.set_viewport(zaxis::winit::dpi::PhysicalSize::new(800, 600), 1.0);
     let (tx, rx) = mpsc::channel();
     c.set_image_waker(move || {
         let _ = tx.send(());
@@ -232,7 +233,7 @@ fn svg_dpi_resize_debounce_and_parsed_cache() {
             .size,
         [99, 40]
     );
-    c.set_viewport(crate::winit::dpi::PhysicalSize::new(1600, 1200), 2.0);
+    c.set_viewport(zaxis::winit::dpi::PhysicalSize::new(1600, 1200), 2.0);
     pass(&mut c, start + Duration::from_millis(302), vec2(99.0, 40.0));
     pass(&mut c, start + Duration::from_millis(500), vec2(99.0, 40.0));
     rx.recv_timeout(Duration::from_secs(10)).unwrap();
@@ -335,12 +336,63 @@ fn stale_completion_cannot_replace_new_generation_and_drop_does_not_wake() {
     drop(c);
 }
 #[test]
+fn inline_decoding_spends_the_frame_budget_on_the_drawing_thread() {
+    let (mut c, rx) = context();
+    c.decode_images_inline(Some(Duration::ZERO));
+    let handles: Vec<_> = (0..2u8)
+        .map(|n| {
+            c.load_image(ImageSource::rgba([2, 2], vec![n * 40; 16]))
+                .unwrap()
+        })
+        .collect();
+    let draw = |c: &mut Context| {
+        c.run(|c| {
+            Window::new("inline").show(c, |ui| {
+                for (i, h) in handles.iter().enumerate() {
+                    ui.push_id(i, |ui| {
+                        ui.add(Image::new(*h).size(vec2(8.0, 8.0)));
+                    });
+                }
+            });
+        });
+    };
+    draw(&mut c);
+    assert_eq!(c.image_metrics().pending_jobs, 2);
+    assert!(rx.try_recv().is_ok(), "queued work wakes the host");
+    // No thread ran anything: each frame decodes exactly one job, as a zero budget allows,
+    // and queued work keeps asking for frames until it is done.
+    for pending in [1, 0] {
+        assert!(c.needs_repaint(), "{pending} jobs remain");
+        draw(&mut c);
+        assert_eq!(c.image_metrics().pending_jobs, pending);
+    }
+    draw(&mut c);
+    assert!(!c.needs_repaint());
+    assert!(handles
+        .iter()
+        .all(|h| matches!(c.image_state(*h), ImageState::Ready { .. })));
+}
+#[test]
+fn inline_decoding_with_room_in_the_budget_finishes_in_one_frame() {
+    let (mut c, _rx) = context();
+    c.decode_images_inline(Some(Duration::from_secs(5)));
+    let h = c
+        .load_image(ImageSource::encoded(encoded(image::ImageFormat::Png)))
+        .unwrap();
+    build(&mut c, h, 1);
+    assert_eq!(c.image_metrics().pending_jobs, 1);
+    build(&mut c, h, 1);
+    assert_eq!(c.image_metrics().pending_jobs, 0);
+    assert_eq!(c.image_metrics().decodes, 1);
+    assert!(matches!(c.image_state(h), ImageState::Ready { .. }));
+}
+#[test]
 fn fit_crop_math() {
-    let rect = crate::Rect::from_min_size(vec2(0.0, 0.0), vec2(100.0, 100.0));
-    let uv = crate::Rect::from_min_size(vec2(0.0, 0.0), vec2(1.0, 1.0));
-    let (r, _) = crate::components::image::fit(rect, vec2(200.0, 100.0), uv, ImageFit::Contain);
+    let rect = zaxis::Rect::from_min_size(vec2(0.0, 0.0), vec2(100.0, 100.0));
+    let uv = zaxis::Rect::from_min_size(vec2(0.0, 0.0), vec2(1.0, 1.0));
+    let (r, _) = zaxis::components::image::fit(rect, vec2(200.0, 100.0), uv, ImageFit::Contain);
     assert_eq!(r.size(), vec2(100.0, 50.0));
-    let (_, crop) = crate::components::image::fit(rect, vec2(200.0, 100.0), uv, ImageFit::Cover);
+    let (_, crop) = zaxis::components::image::fit(rect, vec2(200.0, 100.0), uv, ImageFit::Cover);
     assert_eq!(crop.min, vec2(0.25, 0.0));
     assert_eq!(crop.max, vec2(0.75, 1.0));
 }

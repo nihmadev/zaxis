@@ -1,8 +1,8 @@
-use super::{pipeline, textures, viewport};
-use crate::{vec2, ComboBox, ComboBoxOption, Context, Rect, Response, TextureId, Window};
 use std::{collections::HashMap, io::Write};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
+use zaxis::renderer::{pipeline, textures, viewport};
+use zaxis::{vec2, ComboBox, ComboBoxOption, Context, Rect, Response, TextureId, Window};
 
 /// Exercise real glyph atlases, shader blending and scissors, not only UI layout.
 #[test]

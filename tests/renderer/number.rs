@@ -1,8 +1,8 @@
-use super::{pipeline, textures, viewport};
-use crate::{vec2, Context, DragValue, NumberInput, Rect, Response, Slider, TextureId, Window};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
+use zaxis::renderer::{pipeline, textures, viewport};
+use zaxis::{vec2, Context, DragValue, NumberInput, Rect, Response, Slider, TextureId, Window};
 
 /// Exercise real glyph atlases, shader blending and scissors, not only UI layout.
 #[test]
@@ -39,7 +39,7 @@ fn gpu_numeric_fields_fit_at_multiple_dpi() {
                         .show(context, |ui| {
                             responses.clear();
                             ui.muted("Gain");
-                            ui.horizontal_aligned(crate::Align::Center, |ui| {
+                            ui.horizontal_aligned(zaxis::Align::Center, |ui| {
                                 ui.add(Slider::new(&mut gain, 0.0..=1.0).width(260.0));
                                 responses.push(
                                     ui.add(

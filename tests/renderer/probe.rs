@@ -1,8 +1,6 @@
 //! Dumps zoomable frames of focused/hovered controls to target/probe for visual edge checks:
 //! cargo test --lib gpu_dump_control_frames -- --ignored --nocapture | grep -E "^(edit|combo)_" > target/probe/list.txt
 //! python scripts/probe_crop.py   (writes target/probe/sheet.png)
-use super::{pipeline, textures, viewport};
-use crate::{vec2, ComboBox, ComboBoxOption, Context, Response, TextEdit, TextureId, Window};
 use std::{collections::HashMap, io::Write};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
@@ -10,6 +8,8 @@ use winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, WindowEvent},
 };
+use zaxis::renderer::{pipeline, textures, viewport};
+use zaxis::{vec2, ComboBox, ComboBoxOption, Context, Response, TextEdit, TextureId, Window};
 
 #[test]
 #[ignore = "requires a graphics adapter"]

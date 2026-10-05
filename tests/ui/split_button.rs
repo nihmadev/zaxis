@@ -1,6 +1,6 @@
-use super::*;
-use crate::{Button, Column, FontWeight, Grid, GridStyle, Root, Table, Vec2};
+use crate::prelude::*;
 use winit::dpi::PhysicalSize;
+use zaxis::{Button, Column, FontWeight, Grid, GridStyle, Root, Table, Vec2};
 
 #[test]
 fn buttons_fit_fixed_height_cells_and_center_their_captions() {
@@ -37,25 +37,29 @@ fn buttons_fit_fixed_height_cells_and_center_their_captions() {
         })
     });
     for (i, button) in buttons.into_iter().enumerate() {
-        let body = c
+        let body_clip = c
+            .probe()
             .elements
             .iter()
             .find(|e| e.id == button.id.with("body"))
-            .unwrap();
-        let caption = &c.cache[&button.id.with("caption")];
+            .unwrap()
+            .clip;
+        let caption = c.probe().cache[&button.id.with("caption")].paint.clone();
         let Paint::Text {
             text,
             position,
             size,
             ..
-        } = &caption.paint[0]
+        } = &caption[0]
         else {
             panic!("caption")
         };
         let text_size = c
+            .probe_mut()
             .text
             .measure(text, *size, FontWeight::REGULAR, f32::INFINITY);
         let offset = c
+            .probe_mut()
             .text
             .centered_line_offset(text, *size, FontWeight::REGULAR);
         let bounds = c.visual_rect(button.id, button.rect);
@@ -64,8 +68,9 @@ fn buttons_fit_fixed_height_cells_and_center_their_captions() {
         if i < 3 {
             assert!(bounds.size().y <= 20.0);
         }
-        assert_eq!(body.clip.intersect(bounds), bounds);
+        assert_eq!(body_clip.intersect(bounds), bounds);
         let clip = c
+            .probe()
             .elements
             .iter()
             .find(|e| e.id == button.id.with("caption"))

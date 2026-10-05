@@ -39,7 +39,7 @@ fn collapsing_default_controlled_keyboard_actions_and_focus_return() {
     assert!(!out.open);
     assert!(out.body.is_none());
     assert!(!out.changed);
-    assert_eq!(c.focused_widget, Some(out.header_response.id));
+    assert_eq!(c.probe().focused_widget, Some(out.header_response.id));
     key(&mut c, KeyCode::Space);
     let out = render(&mut c, Some(&mut open));
     assert!(out.open && out.changed && open);
@@ -96,7 +96,8 @@ fn collapsing_hidden_body_once_dynamic_height_animation_and_cleanup() {
         start + std::time::Duration::from_millis(100),
     );
     assert_eq!(
-        c.previous_hits
+        c.probe()
+            .previous_hits
             .iter()
             .filter(|h| h.action == HitAction::Activate)
             .count(),
@@ -127,7 +128,7 @@ fn collapsing_hidden_body_once_dynamic_height_animation_and_cleanup() {
     assert_eq!(runs, 5);
     assert!(!c.needs_repaint_at(start + std::time::Duration::from_secs(2)));
     c.run(|_| {});
-    assert!(c.collapsing_headers.is_empty());
+    assert!(c.probe().counts.collapsing_headers == 0);
     assert!(!c.wants_animation_frame());
 }
 

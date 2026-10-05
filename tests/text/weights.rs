@@ -1,4 +1,10 @@
-use super::*;
+use ab_glyph::Font;
+use cosmic_text::{fontdb, LayoutGlyph};
+use std::sync::Arc;
+use zaxis::shapes::Mesh;
+use zaxis::text::fonts::font_system;
+use zaxis::text::*;
+use zaxis::{Color, FontFamily, FontWeight, Vec2};
 
 fn text() -> TextSystem {
     TextSystem::new(FontFamily::inter())

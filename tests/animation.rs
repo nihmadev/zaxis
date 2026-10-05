@@ -1,8 +1,5 @@
-use std::{
-    cell::Cell,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::Cell, rc::Rc, time::Duration};
+use zaxis::Instant;
 use zaxis::{animation::*, vec2, Color, Context, Id, Vec2};
 
 fn ms(n: u64) -> Duration {

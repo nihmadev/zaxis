@@ -1,9 +1,9 @@
-use super::*;
-use crate::{
+use crate::prelude::*;
+use winit::{dpi::PhysicalSize, event::ElementState, keyboard::KeyCode};
+use zaxis::{
     Color, CornerRadius, Padding, Rect, Root, ScrollArea, Shape, SplitHandle, SplitHandleStyle,
     SplitOutput, SplitPane, SplitPanel, SplitSize, SplitStyle, SplitSurface, TextEdit, Transform,
 };
-use winit::{dpi::PhysicalSize, event::ElementState, keyboard::KeyCode};
 fn draw(c: &mut Context, panels: Vec<SplitPanel>) -> SplitOutput<()> {
     let mut output = None;
     c.run(|c| {
@@ -65,13 +65,13 @@ fn batched_events_keyboard_focus_reset_and_nested_text() {
     let before = out.panels[0].size;
     assert!(c.key(KeyCode::ArrowRight, ElementState::Pressed, false));
     assert_eq!(draw(&mut c, specs()).panels[0].size, before + 4.0);
-    c.input.modifiers = winit::keyboard::ModifiersState::SHIFT;
+    c.set_modifiers(winit::keyboard::ModifiersState::SHIFT);
     assert!(c.key(KeyCode::ArrowLeft, ElementState::Pressed, false));
     assert_eq!(draw(&mut c, specs()).panels[0].size, before - 20.0);
     c.key(KeyCode::Home, ElementState::Pressed, false);
     let reset = draw(&mut c, specs());
     assert!((reset.panels[0].size - reset.panels[1].size).abs() < 0.01);
-    c.input.modifiers = Default::default();
+    c.set_modifiers(Default::default());
     c.set_focus(None);
     c.key(KeyCode::Tab, ElementState::Pressed, false);
     let focused = draw(&mut c, specs());
@@ -90,7 +90,7 @@ fn batched_events_keyboard_focus_reset_and_nested_text() {
     });
     c.request_focus(edit.unwrap().id);
     assert!(c.key(KeyCode::ArrowRight, ElementState::Pressed, false));
-    assert!(c.split_input.is_empty());
+    assert!(c.probe().counts.split_input == 0);
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn topology_ids_focus_viewport_and_fixed_sizes() {
         &mut c,
         vec![SplitPanel::new(0), SplitPanel::new(1), SplitPanel::new(3)],
     );
-    assert!(removed.resize_ended && c.capture.is_none());
+    assert!(removed.resize_ended && c.probe().capture.is_none());
     assert!(!removed.boundaries.iter().any(|b| b.id == focus));
 }
 
@@ -188,7 +188,7 @@ fn disabled_cancellation_focus_loss_and_component_removal() {
     draw(&mut c, specs());
     c.on_window_event(&winit::event::WindowEvent::Focused(false));
     assert!(draw(&mut c, specs()).resize_ended);
-    assert!(c.capture.is_none());
+    assert!(c.probe().capture.is_none());
     c.on_window_event(&winit::event::WindowEvent::Focused(true));
     c.move_pointer(p);
     c.primary_button(ElementState::Pressed);
@@ -198,14 +198,14 @@ fn disabled_cancellation_focus_loss_and_component_removal() {
     let out = draw(&mut c, disabled);
     assert!(out.resize_ended);
     assert!(!out.boundaries[0].enabled);
-    assert!(c.capture.is_none());
+    assert!(c.probe().capture.is_none());
     c.primary_button(ElementState::Released);
     c.move_pointer(p);
     c.primary_button(ElementState::Pressed);
     draw(&mut c, specs());
     c.run(|c| Root::new().show(c, |_| {}));
-    assert!(c.capture.is_none());
-    assert!(c.splits.is_empty());
+    assert!(c.probe().capture.is_none());
+    assert!(c.probe().counts.splits == 0);
 }
 
 #[test]
@@ -243,11 +243,12 @@ fn tiny_empty_and_single_panels_and_edge_hit_priority() {
                         s.panel(0, |ui| {
                             button = Some(ui.button("Button outside edge zone"));
                             let bounds = ui.allocate_space(Vec2::new(1000.0, 1000.0));
-                            ui.context.register_hit(HitRegion {
+                            let clip = ui.clip_rect();
+                            ui.context().register_hit(HitRegion {
                                 id: Id::new("overflow"),
                                 window: Id::new("zaxis-root"),
                                 rect: bounds,
-                                clip: ui.clip_rect(),
+                                clip,
                                 action: HitAction::Activate,
                             });
                         })
@@ -267,6 +268,7 @@ fn tiny_empty_and_single_panels_and_edge_hit_priority() {
         HitAction::Activate
     );
     assert!(c
+        .probe()
         .previous_hits
         .iter()
         .filter(|h| h.id == Id::new("overflow"))
@@ -327,10 +329,12 @@ fn dpi_transforms_scroll_clipping_and_nested_axes() {
     draw(&mut c, &mut out, &mut nested);
     let bounds = transform.rect(out.as_ref().unwrap().panels[0].content_bounds);
     let white: Vec<_> = c
+        .probe()
         .elements
         .iter()
         .filter(|e| {
-            c.cache
+            c.probe()
+                .cache
                 .get(&e.id)
                 .is_some_and(|p| format!("{:?}", p.paint).contains("255, 255, 255"))
         })
@@ -338,7 +342,12 @@ fn dpi_transforms_scroll_clipping_and_nested_axes() {
     assert!(!white.is_empty());
     assert!(white.iter().all(|e| e.clip.intersect(bounds) == e.clip));
     let bid = nested.as_ref().unwrap().boundaries[0].id;
-    let hit = *c.previous_hits.iter().find(|h| h.id == bid).unwrap();
+    let hit = *c
+        .probe()
+        .previous_hits
+        .iter()
+        .find(|h| h.id == bid)
+        .unwrap();
     c.move_pointer(hit.rect.center());
     c.primary_button(ElementState::Pressed);
     c.move_pointer(hit.rect.center() + Vec2::new(0.0, 24.0));

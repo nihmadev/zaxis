@@ -14,7 +14,7 @@ fn tree_keyboard_active_descendant_tab_and_one_shot_activation() {
     let out = tree(&mut c, &m, |t| t);
     assert_eq!(out.focused, Some(id(1000)));
     assert!(out.scroll_offset.y > 1000.0);
-    assert_eq!(c.focused_widget, Some(out.id));
+    assert_eq!(c.probe().focused_widget, Some(out.id));
     assert_eq!(out.selected, None);
     key(&mut c, KeyCode::Space);
     assert_eq!(tree(&mut c, &m, |t| t).selected, Some(id(1000)));
@@ -45,7 +45,7 @@ fn tree_keyboard_active_descendant_tab_and_one_shot_activation() {
         });
     });
     key(&mut c, KeyCode::Tab);
-    assert_eq!(c.focused_widget, after);
+    assert_eq!(c.probe().focused_widget, after);
 }
 
 #[test]
@@ -86,6 +86,7 @@ fn tree_controlled_states_and_row_actions_do_not_leak() {
     assert_eq!(render(&mut c, &mut open, &mut selected).logical_rows, 1);
     // Get action geometry from actual hit regions to avoid depending on local layout.
     let rect = c
+        .probe()
         .previous_hits
         .iter()
         .find(|h| h.action == HitAction::Activate)
@@ -106,7 +107,7 @@ fn tree_double_click_leaf_and_branch_policy() {
     let m = Model::new(3);
     tree(&mut c, &m, |t| t.default_open([id(0)]));
     // The first gesture after a long idle must use event time, not the stale pass time.
-    c.frame_time -= std::time::Duration::from_secs(5);
+    c.probe().frame_time -= std::time::Duration::from_secs(5);
     click_node(&mut c, id(1), false);
     tree(&mut c, &m, |t| t);
     click_node(&mut c, id(1), false);

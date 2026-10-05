@@ -1,7 +1,7 @@
-use super::{pipeline, textures, viewport};
-use crate::{shapes::Mesh, Color, Rect, TextureId, Vec2};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
+use zaxis::renderer::{pipeline, textures, viewport};
+use zaxis::{shapes::Mesh, Color, Rect, TextureId, Vec2};
 
 #[test]
 #[ignore = "requires a graphics adapter"]

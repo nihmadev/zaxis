@@ -1,17 +1,15 @@
 //! Several windows are several contexts: strictly separate input and retained state,
 //! one glyph atlas, one image cache, one theme. No GPU or native window is involved.
 
-use crate::{
-    Context, Image, ImageSource, Modal, Rect, Root, SharedResources, TextEdit, TextureId, Theme,
-    Vec2,
-};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{DeviceId, ElementState, Ime, MouseButton, WindowEvent},
+};
+use zaxis::Instant;
+use zaxis::{
+    Context, Image, ImageSource, Modal, Rect, Root, SharedResources, TextEdit, TextureId, Theme,
+    Vec2,
 };
 
 fn window(resources: &SharedResources) -> Context {
@@ -88,7 +86,7 @@ fn the_same_id_in_two_windows_has_independent_focus_and_text() {
 #[test]
 fn pointer_modifiers_and_hover_belong_to_one_window() {
     let resources = SharedResources::new();
-    let (mut a, mut b) = (window(&resources), window(&resources));
+    let (mut a, b) = (window(&resources), window(&resources));
     move_pointer(&mut a, Vec2::new(40.0, 40.0));
     button(&mut a, ElementState::Pressed);
     assert!(a.input().primary_down);

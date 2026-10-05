@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use zaxis::Instant;
 use zaxis::{animation::*, vec2, Context, Id, Vec2};
 fn ms(n: u64) -> Duration {
     Duration::from_millis(n)

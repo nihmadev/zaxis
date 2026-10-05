@@ -1,6 +1,6 @@
-use super::*;
-use crate::{vec2, MenuBar, MenuBarOutput, MenuItem, Rect, Root};
+use crate::prelude::*;
 use winit::{dpi::PhysicalSize, event::ElementState, keyboard::KeyCode};
+use zaxis::{vec2, MenuBar, MenuBarOutput, MenuItem, Rect, Root};
 
 fn setup() -> Context {
     let mut c = Context::new();
@@ -58,6 +58,7 @@ fn key(c: &mut Context, code: KeyCode) {
 /// Clickable rows of one panel, top to bottom.
 fn rows(c: &Context, window: Id) -> Vec<Rect> {
     let mut rows: Vec<Rect> = c
+        .probe()
         .previous_hits
         .iter()
         .filter(|h| h.window == window && h.action == HitAction::Activate)
@@ -67,19 +68,20 @@ fn rows(c: &Context, window: Id) -> Vec<Rect> {
     rows
 }
 fn root(c: &Context) -> Id {
-    c.popup.as_ref().expect("a menu is open").id
+    c.probe().popup.as_ref().expect("a menu is open").id
 }
 fn panel(c: &Context, level: usize) -> Id {
-    c.popup.as_ref().unwrap().extra[level].0
+    c.probe().popup.as_ref().unwrap().extra[level].0
 }
 /// Triggers are the only Activate hits that are not inside a popup layer.
 fn titles(c: &Context) -> Vec<Rect> {
     let mut hits: Vec<Rect> = c
+        .probe()
         .previous_hits
         .iter()
         .filter(|h| {
             h.action == HitAction::Activate
-                && c.popup.as_ref().is_none_or(|p| {
+                && c.probe().popup.as_ref().is_none_or(|p| {
                     h.window != p.id && !p.extra.iter().any(|(layer, _)| *layer == h.window)
                 })
         })
@@ -108,7 +110,7 @@ fn a_title_opens_its_panel_and_an_action_closes_the_menu_once() {
     click(&mut c, rows[0].center());
     let out = draw(&mut c, &items, false);
     assert_eq!(out.selected, Some(Id::new("new")));
-    assert!(!out.open && c.popup.is_none());
+    assert!(!out.open && c.probe().popup.is_none());
     assert_eq!(draw(&mut c, &items, false).selected, None);
 }
 
@@ -122,7 +124,7 @@ fn moving_across_titles_switches_and_the_open_title_toggles() {
     assert_eq!(rows(&c, root(&c)).len(), 1); // Edit: Undo
     click(&mut c, t[1].center());
     assert!(!draw(&mut c, &items, false).open);
-    assert!(c.popup.is_none());
+    assert!(c.probe().popup.is_none());
 }
 
 #[test]
@@ -133,7 +135,7 @@ fn hovering_opens_a_submenu_and_pressing_inside_it_is_not_outside() {
     let parent = rows(&c, root(&c));
     c.move_pointer(parent[1].center()); // Recent
     draw(&mut c, &items, false);
-    assert_eq!(c.popup.as_ref().unwrap().extra.len(), 1);
+    assert_eq!(c.probe().popup.as_ref().unwrap().extra.len(), 1);
     let sub = rows(&c, panel(&c, 0));
     assert_eq!(sub.len(), 2); // the disabled row is a block, not an activation
     assert!(
@@ -147,7 +149,7 @@ fn hovering_opens_a_submenu_and_pressing_inside_it_is_not_outside() {
     click(&mut c, sub[1].center());
     let out = draw(&mut c, &items, false);
     assert_eq!(out.selected, Some(Id::new("r3")));
-    assert!(c.popup.is_none());
+    assert!(c.probe().popup.is_none());
 }
 
 #[test]
@@ -158,10 +160,10 @@ fn leaving_a_submenu_row_for_a_sibling_closes_it() {
     let parent = rows(&c, root(&c));
     c.move_pointer(parent[1].center());
     draw(&mut c, &items, false);
-    assert_eq!(c.popup.as_ref().unwrap().extra.len(), 1);
+    assert_eq!(c.probe().popup.as_ref().unwrap().extra.len(), 1);
     c.move_pointer(parent[2].center());
     draw(&mut c, &items, false);
-    assert!(c.popup.as_ref().unwrap().extra.is_empty());
+    assert!(c.probe().popup.as_ref().unwrap().extra.is_empty());
 }
 
 #[test]
@@ -192,11 +194,11 @@ fn keyboard_navigates_levels_and_skips_disabled_rows() {
     key(&mut c, KeyCode::ArrowDown); // Recent
     key(&mut c, KeyCode::ArrowRight); // enter, highlights "one"
     draw(&mut c, &items, false);
-    assert_eq!(c.popup.as_ref().unwrap().extra.len(), 1);
+    assert_eq!(c.probe().popup.as_ref().unwrap().extra.len(), 1);
     key(&mut c, KeyCode::ArrowDown); // skips the disabled "two"
     key(&mut c, KeyCode::Enter);
     assert_eq!(draw(&mut c, &items, false).selected, Some(Id::new("r3")));
-    assert!(c.popup.is_none());
+    assert!(c.probe().popup.is_none());
 }
 
 #[test]
@@ -210,7 +212,7 @@ fn left_and_right_switch_titles_and_leave_submenus() {
     draw(&mut c, &items, false);
     key(&mut c, KeyCode::ArrowLeft); // back to the File panel
     draw(&mut c, &items, false);
-    assert!(c.popup.as_ref().unwrap().extra.is_empty());
+    assert!(c.probe().popup.as_ref().unwrap().extra.is_empty());
     key(&mut c, KeyCode::ArrowLeft); // wraps over the disabled title to Edit
     draw(&mut c, &items, false);
     assert_eq!(rows(&c, root(&c)).len(), 1);
@@ -244,13 +246,15 @@ fn a_hovered_submenu_row_is_highlighted_in_the_same_pass() {
     draw(&mut c, &items, false);
     let layer = panel(&c, 0);
     let hits: Vec<_> = c
+        .probe()
         .previous_hits
         .iter()
         .filter(|h| h.window == layer && h.action == HitAction::Activate)
         .copied()
         .collect();
     let painted = |c: &Context, id: Id| {
-        c.elements
+        c.probe()
+            .elements
             .iter()
             .find(|e| e.id == id.with("body"))
             .is_some_and(|e| !e.mesh.vertices.is_empty())
@@ -268,5 +272,5 @@ fn a_hovered_submenu_row_is_highlighted_in_the_same_pass() {
         "the hovered submenu row has a fill"
     );
     assert!(!painted(&c, hits[0].id));
-    assert_eq!(c.popup.as_ref().unwrap().extra.len(), 1);
+    assert_eq!(c.probe().popup.as_ref().unwrap().extra.len(), 1);
 }

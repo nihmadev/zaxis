@@ -1,5 +1,5 @@
-use super::{outline::arc_segments, *};
-use crate::Vec2;
+use zaxis::shapes::{outline::arc_segments, *};
+use zaxis::Vec2;
 
 #[test]
 fn gradient_respects_asymmetric_corners_and_linear_colors_at_multiple_scales() {

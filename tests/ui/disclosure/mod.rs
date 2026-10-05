@@ -1,7 +1,7 @@
-use super::*;
-use crate::{CollapsingHeader, Rect, Root, TreeChildren, TreeEvent, TreeModel, TreeNode, TreeView};
+use crate::prelude::*;
 use std::cell::Cell;
 use winit::{dpi::PhysicalSize, event::ElementState};
+use zaxis::{CollapsingHeader, Rect, Root, TreeChildren, TreeEvent, TreeModel, TreeNode, TreeView};
 mod collapsing;
 mod more;
 mod navigation;
@@ -83,7 +83,7 @@ fn tree<'a>(
     c: &mut Context,
     model: &Model,
     build: impl FnOnce(TreeView<'a>) -> TreeView<'a>,
-) -> crate::TreeOutput {
+) -> zaxis::TreeOutput {
     let mut out = None;
     c.run(|c| {
         Root::new().show(c, |ui| {
@@ -93,7 +93,7 @@ fn tree<'a>(
     out.unwrap()
 }
 fn hit(c: &Context, node: Id, chevron: bool) -> Rect {
-    c.previous_hits.iter().find(|h| matches!(h.action, HitAction::TreeRow { node: n, chevron: ch, .. } if n==node && ch==chevron)).unwrap().rect
+    c.probe().previous_hits.iter().find(|h| matches!(h.action, HitAction::TreeRow { node: n, chevron: ch, .. } if n==node && ch==chevron)).unwrap().rect
 }
 
 fn click_node(c: &mut Context, node: Id, chevron: bool) {

@@ -22,7 +22,7 @@ fn collapsing_restores_focus_to_locked_header() {
     c.request_focus(out.body.unwrap().id);
     open = false;
     let out = render(&mut c, &mut open);
-    assert_eq!(c.focused_widget, Some(out.header_response.id));
+    assert_eq!(c.probe().focused_widget, Some(out.header_response.id));
     assert!(!out.open && !out.changed);
     assert!(
         c.on_key_event(KeyCode::Space, ElementState::Pressed, false)
@@ -87,10 +87,10 @@ fn split_tree_action_hits_follow_the_painted_right_edge() {
         c.run(|c| {
             Root::new().show(c, |ui| {
                 ui.button("Toolbar");
-                crate::SplitPane::horizontal("split")
+                zaxis::SplitPane::horizontal("split")
                     .panels([
-                        crate::SplitPanel::new("tree"),
-                        crate::SplitPanel::new("other"),
+                        zaxis::SplitPanel::new("tree"),
+                        zaxis::SplitPanel::new("other"),
                     ])
                     .show(ui, |split| {
                         split.panel("tree", |ui| {
@@ -122,6 +122,7 @@ fn split_tree_action_hits_follow_the_painted_right_edge() {
     render(&mut c);
     let row = hit(&c, id(1), false);
     let action = c
+        .probe()
         .previous_hits
         .iter()
         .find(|h| {
@@ -215,30 +216,30 @@ fn text_action_owns_keys_and_tab_leaves_tree() {
     c.request_focus(input.unwrap());
     key(&mut c, KeyCode::ArrowLeft);
     key(&mut c, KeyCode::Space);
-    assert!(c.tree_input.get(&owner.unwrap()).is_none());
-    assert_eq!(c.focused_widget, input);
+    assert!(c.probe().counts.tree_input == 0);
+    assert_eq!(c.probe().focused_widget, input);
     key(&mut c, KeyCode::Tab);
-    assert_eq!(c.focused_widget, after);
+    assert_eq!(c.probe().focused_widget, after);
 }
 
 #[test]
 fn theme_overrides_zero_transparency_and_clipping_are_preserved() {
-    let mut theme = crate::Theme::light().density(crate::Density::Compact);
+    let mut theme = zaxis::Theme::light().density(zaxis::Density::Compact);
     theme.overrides.tree.indent = Some(0.0);
-    theme.overrides.tree.guides = Some(crate::Border::NONE);
+    theme.overrides.tree.guides = Some(zaxis::Border::NONE);
     theme.overrides.tree.row.chevron_stroke = Some(0.0);
-    theme.overrides.tree.row.surface.idle = crate::SurfaceStyle::fill(crate::Color::TRANSPARENT);
-    theme.overrides.collapsing.header.surface.idle.border = Some(crate::Border::NONE);
+    theme.overrides.tree.row.surface.idle = zaxis::SurfaceStyle::fill(zaxis::Color::TRANSPARENT);
+    theme.overrides.collapsing.header.surface.idle.border = Some(zaxis::Border::NONE);
     let style = theme.resolve();
     assert_eq!(style.tree.indent, Some(0.0));
-    assert_eq!(style.tree.guides, Some(crate::Border::NONE));
+    assert_eq!(style.tree.guides, Some(zaxis::Border::NONE));
     assert_eq!(
         style.tree.row.surface.idle.fill.unwrap().start,
-        crate::Color::TRANSPARENT
+        zaxis::Color::TRANSPARENT
     );
     assert_eq!(
         style.collapsing.header.surface.idle.border,
-        Some(crate::Border::NONE)
+        Some(zaxis::Border::NONE)
     );
     let mut c = setup();
     let m = Model::new(1000);
@@ -260,6 +261,7 @@ fn theme_overrides_zero_transparency_and_clipping_are_preserved() {
     });
     assert!(built <= 6);
     assert!(c
+        .probe()
         .previous_hits
         .iter()
         .all(|h| h.rect.size().min_element() >= 0.0));

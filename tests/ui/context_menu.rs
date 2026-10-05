@@ -1,6 +1,6 @@
-use super::*;
-use crate::{vec2, Button, ContextMenu, ContextMenuItem, ContextMenuOutput, Root, Text};
+use crate::prelude::*;
 use winit::{dpi::PhysicalSize, event::ElementState, keyboard::KeyCode};
+use zaxis::{vec2, Button, ContextMenu, ContextMenuItem, ContextMenuOutput, Root, Text};
 
 fn setup() -> Context {
     let mut c = Context::new();
@@ -26,7 +26,7 @@ fn draw(
     items: &[ContextMenuItem],
     at: Option<Vec2>,
     passive: bool,
-) -> (crate::Response, ContextMenuOutput) {
+) -> (zaxis::Response, ContextMenuOutput) {
     let mut result = None;
     c.run(|c| {
         Root::new().show(c, |ui| {
@@ -60,13 +60,14 @@ fn key(c: &mut Context, code: KeyCode) {
     assert!(
         c.on_key_event(code, ElementState::Pressed, false).consumed,
         "key {code:?}, popup {:?}",
-        c.popup.as_ref().map(|p| p.id)
+        c.probe().popup.as_ref().map(|p| p.id)
     );
     c.on_key_event(code, ElementState::Released, false);
 }
 fn rows(c: &Context) -> Vec<HitRegion> {
-    let popup = c.popup.as_ref().unwrap().id;
-    c.previous_hits
+    let popup = c.probe().popup.as_ref().unwrap().id;
+    c.probe()
+        .previous_hits
         .iter()
         .filter(|h| {
             h.window == popup
@@ -106,7 +107,7 @@ fn passive_target_and_distinct_duplicate_labels() {
     let output = draw(&mut c, &items, None, true).1;
     assert_eq!(output.selected, Some(Id::new("b")));
     assert!(!output.open);
-    assert!(c.popup.is_none());
+    assert!(c.probe().popup.is_none());
     assert!(draw(&mut c, &items, None, true).1.selected.is_none());
 }
 
@@ -155,7 +156,7 @@ fn escape_outside_click_and_focus_restore() {
     draw(&mut c, &items, Some(vec2(200.0, 150.0)), false);
     key(&mut c, KeyCode::Escape);
     assert!(!draw(&mut c, &items, None, false).1.open);
-    assert_eq!(c.focused_widget, Some(target.id));
+    assert_eq!(c.probe().focused_widget, Some(target.id));
     draw(&mut c, &items, Some(vec2(200.0, 150.0)), false);
     click(&mut c, target.rect.min + vec2(3.0, 3.0));
     let (target, output) = draw(&mut c, &items, None, false);
@@ -189,8 +190,8 @@ fn absent_target_cleans_retained_state_and_popup() {
     c.run(|c| {
         Root::new().show(c, |_| {});
     });
-    assert!(c.context_menus.is_empty());
-    assert!(c.popup.is_none());
+    assert!(c.probe().counts.context_menus == 0);
+    assert!(c.probe().popup.is_none());
 }
 
 #[test]
@@ -209,16 +210,29 @@ fn short_menu_has_no_overflow_and_long_captions_fit_their_columns() {
             .right_text("Del"),
     ];
     draw(&mut c, &items, Some(vec2(100.0, 100.0)), false);
-    let popup = c.popup.as_ref().unwrap().id;
+    let popup = c.probe().popup.as_ref().unwrap().id;
     assert!(!c
+        .probe()
         .previous_hits
         .iter()
         .any(|h| h.window == popup && matches!(h.action, HitAction::ScrollThumb { .. })));
-    for scroll in c.scrolling.states.values().filter(|s| s.window == popup) {
+    for scroll in c
+        .probe()
+        .scrolling
+        .states
+        .values()
+        .filter(|s| s.window == popup)
+    {
         assert_eq!(scroll.max_offset(), Vec2::ZERO);
     }
-    for (id, element) in &c.cache {
-        for paint in &element.paint {
+    let cached: Vec<_> = c
+        .probe()
+        .cache
+        .iter()
+        .map(|(id, element)| (*id, element.paint.clone()))
+        .collect();
+    for (id, painted) in &cached {
+        for paint in painted {
             if let Paint::Text {
                 text,
                 size,
@@ -228,10 +242,12 @@ fn short_menu_has_no_overflow_and_long_captions_fit_their_columns() {
             {
                 if text == "Remove copy" || text == "Ctrl+D" {
                     let width = c
+                        .probe_mut()
                         .text
-                        .measure(text, *size, crate::FontWeight::REGULAR, f32::INFINITY)
+                        .measure(text, *size, zaxis::FontWeight::REGULAR, f32::INFINITY)
                         .x;
                     let clip = c
+                        .probe()
                         .elements
                         .iter()
                         .find(|e| e.id == *id && e.layer == popup)
@@ -261,8 +277,8 @@ fn hover_is_immediate_and_does_not_schedule_animation_frames() {
         c.move_pointer(row.rect.center());
         draw(&mut c, &items, None, false);
         assert!(!c.wants_animation_frame());
-        let body = &c.cache[&row.id.with("body")].paint;
-        assert!(body.iter().any(|p| matches!(p, Paint::Shape(crate::Shape::Rect { fill, .. }) if *fill == c.style().button_hovered)));
+        let body = &c.probe().cache[&row.id.with("body")].paint;
+        assert!(body.iter().any(|p| matches!(p, Paint::Shape(zaxis::Shape::Rect { fill, .. }) if *fill == c.style().button_hovered)));
     }
 }
 
@@ -280,7 +296,7 @@ fn ten_thousand_mixed_rows_virtualize_and_refresh_after_mutation() {
         .collect();
     draw(&mut c, &items, Some(vec2(180.0, 150.0)), false);
     assert!(rows(&c).len() < 20);
-    assert!(c.cache.len() < 150);
+    assert!(c.probe().cache.len() < 150);
     key(&mut c, KeyCode::End);
     draw(&mut c, &items, None, false);
     let last = rows(&c)
