@@ -211,8 +211,8 @@ See [benchmark details](https://nihmadev.github.io/zaxis/performance/#stress-ben
 
 ## Contributing and support
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and contribution guidelines,
-[CHANGELOG.md](CHANGELOG.md) for releases, and [RELEASING.md](RELEASING.md) for publishing.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and contribution guidelines and
+[CHANGELOG.md](CHANGELOG.md) for releases.
 Report problems through [GitHub Issues](https://github.com/nihmadev/zaxis/issues)
 or contact [@nihmadev on Telegram](https://t.me/nihmadev).
 For sensitive vulnerabilities, contact Telegram privately; see [SECURITY.md](SECURITY.md).

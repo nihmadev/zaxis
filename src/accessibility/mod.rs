@@ -1,7 +1,7 @@
 //! The accessibility layer: what each widget is, says and accepts, for screen readers and
 //! other assistive technology.
 //!
-//! Widgets describe themselves while the UI is built ([`collect`]): a node with a role, a
+//! Widgets describe themselves while the UI is built (`collect`): a node with a role, a
 //! name, a value, state and the actions it accepts, parented by the scope it was built in.
 //! Geometry travels with the widget's hit regions, so placement, scrolling and visual
 //! transforms apply to a node exactly as they apply to input. At the end of the pass the

@@ -45,6 +45,8 @@ pub fn font_system() -> &'static Mutex<FontSystem> {
     static FONTS: OnceLock<Mutex<FontSystem>> = OnceLock::new();
     FONTS.get_or_init(|| {
         let system = FontSystem::new();
+        // Mutated only when a bundled face is compiled in.
+        #[cfg_attr(not(feature = "bundled-emoji"), allow(unused_mut))]
         let (locale, mut db) = system.into_locale_and_db();
         #[cfg(feature = "bundled-emoji")]
         // Static data stays mapped from the executable instead of a heap copy.

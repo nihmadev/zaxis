@@ -12,7 +12,7 @@ pub enum ListEntryKind {
 }
 
 /// What the list needs to know about one row without building it: identity, kind,
-/// availability and the text used for type-ahead (and by [`ListBox::show_text`]).
+/// availability and the text used for type-ahead (and by [`ListBox::show_text`](crate::ListBox::show_text)).
 #[derive(Clone, Copy, Debug)]
 pub struct ListEntry<'a> {
     pub key: Id,

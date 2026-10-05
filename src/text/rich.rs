@@ -6,7 +6,7 @@
 use super::*;
 
 /// One styled byte range of a paragraph. Runs of a layout are contiguous and cover the
-/// whole text; [`StyleRun::cover`] fills the gaps of a sparse list.
+/// whole text; `StyleRun::cover` fills the gaps of a sparse list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct StyleRun {
     pub start: usize,
