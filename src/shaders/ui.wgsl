@@ -11,7 +11,7 @@ struct Viewport {
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
-    @location(1) @interpolate(linear, sample) color: vec4<f32>,
+    @location(1) color: vec4<f32>,
     @location(2) screen_uv: vec2<f32>,
 }
 
@@ -25,7 +25,9 @@ fn vs_main(
     output.position = vec4<f32>(position.x / viewport.size.x * 2.0 - 1.0, 1.0 - position.y / viewport.size.y * 2.0, 0.0, 1.0);
     output.uv = uv;
     // Interpolate premultiplied colors so transparent contour vertices and
-    // translucent border/fill transitions retain their intended coverage.
+    // translucent border/fill transitions retain their intended coverage. The vertex
+    // w is 1, so the default perspective-correct interpolation is exactly linear, and
+    // it is the only interpolation WebGL2 (GLSL ES 3.00) supports.
     output.color = vec4<f32>(color.rgb * color.a, color.a);
     output.screen_uv = position / viewport.size;
     return output;

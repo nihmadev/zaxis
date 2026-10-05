@@ -1,11 +1,13 @@
 //! Built-in local image loading. All expensive work runs on bounded worker threads.
 mod cache;
-mod decode;
-mod resize;
-mod source;
+#[doc(hidden)]
+pub mod decode;
+mod file;
+#[doc(hidden)]
+pub mod resize;
+#[doc(hidden)]
+pub mod source;
 mod svg_limits;
-#[cfg(test)]
-mod tests;
 mod worker;
 
 pub(crate) use cache::ImageCache;

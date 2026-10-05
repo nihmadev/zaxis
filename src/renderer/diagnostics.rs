@@ -1,11 +1,8 @@
 //! Opt-in serialized diagnostics. CPU API durations are never GPU allocation times.
 use super::{RenderError, Renderer};
+use crate::time::Instant;
 use crate::TextureImage;
-use std::{
-    collections::VecDeque,
-    sync::mpsc,
-    time::{Duration, Instant},
-};
+use std::{collections::VecDeque, sync::mpsc, time::Duration};
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

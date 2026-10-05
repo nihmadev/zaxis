@@ -1,12 +1,8 @@
 use super::{source::Source, ImageLimits, ImageStage, ImageTiming};
+use crate::time::Instant;
 use image::{DynamicImage, ImageDecoder as _, ImageReader};
 use resvg::{tiny_skia, usvg};
-use std::{
-    fmt,
-    io::{Cursor, Read},
-    sync::Arc,
-    time::Instant,
-};
+use std::{fmt, io::Cursor, sync::Arc};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageError(pub String);
@@ -39,7 +35,7 @@ pub trait ImageDecoder: Send + Sync + 'static {
 }
 
 #[derive(Clone)]
-pub(super) enum Document {
+pub enum Document {
     Raster(DecodedImage),
     Svg { tree: Arc<usvg::Tree>, bytes: usize },
 }
@@ -75,7 +71,7 @@ pub(super) fn timed<T>(
     result
 }
 
-pub(super) fn load(
+pub fn load(
     source: &Source,
     limits: &ImageLimits,
     decoders: &[Arc<dyn ImageDecoder>],
@@ -93,31 +89,9 @@ pub(super) fn load(
         Source::Static(bytes) => *bytes,
         Source::Encoded(bytes) => bytes,
         Source::Path(path) => {
-            file = timed(
-                timings,
-                ImageStage::FileIo,
-                || -> Result<Vec<u8>, ImageError> {
-                    let mut file = std::fs::File::open(path.as_ref())
-                        .map_err(|e| ImageError(format!("{}: {e}", path.display())))?;
-                    let length = file
-                        .metadata()
-                        .map_err(|e| ImageError(e.to_string()))?
-                        .len();
-                    if length > limits.max_encoded_bytes as u64 {
-                        return Err(ImageError("encoded image exceeds byte limit".into()));
-                    }
-                    let mut bytes = Vec::new();
-                    bytes
-                        .try_reserve_exact(length as usize)
-                        .map_err(|e| ImageError(e.to_string()))?;
-                    // A concurrently growing file cannot escape the limit.
-                    (&mut file)
-                        .take(limits.max_encoded_bytes as u64 + 1)
-                        .read_to_end(&mut bytes)
-                        .map_err(|e| ImageError(e.to_string()))?;
-                    Ok(bytes)
-                },
-            )?;
+            file = timed(timings, ImageStage::FileIo, || {
+                super::file::read(path, limits)
+            })?;
             &file
         }
         _ => return Err(ImageError("invalid image handle".into())),
@@ -266,7 +240,7 @@ pub(super) fn rasterize(
         pixels: Arc::new(pixmap.take()),
     })
 }
-pub(super) fn unpremultiply(pixels: &mut [u8]) {
+pub fn unpremultiply(pixels: &mut [u8]) {
     for p in pixels.as_chunks_mut::<4>().0 {
         let a = u32::from(p[3]);
         for c in &mut p[..3] {
@@ -277,7 +251,7 @@ pub(super) fn unpremultiply(pixels: &mut [u8]) {
         }
     }
 }
-pub(super) fn validate_rgba(
+pub fn validate_rgba(
     size: [u32; 2],
     pixels: &[u8],
     limits: &ImageLimits,

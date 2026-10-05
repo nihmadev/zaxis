@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 /// Area downsampling in linear light with premultiplied accumulation. No full-size
 /// float intermediate, and transparent RGB cannot contaminate a visible edge.
-pub(super) fn downsample(
+pub fn downsample(
     input: &DecodedImage,
     size: [u32; 2],
     limits: &ImageLimits,

@@ -10,7 +10,7 @@ use std::{
 pub struct ImageSource(pub(crate) Source, pub(crate) u64);
 
 #[derive(Clone, Debug)]
-pub(crate) enum Source {
+pub enum Source {
     Path(Arc<PathBuf>),
     Static(&'static [u8]),
     Encoded(Arc<Vec<u8>>),

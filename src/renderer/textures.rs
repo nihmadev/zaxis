@@ -6,9 +6,9 @@ use std::{
     sync::{Arc, Weak},
 };
 
-pub(super) struct GpuTexture {
+pub struct GpuTexture {
     pub(super) texture: wgpu::Texture,
-    pub(super) bind_group: wgpu::BindGroup,
+    pub bind_group: wgpu::BindGroup,
     pub(super) size: [u32; 2],
     pub(super) revision: u64,
     pub(super) filter: TextureFilter,
@@ -43,7 +43,7 @@ impl TextureStore {
     }
 }
 
-pub(super) fn create_bindings(device: &wgpu::Device) -> (wgpu::BindGroupLayout, wgpu::Sampler) {
+pub fn create_bindings(device: &wgpu::Device) -> (wgpu::BindGroupLayout, wgpu::Sampler) {
     let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("zaxis texture layout"),
         entries: &[
@@ -73,7 +73,7 @@ pub(super) fn create_bindings(device: &wgpu::Device) -> (wgpu::BindGroupLayout, 
     });
     (layout, sampler)
 }
-pub(super) fn nearest_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+pub fn nearest_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("zaxis nearest sampler"),
         ..Default::default()
@@ -400,7 +400,7 @@ pub(super) fn binding(
     diagnostics.end(RendererStage::CreateBindGroupCpu, start);
     group
 }
-pub(super) fn create_texture(
+pub fn create_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,

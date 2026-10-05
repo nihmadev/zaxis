@@ -1,27 +1,19 @@
 //! wgpu backend with persistent buffers, texture versioning, and surface recovery.
 
+mod adapter;
 mod blur;
-#[cfg(test)]
-mod combo_box_tests;
 mod diagnostics;
 mod error;
 mod frame;
 mod geometry;
-#[cfg(test)]
-mod image_tests;
 mod init;
-#[cfg(test)]
-mod number_tests;
-mod pipeline;
-#[cfg(test)]
-mod probe_tests;
-#[cfg(test)]
-mod scroll_hint_tests;
+#[doc(hidden)]
+pub mod pipeline;
 mod surface;
-#[cfg(test)]
-mod tests;
-mod textures;
-mod viewport;
+#[doc(hidden)]
+pub mod textures;
+#[doc(hidden)]
+pub mod viewport;
 
 use std::sync::{Arc, Mutex, OnceLock};
 use textures::TextureStore;

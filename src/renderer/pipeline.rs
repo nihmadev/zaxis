@@ -2,7 +2,7 @@
 
 use crate::Vertex;
 
-pub(super) fn create(
+pub fn create(
     device: &wgpu::Device,
     viewport_layout: &wgpu::BindGroupLayout,
     texture_layout: &wgpu::BindGroupLayout,
@@ -19,7 +19,7 @@ pub(super) fn create(
     )
 }
 
-pub(super) fn create_with_fragment(
+pub fn create_with_fragment(
     device: &wgpu::Device,
     viewport_layout: &wgpu::BindGroupLayout,
     texture_layout: &wgpu::BindGroupLayout,

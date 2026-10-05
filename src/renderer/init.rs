@@ -1,6 +1,7 @@
 //! Window/GPU initialization and renderer assembly.
 
 use super::{
+    adapter,
     geometry::create_buffer,
     pipeline,
     textures::{self, create_texture, TextureStore},
@@ -18,14 +19,25 @@ impl Renderer {
         window: Arc<Window>,
         presentation_mode: PresentationMode,
     ) -> Result<Self, RenderError> {
-        let (instance, surface, adapter) = select_adapter(&window).await?;
+        Self::new_with_backends(window, presentation_mode, None).await
+    }
+
+    /// Like [`new_with_presentation_mode`](Self::new_with_presentation_mode), trying only
+    /// `backends`. `None` keeps the platform's default order: DX12 first on Windows,
+    /// `WGPU_BACKEND` honored, WebGPU before WebGL2 in a browser.
+    pub async fn new_with_backends(
+        window: Arc<Window>,
+        presentation_mode: PresentationMode,
+        backends: Option<wgpu::Backends>,
+    ) -> Result<Self, RenderError> {
+        let (instance, surface, adapter) = adapter::select(&window, backends).await?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("zaxis device"),
                 required_features: adapter.features()
                     & (wgpu::Features::TIMESTAMP_QUERY
                         | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS),
-                required_limits: wgpu::Limits::downlevel_defaults()
+                required_limits: adapter::baseline_limits(&adapter)
                     .using_resolution(adapter.limits()),
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
                 ..Default::default()
@@ -248,44 +260,4 @@ fn surface_config(
         .copied()
         .ok_or(RenderError::UnsupportedSurface)?;
     Ok((config, attachment_format))
-}
-
-/// DX12 needs far less driver memory than Vulkan on Windows, so it is tried
-/// first. `WGPU_BACKEND` overrides the order; the default set is the fallback.
-async fn select_adapter(
-    window: &Arc<Window>,
-) -> Result<(wgpu::Instance, wgpu::Surface<'static>, wgpu::Adapter), RenderError> {
-    let explicit = std::env::var_os("WGPU_BACKEND").is_some();
-    let mut attempts = vec![wgpu::Backends::from_env().unwrap_or_default()];
-    if cfg!(windows) && !explicit {
-        attempts.insert(0, wgpu::Backends::DX12);
-    }
-    let mut failure = None;
-    for backends in attempts {
-        let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(
-            Arc::clone(window),
-        ));
-        descriptor.backends = backends;
-        let instance = wgpu::Instance::new(descriptor);
-        let surface = match instance.create_surface(Arc::clone(window)) {
-            Ok(surface) => surface,
-            Err(error) => {
-                failure = Some(RenderError::CreateSurface(error));
-                continue;
-            }
-        };
-        match instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-                ..Default::default()
-            })
-            .await
-        {
-            Ok(adapter) => return Ok((instance, surface, adapter)),
-            Err(error) => failure = Some(RenderError::RequestAdapter(error)),
-        }
-    }
-    Err(failure.expect("at least one backend set is tried"))
 }

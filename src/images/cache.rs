@@ -4,12 +4,13 @@ use super::{
     worker::{Job, Work, Workers},
     DecodedImage, ImageDecoder, ImageError, ImageHandle, ImageSource, TextureIds,
 };
+use crate::time::Instant;
 use crate::{TextureFilter, TextureId, TextureImage, TextureOptions, Vec2};
 use std::{
     collections::{HashMap, VecDeque},
     path::{Component, PathBuf},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 mod lifecycle;
 
@@ -326,6 +327,9 @@ impl ImageCache {
     }
     pub fn has_results(&self) -> bool {
         self.workers.has_results()
+    }
+    pub fn set_inline_decoding(&mut self, frame_budget: Option<Duration>) {
+        self.workers.set_inline(frame_budget);
     }
     pub fn payloads(
         &mut self,
