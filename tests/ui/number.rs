@@ -358,7 +358,7 @@ fn an_invalid_draft_survives_enter_and_steps_and_commits_once_when_fixed() {
 fn drag_value_home_end_jump_to_bounds_and_steps_continue_from_there() {
     let mut c = setup();
     let mut v = 3_i32;
-    let mut draw = |c: &mut Context, v: &mut i32| {
+    let draw = |c: &mut Context, v: &mut i32| {
         let mut result = None;
         c.run(|c| {
             Window::new("Numbers").show(c, |ui| {
