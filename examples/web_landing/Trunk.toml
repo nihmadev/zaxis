@@ -1,0 +1,33 @@
+# Run from this directory: `trunk serve` (or `trunk build`). Trunk builds only bin targets,
+# so the hooks compile the example and run wasm-bindgen themselves; the CLI must match the
+# wasm-bindgen version in Cargo.lock (`cargo install wasm-bindgen-cli --version 0.2.129`).
+[build]
+target = "index.html"
+dist = "../../target/web_landing/dist"
+
+[watch]
+watch = ["../../src", "../web_landing.rs", "."]
+ignore = ["../../target"]
+
+[serve]
+address = "127.0.0.1"
+port = 8090
+
+[[hooks]]
+stage = "pre_build"
+command = "cargo"
+command_arguments = [
+    "build", "--release", "--example", "web_landing", "--features", "bundled-icons",
+    "--target", "wasm32-unknown-unknown", "--manifest-path", "../../Cargo.toml",
+]
+
+# Trunk gathers the page in <dist>/.stage and publishes it after post_build hooks, so
+# wasm-bindgen writes there. Hooks of one stage run in parallel, hence the two stages.
+[[hooks]]
+stage = "post_build"
+command = "wasm-bindgen"
+command_arguments = [
+    "--target", "web", "--no-typescript", "--out-name", "web_landing",
+    "--out-dir", "../../target/web_landing/dist/.stage/pkg",
+    "../../target/wasm32-unknown-unknown/release/examples/web_landing.wasm",
+]

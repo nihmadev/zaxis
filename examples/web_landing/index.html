@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>zaxis</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; }
+    </style>
+    <!-- The Trunk.toml hooks build the example and put wasm-bindgen's output in pkg/. -->
+    <script type="module">
+      import init from "./pkg/web_landing.js";
+      init();
+    </script>
+  </head>
+  <body>
+    <noscript>zaxis needs JavaScript and WebAssembly.</noscript>
+  </body>
+</html>

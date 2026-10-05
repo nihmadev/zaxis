@@ -6,9 +6,9 @@ struct Demo {
     options: Vec<ComboBoxOption<usize>>,
     changes: usize,
     open: bool,
-    update_at: Option<std::time::Instant>,
+    update_at: Option<zaxis::Instant>,
     smoke: bool,
-    started: Option<std::time::Instant>,
+    started: Option<zaxis::Instant>,
 }
 impl App for Demo {
     fn update(&mut self, context: &mut Context, frame: &mut Frame<'_>) {

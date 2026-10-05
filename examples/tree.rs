@@ -1,10 +1,8 @@
 #[path = "tree/model.rs"]
 mod model;
 use model::{id, Objects};
-use std::{
-    collections::HashSet,
-    time::{Duration, Instant},
-};
+use std::{collections::HashSet, time::Duration};
+use zaxis::Instant;
 use zaxis::{
     App, Button, Context, Frame, Id, Root, SplitPane, SplitPanel, SplitSize, Theme, TreeEvent,
     TreeView,

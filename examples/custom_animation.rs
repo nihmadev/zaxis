@@ -1,6 +1,7 @@
 //! Application-defined value, interpolation, easing and analytic spring.
 #![forbid(unsafe_code)]
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use zaxis::Instant;
 use zaxis::{
     vec2, App, Border, Color, Context, Easing, Frame, Shape, SpringOptions, SpringState,
     SpringValue, TweenOptions, Vec2, Window,

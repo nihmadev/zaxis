@@ -1,10 +1,10 @@
 use super::*;
-use std::time::Instant;
 use zaxis::winit::event::WindowEvent;
 use zaxis::winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{DeviceId, ElementState, MouseButton},
 };
+use zaxis::Instant;
 
 #[test]
 #[ignore = "interaction profiling; run with --ignored --nocapture"]
