@@ -37,6 +37,18 @@ pub struct Measure {
     pub last_frame: u64,
 }
 
+impl Measure {
+    /// Whether these sizes differ visibly from `previous` (or nothing was measured
+    /// before), so the next pass must lay out again with them.
+    pub(crate) fn changed_from(&self, previous: &Measure) -> bool {
+        (self.width - previous.width).abs() > 0.5
+            || (self.header - previous.header).abs() > 0.5
+            || (self.body - previous.body).abs() > 0.5
+            || (self.footer - previous.footer).abs() > 0.5
+            || previous.last_frame == 0
+    }
+}
+
 pub(crate) struct Metrics {
     pub anchor: ModalAnchor,
     pub width: Option<f32>,

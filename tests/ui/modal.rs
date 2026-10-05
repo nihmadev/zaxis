@@ -199,4 +199,5 @@ mod closing;
 mod dialogs;
 mod focus;
 mod layers;
+mod passes;
 mod underlay;
