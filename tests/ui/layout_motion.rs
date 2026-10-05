@@ -58,12 +58,12 @@ fn rotating_presence_turns_to_upright_and_is_usable_only_when_done() {
 
     draw(&mut c, 400, true);
     assert!(activate(&c, id).is_some());
-    draw(&mut c, 450, true);
-    eprintln!("DBG {:?}", c.next_repaint().map(|r| r.duration_since(t)));
+    // Once the turn and the button's own state transitions are over, it sleeps.
+    draw(&mut c, 1000, true);
     assert_eq!(c.next_repaint(), None);
 
     // Leaving turns it back and blocks input at once.
-    draw(&mut c, 451, false);
+    draw(&mut c, 1001, false);
     assert!(activate(&c, id).is_none());
 }
 

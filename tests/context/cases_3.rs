@@ -4,21 +4,33 @@ use super::*;
 fn checkbox_external_state_change_adds_the_checkmark_and_reuses_other_geometry() {
     let mut context = context();
     let mut checked = false;
-    build_checkbox(&mut context, &mut checked, true);
+    let t0 = zaxis::Instant::now();
+    let build_at = |context: &mut Context, checked: &mut bool, at: Duration| {
+        let mut changed = false;
+        context.run_at(t0 + at, |context| {
+            Window::new("Test").show(context, |ui| {
+                changed = ui.add(Checkbox::new(checked, "Checked")).changed();
+            });
+        });
+        changed
+    };
+    build_at(&mut context, &mut checked, Duration::ZERO);
     let stats = context.cache_stats();
     let vertices = context.draw_data().vertices.len();
     let indices = context.draw_data().indices.len();
     checked = true;
-    let response = build_checkbox(&mut context, &mut checked, true);
-    assert!(!response.changed());
+    assert!(!build_at(&mut context, &mut checked, Duration::ZERO));
     assert!(context.draw_data().vertices.len() > vertices);
     assert!(context.draw_data().indices.len() > indices);
     assert_eq!(
         context.cache_stats().tessellated_elements,
-        stats.tessellated_elements + 1
+        stats.tessellated_elements + 1,
+        "only the box changes: its checkmark appears"
     );
+    // The fill eases to the checked color; once it has, nothing is drawn again.
+    build_at(&mut context, &mut checked, Duration::from_secs(2));
     let stats = context.cache_stats();
-    build_checkbox(&mut context, &mut checked, true);
+    build_at(&mut context, &mut checked, Duration::from_secs(2));
     assert_eq!(
         context.cache_stats().tessellated_elements,
         stats.tessellated_elements
@@ -27,7 +39,7 @@ fn checkbox_external_state_change_adds_the_checkmark_and_reuses_other_geometry()
         context.cache_stats().geometry_rebuilds,
         stats.geometry_rebuilds
     );
-    assert!(!context.needs_repaint());
+    assert!(!context.needs_repaint_at(t0 + Duration::from_secs(2)));
 }
 
 #[test]

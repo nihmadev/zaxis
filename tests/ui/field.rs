@@ -111,11 +111,23 @@ fn validation_converts_from_a_result_and_a_bare_status() {
 }
 
 /// All vertices of the last pass whose color matches `color` (linear, any alpha).
+/// Vertices of `color` that the draw commands reference. Buffers keep slack where an
+/// element shrank in place; nothing draws it, so it is not counted.
 fn tinted(c: &Context, color: zaxis::Color) -> usize {
     let linear = color.linear();
-    c.draw_data()
-        .vertices
+    let data = c.draw_data();
+    let drawn: std::collections::BTreeSet<u32> = data
+        .commands
         .iter()
+        .flat_map(|command| {
+            data.indices[command.indices.start as usize..command.indices.end as usize]
+                .iter()
+                .copied()
+        })
+        .collect();
+    drawn
+        .into_iter()
+        .map(|index| data.vertices[index as usize])
         .filter(|v| (0..3).all(|i| (v.color[i] - linear[i]).abs() < 0.02) && v.color[3] > 0.0)
         .count()
 }

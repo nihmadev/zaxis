@@ -154,8 +154,14 @@ fn dragging_and_resizing_use_retained_geometry_and_minimum_size() {
     move_to(&mut context, vec2(100.0, 100.0));
     mouse(&mut context, ElementState::Released);
     build(&mut context, "Hello");
-    let window_clip = context.draw_data().commands[0].clip_rect;
-    assert_eq!(window_clip.size(), vec2(160.0, 100.0));
+    // The window is clipped to its minimum size where it was dragged; the shadow under
+    // it is drawn with a wider clip.
+    let window = zaxis::Rect::from_min_size(vec2(80.0, 70.0), vec2(160.0, 100.0));
+    assert!(context
+        .draw_data()
+        .commands
+        .iter()
+        .any(|command| command.clip_rect == window));
 }
 
 #[test]
