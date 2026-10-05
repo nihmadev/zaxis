@@ -47,7 +47,7 @@ New or substantially changed Rust source files should stay within 430 lines; spl
 larger modules by responsibility. Add regression tests for behavior changes and
 update the relevant documentation and examples.
 
-`crates/zaxis-emoji` contains the complete bundled emoji font and its OFL license.
+`crates/z-emoji` contains the complete bundled emoji font and its OFL license.
 Keep font data out of the main crate so both uploads stay below crates.io's size limit.
 
 For documentation changes, use Node.js 22 or newer (CI uses 24):

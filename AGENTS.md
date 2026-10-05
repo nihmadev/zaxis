@@ -25,7 +25,12 @@ zaxis is a Rust desktop immediate mode GUI with retained interaction state and c
 - `src/animation/`, `src/images/`: existing animation and image-loading engines.
 - `examples/`: examples using the actual public API.
 - `tests/`: regression and integration checks; `benches/`: the shared performance harness.
-- `docs/content/docs/`: documentation; `crates/zaxis-emoji/`: the separate font package and its licenses.
+- `docs/content/docs/`: documentation; `crates/z-emoji/`: the separate font package and its licenses.
+
+## Code map
+
+- `CODEMAP.md` is the navigation map (data flow, module → path tables). Consult it before exploring directories.
+- Keep it current: when you add, remove, rename, or move a module, component, or test/example/bench directory, or change the frame data flow, update `CODEMAP.md` in the same change. Do not describe internals there; keep it a map.
 
 ## Modularity and file size
 

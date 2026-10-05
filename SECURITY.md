@@ -1,8 +1,8 @@
 # Security policy
 
-This policy covers both `zaxis` and `zaxis-emoji`. Security fixes target the latest
+This policy covers both `zaxis` and `z-emoji`. Security fixes target the latest
 published version of each crate. The initial release
-is **0.0.1 Blinking**; older development versions do not receive separate backports.
+is **0.0.4 Motion**; older development versions do not receive separate backports.
 
 ## Reporting
 

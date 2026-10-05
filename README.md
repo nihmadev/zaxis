@@ -42,7 +42,7 @@ zaxis is universally better or a replacement for egui.
 | Start a native app | `zaxis::run(app)` with defaults; `run_with_options` for customization | [`eframe::run_native`](https://docs.rs/eframe/0.36.2/eframe/fn.run_native.html) with app name, options, and an app-creation closure |
 | Animate values | Typed transitions, tweens, springs, keyframes, and track composition with automatic repaint deadlines | [`Context` animation helpers](https://docs.rs/egui/0.36.2/egui/struct.Context.html#method.animate_value_with_time) for booleans and scalar values, including easing helpers |
 | Load local images / SVG | Built-in async loading through `ui.image(source)`; no loader registration | [`egui_extras` loaders](https://docs.rs/egui_extras/0.36.2/egui_extras/loaders/fn.install_image_loaders.html) with format features and loader installation |
-| Target applications | Desktop tools; the default runner drives one or several native windows | [Native, web, and game-engine integrations](https://github.com/emilk/egui) |
+| Target applications | Desktop tools; the default runner drives one or several native windows, or one browser canvas on WebGPU / WebGL2 | [Native, web, and game-engine integrations](https://github.com/emilk/egui) |
 
 This compares the everyday API paths with egui/eframe 0.36.2, not rendering speed
 or overall feature coverage. zaxis is an early development release with a smaller
@@ -136,6 +136,21 @@ motion. Stable animation channels run on monotonic time, sleep during delay and
 stop scheduling when settled or hidden. Applications can implement `Interpolate`
 and `Animation<T>` or provide closures without modifying zaxis.
 
+## Browser
+
+The same `zaxis::run` builds for `wasm32-unknown-unknown` and draws on a canvas with WebGPU,
+falling back to WebGL2. The call returns immediately after registering the event loop, and
+there is one window per page; system fonts, files and threads do not exist there. The
+`web_landing` example runs natively and in a browser from one source:
+
+```sh
+cargo install trunk wasm-bindgen-cli --version 0.2.129
+cd examples/web_landing && trunk serve
+```
+
+See [Web](docs/content/docs/web.mdx) for building without Trunk, backends, the clipboard, keyboard
+handling and the limits.
+
 ## Images
 
 Built-in images need no loader installation: `ui.image("assets/photo.jpg")`,
@@ -152,8 +167,8 @@ distributions and sustained scroll/reload process-memory measurements.
 
 ## Optional features
 
-Default features include `bundled-emoji`, `image-gif`, and `image-tiff`.
-The complete Noto Color Emoji font is shipped in the separate `zaxis-emoji` crate.
+Default features include `bundled-emoji`, `image-gif`, `image-tiff`, and `accesskit`.
+The complete Noto Color Emoji font is shipped in the separate `z-emoji` crate.
 Splitting the package keeps each crates.io upload small enough; it does not reduce
 default download size or memory use. It also lets applications omit the font:
 
@@ -165,6 +180,16 @@ zaxis = { version = "=0.0.3", default-features = false, features = ["image-gif",
 This keeps the optional image codecs and uses system fonts for emoji. Emoji
 coverage and color rendering then depend on installed fonts. PNG/JPEG/WebP/BMP/SVG,
 text shaping, and desktop backends remain available without default features.
+
+## Accessibility
+
+Widgets are exposed to screen readers through [AccessKit](https://accesskit.dev):
+UI Automation on Windows and NSAccessibility on macOS with the default `accesskit`
+feature, AT-SPI on Linux and the BSDs with the opt-in `accesskit_unix` feature. There
+is no support in the browser. Nothing is built until a screen reader connects. Disabling
+default features removes the tree; add `accesskit` back to keep it. Checked on
+Windows 11 with a UI Automation client and Narrator; NVDA, JAWS, VoiceOver and Orca
+were not tried. See [Accessibility](docs/content/docs/accessibility.mdx).
 
 ## Benchmark
 
@@ -196,6 +221,6 @@ For sensitive vulnerabilities, contact Telegram privately; see [SECURITY.md](SEC
 
 Source: [MIT](LICENSE). Bundled Inter (Regular, Medium, SemiBold, Bold), JetBrains Mono (Regular, Bold) and Noto Color Emoji fonts:
 [Inter OFL](assets/OFL-Inter.txt), [JetBrains Mono OFL](assets/OFL-JetBrainsMono.txt),
-[Noto Emoji OFL](https://github.com/nihmadev/zaxis/blob/main/crates/zaxis-emoji/assets/OFL-NotoEmoji.txt).
+[Noto Emoji OFL](https://github.com/nihmadev/zaxis/blob/main/crates/z-emoji/assets/OFL-NotoEmoji.txt).
 Lucide-derived icons: [ISC](assets/LUCIDE-LICENSE). Include the corresponding
 licenses when redistributing these assets.

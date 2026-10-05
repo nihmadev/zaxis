@@ -13,6 +13,30 @@ overlays and heads-up panels. Public APIs may still change between development r
 
 ### Added
 
+- Accessibility through AccessKit: every built-in component publishes a role, a name, a
+  value, its state and the requests it accepts (UI Automation on Windows and
+  NSAccessibility on macOS with the default `accesskit` feature; AT-SPI on Linux and the
+  BSDs with the opt-in `accesskit_unix` feature; nothing in the browser). The tree is
+  built only after assistive technology asks for it, and afterwards only changed nodes
+  are sent. `Widget::accessible_label`, `accessible_description`, `accessible_role` and
+  `accessibility_hidden` (`Accessible`); `Ui::accessible` and `Ui::accessible_group` for
+  custom widgets (`AccessNode`, `AccessRole`, `AccessAction`, `AccessActionKind`,
+  `AccessToggled`, `AccessLive`, `AccessOrientation`); `Context::announce` and
+  `announce_assertive`; `Image::alt` and `decorative`, `Loader::label`, and
+  `accessible_label` on `Modal`, `ListBox`, `TreeView`, `Table` and `Carousel`;
+  `RunOptions::with_accessibility` and `WindowOptions::with_accessibility`;
+  `DiagnosticKind::MissingAccessibleName`. `Toast` is a polite status region and `Field`
+  validation messages are live. `TextEdit` publishes its lines, caret and selection and
+  accepts value, replacement and selection requests through the edit buffer and undo
+  history. Custom hosts use `Context::take_accessibility_update`,
+  `on_accessibility_action`, `set_accessibility_active` and the re-exports
+  `zaxis::accesskit` and `zaxis::accesskit_winit`. The `accessibility` example shows it.
+  Checked with tests, a UI Automation client and Narrator on Windows 11; NVDA, JAWS,
+  VoiceOver and Orca were not tried.
+- `Hyperlink`, `RichText` and selectable static text (`ui.hyperlink`, `ui.hyperlink_to`, `Hyperlink`, `HyperlinkStyle`, `LinkActivation`, `UrlPolicy`; `ui.rich_label`, `RichText`, `Span`, `SpanStyle`, `LinkTarget`; `ui.selectable_label`, `ui.copyable_label`, `SelectableLabel`, `ui.selection_scope`, `SelectionScope`, `Context::selected_text`). A link is accent colored, underlines on hover, has one hit area per wrapped line, is a Tab stop and activates on release, Enter or Space; `Response::link_activation` tells a primary click from a middle or Ctrl+click, and the library opens an address only on request, after a scheme allowlist (`https`, `http`, `mailto`). A flat list of spans mixes weight, monospace, color, underline and independently focusable links inside one wrapped paragraph (one shaping pass per paragraph; `Paint::Rich` and `TextSystem::rich_layout` share a bounded cache that ignores colors). Static text can be selected by grapheme cluster with the pointer, double and triple click, Shift+click, Ctrl/Cmd+A and Ctrl/Cmd+C or Ctrl+Insert, with an I-beam cursor, autoscroll in a `ScrollArea`, a dimmed selection without focus, `Copy` and `Select all` menus, ellipsis (`truncate`, `max_lines`) that still copies the full text, a copy button, and one selection per window that spans the labels of a `SelectionScope` in document order. Hit testing, selection backing and painting share the paragraph layout of `TextEdit` (`text_geometry`); selection rectangles and underlines are snapped to the pixel grid. The `hyperlink` example shows it.
+- `Carousel` (`CarouselVariant`, `CarouselPage`, `CarouselOutput`, `CarouselStyle`, `CarouselIndicator`, `IndicatorPosition`, `StackDirection`): a paged container with a stack of cards and a photo slider. Pages are built only for visible layers, the current page is an index, a key or internal, and pages have stable keys. Swipe follows the pointer and a release projects its momentum with `Decay` into a spring that keeps the gesture velocity, with a rubber band at the ends; keys, wheel (without stealing the vertical wheel from an enclosing `ScrollArea`), Shift+wheel, arrow buttons, a flowing pill / dots / strokes / count indicator, looping and autoplay that respects hover, focus, dragging and reduced motion. Photos use `ImageSource` with a Skeleton and a fade-in. `Style::carousel` holds the geometry. The `carousel` example shows both variants.
+- `ListBox` (`ListModel`, `ListEntry`, `ListRow`, `ListMode`, `ListEvent`, `ListOutput`, `ListBoxStyle`, `ListDensity`): a virtualized list on stable keys with single, multiple and checked selection (Ctrl/Shift ranges, Ctrl+A, Esc), type-ahead, sticky section headers, separators, measured row heights with a Fenwick index and scroll anchoring, `scroll_to_key`, loading and empty states, drag reordering and nested controls. The shared row engine of `ScrollArea::show_rows` now takes a `RowMetrics` implementation, so `Table`, `TreeView`, `ComboBox` and `ListBox` use one virtualization core. The `list_box` example shows 120 000 rows.
+- `SegmentedControl` (`Ui::segmented`, `SegmentOption`, `SegmentWidth`, `SegmentedSize`, `SegmentedVariant`, `SegmentedStyle`): a plate with a sliding raised thumb or an outlined Material 3 style row, icons and labels, one Tab stop with arrow/Home/End navigation, uniform shrinking with ellipsis and icon-only fallback, vertical mode and pixel-exact widths. The `segmented_control` example shows it.
 - `MenuBar` and `MenuItem`: a menu bar or (`compact`) hamburger menu with cascading submenus,
   check marks, shortcut captions, pointer title switching and full keyboard navigation
   (`Ui::menu_bar`, `ContextMenuItem::checked`). Popups can own extra panels, so a press
@@ -58,9 +82,37 @@ overlays and heads-up panels. Public APIs may still change between development r
 - Examples `multi_window` (with `--smoke-test`) and `code_view` (source, diff and file
   table in the code font).
 - Docs: a `menu-bar` page; the limitations page no longer lists a missing menu bar.
+- Browser support: the runner builds for `wasm32-unknown-unknown` and draws on a canvas with
+  WebGPU, falling back to WebGL2 (`RunOptions::web`, `WebOptions`, `WebBackend`,
+  `with_canvas_id`, `with_container_id`, `with_web_backend`, the `?zaxis_backend=` URL
+  parameter, `Renderer::new_with_backends`). `run` and `run_with_options` keep one signature
+  per platform; in a page they return immediately after registering the event loop and need a
+  `'static` application. The runner is split into platform-independent code plus
+  `runner/native.rs` and `runner/web.rs`; the renderer is created asynchronously, repaint
+  deadlines use the browser's frame and timer scheduling, and a background tab draws nothing.
+  One canvas means one window: `OpenOutcome::Unsupported` and `WindowError::Unsupported`
+  report a second one. `examples/web_landing` runs natively and in a page, with a
+  `Trunk.toml`; see the new `web` documentation page.
+- `zaxis::Instant`: the crate's clock, `std::time::Instant` on native targets (public
+  signatures unchanged) and `web_time::Instant` on `wasm32`, where std's panics.
+- Clipboard backends: `ClipboardBackend`, `ClipboardError`, `Context::set_clipboard` and
+  `testing::MemoryClipboard`. The system clipboard (arboard) is one backend; the browser
+  backend takes paste text from the `paste` event and writes with `navigator.clipboard` and the
+  `copy`/`cut` events, reporting a refused write on the next frame.
+- `Context::decode_images_inline` and `SharedResources::decode_images_inline`: decode images on
+  the drawing thread within a per-frame budget (the only mode on `wasm32`, which has no
+  threads). Loading an image by file path reports an error in a browser.
+- `Button::icon`: a leading icon tinted like the caption.
+- Wheel scrolling glides: a `ScrollArea` draws its content easing toward the new offset
+  (about 70 ms time constant; drags, explicit offsets and reduced motion snap), and one line
+  of a notched wheel is now three lines of text instead of one font size.
 
 ### Changed
 
+- The emoji font crate was renamed from `zaxis-emoji` (`crates/zaxis-emoji`) to `z-emoji`
+  (`crates/z-emoji`, Rust path `z_emoji`). The `bundled-emoji` feature is unchanged.
+- The `integration` example wires an AccessKit adapter and requires the `accesskit`
+  feature.
 - The renderer shares device, queue, pipelines and the GPU texture store between windows
   (`Renderer::create_sibling`); each window keeps its own surface, buffers and blur targets.
   The desktop runner was split into `app` submodules.
@@ -68,6 +120,12 @@ overlays and heads-up panels. Public APIs may still change between development r
   navigate cascading submenus.
 - Combo box highlights fade through the same hue instead of black and pick a readable
   foreground for the active fill.
+- Public enums gained variants: `OpenOutcome::Unsupported`, `WindowError::Unsupported` and
+  `RunError::Web`; `testing::Driver` clipboard methods return `ClipboardError` instead of
+  `arboard::Error`. `arboard` and `pollster` are dependencies of native targets only.
+- The UI shader no longer asks for `linear, sample` interpolation of the vertex color; the
+  vertex `w` is 1, so the image is unchanged, and WebGL2 supports nothing else.
+- `Hyperlink::open_in_browser` opens a new tab in a page.
 
 ### Fixed
 
