@@ -60,6 +60,8 @@ impl TextEdit<'_> {
         events: Vec<TextEditInput>,
         geo: &mut Geo<'_>,
     ) {
+        // The press that focuses a whole-value field keeps its whole-text selection.
+        let mut focusing = false;
         for event in events {
             if self.run_handler(state, geo, out, &event) {
                 continue;
@@ -102,7 +104,12 @@ impl TextEdit<'_> {
                     out.lost_focus = true;
                     state.preedit = None;
                 }
-                TextEditInput::Focus(true) => {}
+                TextEditInput::Focus(true) => {
+                    if self.whole_value {
+                        state.buffer.select_all(self.text);
+                        focusing = true;
+                    }
+                }
                 _ if !self.enabled => {}
                 TextEditInput::Text(text) | TextEditInput::Commit(text) if !self.read_only => {
                     state.preedit = None;
@@ -126,6 +133,7 @@ impl TextEdit<'_> {
                     (state.buffer.upstream, state.buffer.column) = (false, None);
                     state.word_drag = None;
                 }
+                TextEditInput::Pointer(_, false, 1) if std::mem::take(&mut focusing) => {}
                 TextEditInput::Pointer(pointer, extend, count) => {
                     self.pointer(ui, state, geo, pointer, extend, count);
                 }
@@ -176,6 +184,15 @@ impl TextEdit<'_> {
         if handled && matches!(event, TextEditInput::Key(KeyCode::Escape, _)) {
             state.preedit = None;
         }
+        if handled
+            && self.whole_value
+            && matches!(
+                event,
+                TextEditInput::Key(KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Escape, _)
+            )
+        {
+            state.buffer.select_all(self.text);
+        }
         handled
     }
 
@@ -202,6 +219,7 @@ impl TextEdit<'_> {
         } else {
             single_line(text)
         };
+        let value = self.accepted(value);
         let selection = state.buffer.selection();
         let value = fit(self.text, &self.text[selection], value, self.max_chars);
         if value.is_empty() {
@@ -222,9 +240,17 @@ impl TextEdit<'_> {
         } else {
             single_line(text)
         };
-        let value = fit(self.text, self.text, value, self.max_chars);
+        let value = fit(self.text, self.text, self.accepted(value), self.max_chars);
         state.buffer.select_all(self.text);
         state.buffer.replace_selection(self.text, &value)
+    }
+
+    /// `value` without the characters the field does not take.
+    fn accepted(&self, value: String) -> String {
+        match self.accept {
+            Some(accept) => value.chars().filter(|c| accept(*c)).collect(),
+            None => value,
+        }
     }
 
     pub(super) fn pointer(

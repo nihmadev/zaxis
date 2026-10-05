@@ -1,5 +1,8 @@
 use crate::prelude::*;
-use winit::{dpi::PhysicalSize, event::ElementState};
+use winit::{
+    dpi::PhysicalSize,
+    event::{ElementState, Ime, WindowEvent},
+};
 use zaxis::{Color, ColorPicker, ColorPickerType, Rect, Response, Window};
 
 fn draw(
@@ -288,4 +291,122 @@ fn themed_picker_in_demo_columns_routes_palette_hue_and_fields() {
             assert_eq!(color, Color::rgba(0x12, 0x34, 0x56, 73));
         }
     }
+}
+
+/// An open editor takes input on its palette; a closed (or closing) one blocks it.
+fn editor_open(context: &Context, id: Id) -> bool {
+    context
+        .probe()
+        .previous_hits
+        .iter()
+        .any(|hit| hit.id == id.with("palette") && hit.action == HitAction::Slider)
+}
+
+fn press(context: &mut Context, code: KeyCode, mods: winit::keyboard::ModifiersState) {
+    context.set_modifiers(mods);
+    context.key(code, ElementState::Pressed, false);
+    context.key(code, ElementState::Released, false);
+    context.set_modifiers(winit::keyboard::ModifiersState::empty());
+}
+
+#[test]
+fn field_escape_drops_the_draft_then_escape_outside_the_fields_closes_the_picker() {
+    let mut context = context();
+    let mut color = Color::rgba(78, 133, 190, 99);
+    let id = draw(&mut context, &mut color, ColorPickerType::Internal, true).id;
+    let at = region(&context, id.with(("field", 3usize))).center();
+    click(&mut context, at);
+    context.on_text_event("#FFFFFF");
+    press(&mut context, KeyCode::Escape, Default::default());
+    let r = draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert!(!r.changed());
+    assert_eq!(color, Color::rgba(78, 133, 190, 99));
+    assert!(editor_open(&context, id), "a field takes Escape");
+    // Focus leaves the fields for the hue strip; the next Escape belongs to the picker.
+    for _ in 0..4 {
+        press(
+            &mut context,
+            KeyCode::Tab,
+            winit::keyboard::ModifiersState::SHIFT,
+        );
+    }
+    draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert_eq!(context.probe().focused_widget, Some(id.with("hue")));
+    press(&mut context, KeyCode::Escape, Default::default());
+    assert!(!draw(&mut context, &mut color, ColorPickerType::Internal, true).changed());
+    // The pass that closes it still built the open editor; the next one has it closed.
+    draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert!(!editor_open(&context, id));
+}
+
+#[test]
+fn fields_are_text_edits_with_clipboard_and_a_printable_ascii_filter() {
+    let mut context = context();
+    let clipboard = MemoryClipboard::with_text("#00ff00");
+    context.set_clipboard(clipboard.clone());
+    let mut color = Color::rgba(10, 20, 30, 40);
+    let id = draw(&mut context, &mut color, ColorPickerType::Internal, true).id;
+    let hex = id.with(("field", 3usize));
+    let at = region(&context, hex).center();
+    click(&mut context, at);
+    draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert!(
+        context.probe().text_edits.contains_key(&hex),
+        "a real TextEdit"
+    );
+    // Focus selected the whole field: the paste replaces it.
+    press(
+        &mut context,
+        KeyCode::KeyV,
+        winit::keyboard::ModifiersState::CONTROL,
+    );
+    press(&mut context, KeyCode::Enter, Default::default());
+    assert!(draw(&mut context, &mut color, ColorPickerType::Internal, true).changed());
+    assert_eq!(color, Color::rgba(0, 255, 0, 40));
+    // Copy takes the committed text, selected whole after the commit.
+    press(
+        &mut context,
+        KeyCode::KeyC,
+        winit::keyboard::ModifiersState::CONTROL,
+    );
+    draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert_eq!(clipboard.get().as_deref(), Some("#00FF00"));
+    // Composed and pasted text outside printable ASCII is dropped.
+    let red = id.with(("field", 0usize));
+    let at = region(&context, red).center();
+    click(&mut context, at);
+    context.on_window_event(&WindowEvent::Ime(Ime::Commit("１２ü7".to_owned())));
+    press(&mut context, KeyCode::Enter, Default::default());
+    assert!(draw(&mut context, &mut color, ColorPickerType::Internal, true).changed());
+    assert_eq!(color, Color::rgba(7, 255, 0, 40));
+}
+
+#[test]
+fn typing_through_all_four_fields_in_one_frame_commits_each_once() {
+    let mut context = context();
+    let mut color = Color::rgba(1, 2, 3, 200);
+    let id = draw(&mut context, &mut color, ColorPickerType::Internal, true).id;
+    let at = region(&context, id.with(("field", 0usize))).center();
+    click(&mut context, at);
+    for text in ["10", "20", "30"] {
+        context.on_text_event(text);
+        press(&mut context, KeyCode::Tab, Default::default());
+    }
+    let r = draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert!(r.changed());
+    assert_eq!(color, Color::rgba(10, 20, 30, 200));
+    assert!(!draw(&mut context, &mut color, ColorPickerType::Internal, true).changed());
+    // The hex field has focus now; an outside change replaces its pending draft.
+    context.on_text_event("#123456");
+    draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    color = Color::rgba(200, 100, 50, 200);
+    draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    press(&mut context, KeyCode::Tab, Default::default());
+    let r = draw(&mut context, &mut color, ColorPickerType::Internal, true);
+    assert_ne!(
+        context.probe().focused_widget,
+        Some(id.with(("field", 3usize)))
+    );
+    assert!(!r.changed(), "the dropped draft is never committed");
+    assert_eq!(color, Color::rgba(200, 100, 50, 200));
 }

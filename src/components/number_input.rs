@@ -4,7 +4,13 @@ use crate::{Color, CornerRadius, Id, Padding};
 use std::{hash::Hash, ops::RangeInclusive, panic::Location};
 
 mod access;
-mod render;
+mod display;
+mod drag;
+mod editor;
+mod show;
+mod state;
+
+pub(crate) use state::NumberState;
 
 /// Compact appearance and gesture defaults for both numeric controls.
 #[derive(Clone, Debug, PartialEq)]
@@ -256,7 +262,7 @@ impl<'a, T: Numeric> NumberInput<'a, T> {
 }
 impl<T: Numeric> Widget for NumberInput<'_, T> {
     fn ui(self, ui: &mut Ui<'_>) -> Response {
-        render::show(ui, self.value, self.options, false)
+        show::show(ui, self.value, self.options, false)
     }
 }
 impl Ui<'_> {
@@ -271,21 +277,5 @@ pub(crate) fn show_drag<T: Numeric>(
     value: &mut T,
     options: NumberOptions<'_, T>,
 ) -> Response {
-    render::show(ui, value, options, true)
-}
-
-#[derive(Default)]
-pub(crate) struct NumberState {
-    buffer: String,
-    snapshot: String,
-    last_value: String,
-    editing: bool,
-    origin: String,
-    units: f64,
-    last_step: String,
-    pointer: Option<crate::Vec2>,
-    distance: f32,
-    focused: bool,
-    invalid: bool,
-    pub(crate) last_frame: u64,
+    show::show(ui, value, options, true)
 }

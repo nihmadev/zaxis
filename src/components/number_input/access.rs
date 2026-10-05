@@ -1,23 +1,10 @@
 //! NumberInput and DragValue for assistive technology: one spin button, whose requests go
 //! through the steps of the arrow keys and the commit of a typed value.
 
-use super::{
-    render::{commit, step_from},
-    NumberOptions, NumberState, Numeric,
-};
+use super::{state::commit, NumberOptions, NumberState, Numeric};
 use crate::{
     accessibility::Scope, AccessAction, AccessActionKind as Kind, AccessRole, Id, Rect, Ui,
 };
-
-/// A value set from outside is a commit: clamped, never snapped to the step, and the point
-/// Escape returns to.
-fn committed<T: Numeric>(state: &mut NumberState, value: T) {
-    state.invalid = false;
-    state.snapshot = value.to_string();
-    state.origin = state.snapshot.clone();
-    state.units = 0.0;
-    state.buffer = state.snapshot.clone();
-}
 
 /// Apply the requests waiting for the spin button `node`.
 pub(super) fn requests<T: Numeric>(
@@ -44,7 +31,7 @@ pub(super) fn requests<T: Numeric>(
                 } else {
                     -1.0
                 };
-                step_from(state, value, options, units);
+                state.step_from(value, options, units);
                 if state.editing {
                     state.buffer = value.to_string();
                 }
@@ -52,7 +39,7 @@ pub(super) fn requests<T: Numeric>(
             AccessAction::SetNumericValue(next) if next.is_finite() => {
                 let (min, max) = (*options.range.start(), *options.range.end());
                 *value = T::from_f64(next).normalized(min, max);
-                committed(state, *value);
+                state.committed(*value);
             }
             AccessAction::SetValue(text) => {
                 set_text(state, value, options, &text);
@@ -75,7 +62,7 @@ pub(super) fn set_text<T: Numeric>(
     let text = text.strip_suffix(options.suffix.as_str()).unwrap_or(text);
     let parsed = commit(text.trim(), value, options);
     if parsed {
-        committed(state, *value);
+        state.committed(*value);
     }
     parsed
 }

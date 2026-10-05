@@ -1,13 +1,28 @@
+//! A color row that expands into an HSV editor: palette, hue strip and RGB/HEX fields.
+//!
+//! `show` runs a pass in stages: the row and its toggle (`row`), the editor inline or
+//! floating (`panel`), the editor's surfaces and fields (`editor`, `fields`, the fields
+//! being real TextEdits), what assistive technology reads and requests (`access`), and the
+//! color model with the field drafts (`color`).
+
 use std::{hash::Hash, panic::Location};
 
-use winit::keyboard::KeyCode;
-
 use crate::{
-    context::{HitAction, HitRegion, Paint, SliderInput, TextEditInput},
-    Border, Color, CornerRadius, Id, Padding, Rect, Shape, Vec2,
+    context::{HitAction, HitRegion, Paint, SliderInput},
+    Border, Color, CornerRadius, Id, Rect, Shape,
 };
 
-use super::{edit_buffer::EditBuffer, visible_label, HoverStyle, Response, Ui, Widget, Window};
+use super::{visible_label, HoverStyle, Response, Ui};
+
+mod access;
+mod color;
+mod editor;
+mod fields;
+mod panel;
+mod row;
+mod show;
+
+pub use color::{from_hsv, to_hsv};
 
 /// Where the expanded color editor is displayed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -112,89 +127,15 @@ impl ColorPicker<'_> {
 }
 pub struct ColorPickerState {
     open: bool,
+    /// The editor's hue, saturation and brightness: a hue survives greys and black.
     hsv: [f32; 3],
     last_color: Color,
-    edit: Option<FieldEdit>,
-}
-
-struct FieldEdit {
-    field: usize,
-    text: String,
-    buffer: EditBuffer,
-}
-
-impl ColorPickerState {
-    fn sync(&mut self, color: Color) {
-        if self.last_color != color {
-            let hsv = to_hsv(color);
-            // Retain the selected hue for greys, and saturation when choosing black.
-            if hsv[1] > 0.0 {
-                self.hsv[0] = hsv[0];
-            }
-            if hsv[2] > 0.0 {
-                self.hsv[1] = hsv[1];
-            }
-            self.hsv[2] = hsv[2];
-            self.last_color = color;
-        }
-    }
-
-    fn commit(&mut self, color: &mut Color) {
-        if let Some(edit) = self.edit.take() {
-            if edit.field == 3 {
-                let text = edit.text.trim().trim_start_matches('#');
-                if text.len() == 6 && text.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    let rgb = u32::from_str_radix(text, 16).unwrap();
-                    *color =
-                        Color::rgba((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, color.0[3]);
-                }
-            } else if let Ok(value) = edit.text.trim().parse::<i64>() {
-                color.0[edit.field] = value.clamp(0, 255) as u8;
-            }
-            self.sync(*color);
-        }
-    }
-}
-
-fn field_text(color: Color, field: usize) -> String {
-    if field == 3 {
-        format!("#{:02X}{:02X}{:02X}", color.0[0], color.0[1], color.0[2])
-    } else {
-        color.0[field].to_string()
-    }
-}
-
-pub fn to_hsv(color: Color) -> [f32; 3] {
-    let [r, g, b] = [color.0[0], color.0[1], color.0[2]].map(|c| f32::from(c) / 255.0);
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let delta = max - min;
-    let hue = if delta == 0.0 {
-        0.0
-    } else if max == r {
-        ((g - b) / delta).rem_euclid(6.0) / 6.0
-    } else if max == g {
-        ((b - r) / delta + 2.0) / 6.0
-    } else {
-        ((r - g) / delta + 4.0) / 6.0
-    };
-    [hue, if max == 0.0 { 0.0 } else { delta / max }, max]
-}
-
-pub fn from_hsv([h, s, v]: [f32; 3], alpha: u8) -> Color {
-    let h = h.rem_euclid(1.0) * 6.0;
-    let c = v * s;
-    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
-    let rgb = match h as u32 {
-        0 => [c, x, 0.0],
-        1 => [x, c, 0.0],
-        2 => [0.0, c, x],
-        3 => [0.0, x, c],
-        4 => [x, 0.0, c],
-        _ => [c, 0.0, x],
-    }
-    .map(|channel| ((channel + v - c) * 255.0).round() as u8);
-    Color::rgba(rgb[0], rgb[1], rgb[2], alpha)
+    /// The text being edited in each channel field, until it is committed or dropped.
+    drafts: [Option<color::Draft>; color::FIELDS],
+    /// Drafts taken by Enter or assistive technology in this pass, committed with the
+    /// others at the end of the fields' stage.
+    committing: Vec<color::Draft>,
+    serial: u64,
 }
 
 fn rounded(rect: Rect, fill: Color, radius: impl Into<CornerRadius>, border: Border) -> Paint {
@@ -222,8 +163,3 @@ impl Ui<'_> {
         self.add(ColorPicker::new(color, text))
     }
 }
-
-mod access;
-mod editor;
-mod fields;
-mod show;

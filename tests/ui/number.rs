@@ -322,3 +322,66 @@ fn precise_integer_steps_at_limits_and_small_float_steps_are_not_lost() {
     assert_eq!(1e-9_f64.offset(1.0, 1.0, -10.0, 10.0), 1.000000001);
     assert_eq!(0.3_f64.offset(0.1, -3.0, -10.0, 10.0), 0.0);
 }
+
+#[test]
+fn an_invalid_draft_survives_enter_and_steps_and_commits_once_when_fixed() {
+    let mut c = setup();
+    let mut v = 5_i32;
+    let r = draw(&mut c, &mut v, 1, false, true);
+    click(&mut c, r.rect.center());
+    replace(&mut c, "12x");
+    for refused in [KeyCode::Enter, KeyCode::ArrowUp] {
+        key(&mut c, refused, ModifiersState::empty());
+        let next = draw(&mut c, &mut v, 1, false, true);
+        assert!(!next.changed() && !next.submitted());
+        assert_eq!(v, 5, "an incomplete draft never turns into a value");
+    }
+    // The draft is still there: removing the stray character makes it valid.
+    key(&mut c, KeyCode::Backspace, ModifiersState::empty());
+    key(&mut c, KeyCode::Enter, ModifiersState::empty());
+    let r = draw(&mut c, &mut v, 1, false, true);
+    assert!(r.changed() && r.submitted());
+    assert_eq!(v, 12);
+    let again = draw(&mut c, &mut v, 1, false, true);
+    assert!(
+        !again.changed() && !again.submitted(),
+        "one commit per Enter"
+    );
+    // A step after typing starts from the typed value.
+    replace(&mut c, "40");
+    key(&mut c, KeyCode::ArrowUp, ModifiersState::empty());
+    assert!(draw(&mut c, &mut v, 1, false, true).changed());
+    assert_eq!(v, 41);
+}
+
+#[test]
+fn drag_value_home_end_jump_to_bounds_and_steps_continue_from_there() {
+    let mut c = setup();
+    let mut v = 3_i32;
+    let mut draw = |c: &mut Context, v: &mut i32| {
+        let mut result = None;
+        c.run(|c| {
+            Window::new("Numbers").show(c, |ui| {
+                result = Some(ui.add(DragValue::new(v).id_source("value").range(-4..=9)));
+            });
+        });
+        result.unwrap()
+    };
+    let r = draw(&mut c, &mut v);
+    c.request_focus(r.id);
+    draw(&mut c, &mut v);
+    for (code, expected) in [
+        (KeyCode::End, 9),
+        (KeyCode::ArrowRight, 9),
+        (KeyCode::ArrowLeft, 8),
+        (KeyCode::Home, -4),
+        (KeyCode::ArrowLeft, -4),
+        (KeyCode::ArrowRight, -3),
+    ] {
+        key(&mut c, code, ModifiersState::empty());
+        draw(&mut c, &mut v);
+        assert_eq!(v, expected, "{code:?}");
+    }
+    let unchanged = draw(&mut c, &mut v);
+    assert!(!unchanged.changed());
+}

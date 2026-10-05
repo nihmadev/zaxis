@@ -4,7 +4,11 @@
 
 use winit::keyboard::KeyCode;
 
-use super::{editor::adjust, ColorPickerState, EditBuffer, FieldEdit};
+use super::{
+    color::{field_text, HEX},
+    editor::adjust,
+    visible_label,
+};
 use crate::{
     context::SliderInput, AccessAction, AccessActionKind as Kind, AccessOrientation, AccessRole,
     Color, Id, Rect, Ui, Vec2,
@@ -16,7 +20,6 @@ const CHANNELS: [(&str, f32, &str); 3] = [
     ("Saturation", 100.0, "%"),
     ("Brightness", 100.0, "%"),
 ];
-const FIELDS: [&str; 4] = ["Red", "Green", "Blue", "Hex"];
 
 /// The node of the palette's brightness axis; its saturation axis is the palette itself.
 fn brightness(palette: Id) -> Id {
@@ -91,44 +94,25 @@ pub(super) fn sliders(
     applied
 }
 
-/// A value set on a channel field is typed and committed: the same filter, the same limits.
-pub(super) fn field_requests(
-    ui: &mut Ui<'_>,
-    fields: &[Id; 4],
-    enabled: bool,
-    state: &mut ColorPickerState,
-    color: &mut Color,
-) {
-    for (field, id) in fields.iter().enumerate() {
-        for action in ui.context.take_access_actions(*id) {
-            let AccessAction::SetValue(text) = action else {
-                continue;
-            };
-            if !enabled {
-                break;
-            }
-            state.commit(color);
-            let text = text
-                .chars()
-                .filter(|c| c.is_ascii() && !c.is_ascii_control())
-                .take(16)
-                .collect();
-            state.edit = Some(FieldEdit {
-                field,
-                text,
-                buffer: EditBuffer::default(),
-            });
-            state.commit(color);
-        }
-    }
+/// The row's color well, described before the editor runs; [`complete_well`] adds the
+/// color once it is final. Returns where its node is.
+pub(super) fn well(ui: &mut Ui<'_>, id: Id, row: Rect, text: &str, enabled: bool) -> usize {
+    let well = ui.context.a11y_len();
+    ui.a11y(id, row, AccessRole::ColorWell, |node| {
+        node.label(visible_label(text))
+            .disabled(!enabled)
+            .clicks(id)
+            .action(Kind::Expand)
+            .action(Kind::Collapse);
+    });
+    well
 }
 
-/// One channel field, showing `text`.
-pub(super) fn field(ui: &mut Ui<'_>, id: Id, rect: Rect, field: usize, text: &str, enabled: bool) {
-    ui.a11y(id, rect, AccessRole::TextInput, |node| {
-        node.label(FIELDS[field])
-            .value(text)
-            .disabled(!enabled)
-            .action(Kind::SetValue);
-    });
+/// The well's value is the final color of the pass, as hex.
+pub(super) fn complete_well(ui: &mut Ui<'_>, well: usize, id: Id, color: Color, open: bool) {
+    if let Some(node) = ui.context.a11y_node_mut(well).filter(|node| node.id == id) {
+        node.value(field_text(color, HEX))
+            .color(color)
+            .expanded(open);
+    }
 }

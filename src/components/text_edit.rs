@@ -62,6 +62,13 @@ pub struct TextEdit<'a> {
     pub(crate) exact_id: Option<Id>,
     pub(crate) affixes: (String, String),
     pub(crate) select_all: bool,
+    /// Characters the field takes: typed, pasted, composed and assigned text keeps only
+    /// these. For fields of a fixed alphabet (channel and hex fields of a color picker).
+    pub(crate) accept: Option<fn(char) -> bool>,
+    /// The field holds one value that is replaced rather than edited: gaining focus selects
+    /// it whole (the press that gave focus keeps that selection instead of placing the
+    /// caret), and so does Enter or Escape taken by the event handler.
+    pub(crate) whole_value: bool,
     max_chars: Option<usize>,
     area: Option<AreaOptions>,
     family: Option<crate::TextFamily>,
@@ -95,6 +102,8 @@ impl<'a> TextEdit<'a> {
             exact_id: None,
             affixes: (String::new(), String::new()),
             select_all: false,
+            accept: None,
+            whole_value: false,
             max_chars: None,
             area: None,
             family: None,
