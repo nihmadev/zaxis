@@ -41,7 +41,7 @@ const ALIAS_WEIGHTS: [FontWeight; 9] = [
     FontWeight::BLACK,
 ];
 
-pub(super) fn font_system() -> &'static Mutex<FontSystem> {
+pub fn font_system() -> &'static Mutex<FontSystem> {
     static FONTS: OnceLock<Mutex<FontSystem>> = OnceLock::new();
     FONTS.get_or_init(|| {
         let system = FontSystem::new();
@@ -51,7 +51,7 @@ pub(super) fn font_system() -> &'static Mutex<FontSystem> {
         add_faces(
             &mut db,
             "Noto Color Emoji",
-            Arc::new(zaxis_emoji::FONT_DATA),
+            Arc::new(z_emoji::FONT_DATA),
             &ALIAS_WEIGHTS,
         );
         let common = std::iter::once("Noto Color Emoji")
