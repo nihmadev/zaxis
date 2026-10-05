@@ -6,7 +6,7 @@ use super::*;
 /// The family is part of the key (`family`, `monospace`), so changing one family
 /// never touches the cached layouts of the other.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct FontKey {
+pub struct FontKey {
     pub family: Id,
     pub weight: FontWeight,
     pub style: fontdb::Style,
@@ -27,9 +27,9 @@ impl FontKey {
 }
 
 /// Width of a tab in space advances; cosmic-text's own default.
-pub(crate) const DEFAULT_TAB: u16 = 8;
+pub const DEFAULT_TAB: u16 = 8;
 
-pub(super) struct CachedLayout {
+pub struct CachedLayout {
     pub text: String,
     pub size: u32,
     pub wrap: u32,
@@ -40,7 +40,7 @@ pub(super) struct CachedLayout {
 }
 
 impl TextSystem {
-    pub(crate) fn measure_with_wrap(
+    pub fn measure_with_wrap(
         &mut self,
         text: &str,
         size: f32,
@@ -98,7 +98,7 @@ impl TextSystem {
         self.layout(text, size, font, f32::INFINITY).carets.clone()
     }
 
-    pub(super) fn layout(
+    pub fn layout(
         &mut self,
         text: &str,
         size: f32,
@@ -109,7 +109,7 @@ impl TextSystem {
     }
 
     /// The one shaping entry point. A tab is `tab` space advances wide and is part of the key.
-    pub(crate) fn layout_with_tab(
+    pub fn layout_with_tab(
         &mut self,
         text: &str,
         size: f32,

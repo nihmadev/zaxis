@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// One grapheme cluster of a visual line, in paragraph byte coordinates.
 /// `x0 <= x1` regardless of direction; `rtl` tells which edge is the leading one.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Cluster {
+pub struct Cluster {
     pub start: usize,
     pub end: usize,
     pub x0: f32,
@@ -38,9 +38,11 @@ impl Cluster {
 /// A line as laid out by the wrapper. `start..end` is its logical byte range;
 /// `clusters` are in logical order, so the visual order may differ in bidi text.
 #[derive(Clone, Debug)]
-pub(crate) struct VisualLine {
+pub struct VisualLine {
     pub top: f32,
     pub height: f32,
+    /// Baseline in layout coordinates: the `y` glyphs of this line are painted at.
+    pub baseline: f32,
     pub start: usize,
     pub end: usize,
     pub clusters: Vec<Cluster>,
@@ -184,6 +186,7 @@ pub(super) fn build_line(run: &LayoutRun<'_>, glyphs: &[LayoutGlyph]) -> VisualL
     VisualLine {
         top: run.line_top,
         height: run.line_height,
+        baseline: run.line_y,
         start,
         end,
         clusters,
@@ -209,6 +212,7 @@ pub(super) fn empty_line(height: f32) -> VisualLine {
     VisualLine {
         top: 0.0,
         height,
+        baseline: height * 0.8,
         start: 0,
         end: 0,
         clusters: Vec::new(),

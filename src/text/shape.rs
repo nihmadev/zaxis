@@ -26,8 +26,7 @@ fn features(font: FontKey) -> FontFeatures {
 
 impl TextSystem {
     /// Shape without touching the caches.
-    #[cfg(test)]
-    pub(super) fn build_layout(
+    pub fn build_layout(
         &self,
         text: &str,
         size: f32,
@@ -50,13 +49,41 @@ impl TextSystem {
         tab: u16,
         tab_stop: Option<f32>,
     ) -> TextLayout {
-        let line_height = size * 1.25;
+        self.build_layout_runs(text, size, font, wrap_width, tab, tab_stop, None)
+    }
+
+    /// The attributes a face request is shaped with.
+    fn attrs(&self, font: FontKey) -> Attrs<'_> {
         let name = if font.monospace {
             self.mono.as_ref().map(|r| r.name.as_str())
         } else {
             Some(self.family.name.as_str())
         };
         let family = name.map_or(Family::Monospace, Family::Name);
+        let mut attrs = Attrs::new()
+            .family(family)
+            .weight(font.weight.to_fontdb())
+            .style(font.style);
+        if font.monospace || font.tabular {
+            attrs = attrs.font_features(features(font));
+        }
+        attrs
+    }
+
+    /// [`Self::build_layout_with_tab`] with styled runs: each run is shaped with its own
+    /// weight and family inside the one buffer, so kerning, wrapping and bidi treat the
+    /// text as a single paragraph. `run.metadata` of every glyph is the run index.
+    pub(super) fn build_layout_runs(
+        &self,
+        text: &str,
+        size: f32,
+        font: FontKey,
+        wrap_width: f32,
+        tab: u16,
+        tab_stop: Option<f32>,
+        runs: Option<(&[StyleRun], TextFont)>,
+    ) -> TextLayout {
+        let line_height = size * 1.25;
         let mut fonts = font_system().lock().unwrap();
         let mut buffer = Buffer::new(&mut fonts, Metrics::new(size, line_height));
         buffer.set_tab_width(&mut fonts, tab);
@@ -73,14 +100,17 @@ impl TextSystem {
             wrap_width.is_finite().then_some(wrap_width.max(0.0)),
             None,
         );
-        let mut attrs = Attrs::new()
-            .family(family)
-            .weight(font.weight.to_fontdb())
-            .style(font.style);
-        if font.monospace || font.tabular {
-            attrs = attrs.font_features(features(font));
+        let attrs = self.attrs(font);
+        match runs {
+            None => buffer.set_text(&mut fonts, text, &attrs, Shaping::Advanced, None),
+            Some((runs, base)) => {
+                let spans = runs.iter().enumerate().map(|(i, run)| {
+                    let spec = run.font(base);
+                    (&text[run.start..run.end], self.attrs(self.font_key(spec)).metadata(i))
+                });
+                buffer.set_rich_text(&mut fonts, spans, &attrs, Shaping::Advanced, None);
+            }
         }
-        buffer.set_text(&mut fonts, text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut fonts, false);
         let mut glyphs = Vec::new();
         let mut lines = Vec::new();

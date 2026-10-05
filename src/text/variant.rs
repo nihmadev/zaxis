@@ -34,7 +34,7 @@ pub struct MonospaceMetrics {
 
 /// Weight, family and figure style: everything about a font that a layout depends on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct TextFont {
+pub struct TextFont {
     pub weight: FontWeight,
     pub family: TextFamily,
     /// OpenType `tnum`. Always false for the monospace family, whose digits are already
@@ -43,7 +43,7 @@ pub(crate) struct TextFont {
 }
 
 impl TextFont {
-    pub(crate) fn new(weight: FontWeight, family: TextFamily, tabular: bool) -> Self {
+    pub fn new(weight: FontWeight, family: TextFamily, tabular: bool) -> Self {
         Self {
             weight,
             family,

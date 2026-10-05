@@ -3,7 +3,7 @@ use crate::Vec2;
 
 /// Quarter-circle subdivisions with at most 0.01 physical pixels of chord error.
 /// The resource cap only applies to radii beyond normal GPU viewport dimensions.
-pub(super) fn arc_segments(radius_pixels: f32) -> usize {
+pub fn arc_segments(radius_pixels: f32) -> usize {
     const ERROR: f64 = 0.01;
     let radius = f64::from(radius_pixels);
     if radius <= ERROR {

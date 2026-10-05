@@ -7,7 +7,7 @@ use super::{Border, Color, Rect, TextureId, Vertex};
 use crate::Vec2;
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Mesh {
+pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
     pub batches: Vec<(Range<u32>, TextureId)>,

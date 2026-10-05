@@ -16,24 +16,32 @@ use cosmic_text::{fontdb, CacheKey, LayoutGlyph, SwashCache, SwashContent};
 use crate::{protocol::TextureImage, shapes::Mesh, Color, Id, Rect, TextureId, Vec2};
 
 mod atlas;
-mod family;
-mod fonts;
-mod layout;
+#[doc(hidden)]
+pub mod family;
+#[doc(hidden)]
+pub mod fonts;
+#[doc(hidden)]
+pub mod layout;
 mod lines;
+mod rich;
 mod shape;
-mod variant;
-mod weight;
+#[doc(hidden)]
+pub mod variant;
+#[doc(hidden)]
+pub mod weight;
 
 pub use family::FontFamily;
+pub use rich::StyleRun;
+pub(crate) use rich::same_shape;
 pub use variant::{MonospaceMetrics, TextFamily};
 pub use weight::FontWeight;
 
 use atlas::AtlasPage;
 use fonts::{font_system, Registered};
-pub(crate) use layout::DEFAULT_TAB;
+pub use layout::DEFAULT_TAB;
 use layout::{CachedLayout, FontKey};
 pub(crate) use lines::VisualLine;
-pub(crate) use variant::TextFont;
+pub use variant::TextFont;
 
 const ATLAS_SIZE: u32 = 1024;
 
@@ -46,14 +54,14 @@ struct CachedGlyph {
     colored: bool,
 }
 
-pub(crate) struct TextLayout {
-    glyphs: Vec<(LayoutGlyph, f32)>,
-    baseline: f32,
-    carets: Vec<(usize, f32)>,
+pub struct TextLayout {
+    pub glyphs: Vec<(LayoutGlyph, f32)>,
+    pub baseline: f32,
+    pub carets: Vec<(usize, f32)>,
     /// Visual lines top to bottom; never empty for a shaped paragraph.
-    pub(crate) lines: Vec<VisualLine>,
-    pub(crate) size: Vec2,
-    width_independent: bool,
+    pub lines: Vec<VisualLine>,
+    pub size: Vec2,
+    pub width_independent: bool,
 }
 
 /// Glyph rasterization state shared by every `TextSystem` of one set of shared resources:
@@ -84,20 +92,20 @@ impl GlyphStore {
     }
 }
 
-pub(crate) struct TextSystem {
+pub struct TextSystem {
     family: Registered,
     /// The registered monospace family; `None` shapes with the system's generic monospace font.
     mono: Option<Registered>,
     store: Arc<Mutex<GlyphStore>>,
-    layouts: HashMap<Id, CachedLayout>,
+    pub layouts: HashMap<Id, CachedLayout>,
     layout_keys: HashMap<Id, Id>,
+    rich: HashMap<Id, rich::RichCached>,
     frame: u64,
     /// Layouts shaped from scratch since creation; cache hits do not count.
-    pub(crate) builds: u64,
+    pub builds: u64,
 }
 
 impl TextSystem {
-    #[cfg(test)]
     pub fn new(family: FontFamily) -> Self {
         let store = GlyphStore::new(crate::images::TextureIds::default());
         Self::with_store(
@@ -118,6 +126,7 @@ impl TextSystem {
             store,
             layouts: HashMap::new(),
             layout_keys: HashMap::new(),
+            rich: HashMap::new(),
             frame: 0,
             builds: 0,
         }
@@ -134,6 +143,8 @@ impl TextSystem {
             .retain(|_, cached| cached.last_frame == self.frame);
         self.layout_keys
             .retain(|_, key| self.layouts.contains_key(key));
+        self.rich
+            .retain(|_, cached| cached.last_frame == self.frame);
     }
 
     /// The registered family a request is shaped with, if it is not the system monospace.
@@ -146,7 +157,7 @@ impl TextSystem {
     }
 
     /// The font a request is shaped with: the family file the weight resolves to.
-    pub(crate) fn font_key(&self, font: impl Into<TextFont>) -> FontKey {
+    pub fn font_key(&self, font: impl Into<TextFont>) -> FontKey {
         let font = font.into();
         let (id, weight) = self
             .registered(font)
@@ -297,13 +308,3 @@ fn alignment_band(font: &FontVec, size: f32) -> (f32, f32) {
     }
     (top, bottom)
 }
-
-#[cfg(test)]
-#[path = "../tests/text/monospace.rs"]
-mod monospace_tests;
-#[cfg(test)]
-#[path = "../tests/text/layout.rs"]
-mod tests;
-#[cfg(test)]
-#[path = "../tests/text/weights.rs"]
-mod weight_tests;

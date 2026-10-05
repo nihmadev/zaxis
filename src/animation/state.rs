@@ -2,12 +2,9 @@
 use super::{
     Animated, Animation, AnimationOptions, AnimationStatus, Interpolate, Tween, TweenOptions, Wake,
 };
+use crate::time::Instant;
 use crate::Id;
-use std::{
-    any::Any,
-    collections::HashMap,
-    time::{Duration, Instant},
-};
+use std::{any::Any, collections::HashMap, time::Duration};
 
 #[derive(Default)]
 pub(crate) struct Animations {
