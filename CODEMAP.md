@@ -103,10 +103,11 @@ Complex ones are a parent file plus a directory split by responsibility (`show`/
 | TreeView | `tree_view.rs`, `tree_view/` | Input: `context/tree.rs`. |
 | Table / Grid | `table.rs`, `table/`, `grid.rs`, `grid/` | Table shares Grid columns + ScrollArea. |
 | SplitPane | `split_pane.rs`, `split_pane/{allocation,interaction,paint,show,style}.rs` | Input: `context/split.rs`. |
-| ComboBox, KeyBox | `combo_box/`, `key_box/` | Use Popup. |
+| ComboBox | `combo_box.rs`, `combo_box/{show,trigger,open,list,nav,choice,options,paint,style,access}.rs` | `show.rs` runs the stages in order: trigger (place, hit, AT node), open (dismissal/click/AT/keys → `Open`), list (Popup, filter TextEdit, virtualized rows), nav (highlight over enabled listed options), choice (one path for pointer/keyboard/AT). Uses Popup. |
+| KeyBox | `key_box/` | Uses Popup. |
 | ColorPicker | `color_picker.rs`, `color_picker/{show,row,panel,editor,fields,color,access}.rs` | Inline reveal or floating Window (`panel`); RGB/HEX `fields` are TextEdits with a draft adapter. |
 | ContextMenu, MenuBar | `context_menu.rs`, `menu_bar.rs` (+ dirs) | Cascading menus, keyboard nav. |
-| Modal / Dialog | `modal.rs`, `modal/{access,dialog,geometry,parts}.rs` | Stack: `context/modal.rs`. |
+| Modal / Dialog | `modal.rs`, `modal/{show,lifecycle,look,overlay,surface,access,dialog,geometry,parts}.rs` | `show::run` stages: lifecycle (mount, presence, keys, `close_reason` priority, finish), look (resolved appearance/spacing), overlay (dimming, blur, dismissal target), surface (chrome, header/body/footer, close button), access, measure. Stack: `context/modal.rs`. |
 | Carousel | `carousel/` | Wheel routing: `context/carousel.rs`. |
 | RadioGroup, SegmentedControl | `radio/`, `segmented/` | |
 | Slider / DragValue | `slider.rs`, `slider/`, `drag_value.rs` | Keyboard: `context/keyboard.rs`. |
@@ -121,7 +122,7 @@ Adding a component usually touches: the component files, `components/mod.rs` exp
 - `tests/ui/` — behavior tests through the public API with `zaxis::testing` (main.rs lists modules; one `.rs` or dir per component); links and selection are in `tests/ui/text/` (its clipboard check is `#[ignore]`: `cargo test --test ui text::clipboard -- --ignored`). `tests/context/`, `tests/components/`, `tests/animation/`, `tests/text/`, `tests/shapes/`, `tests/renderer/` (needs a GPU; `ZAXIS_SKIP_GPU_TESTS=1`), `tests/images/`, `tests/app/`, `tests/accessibility/` (roles, names, requests and incremental updates of every component group through `zaxis::accessibility::testing::AccessTree`, no window; needs the `accesskit` feature). Top-level `layout_tests.rs`, `memory_tests.rs`, `motion_presets.rs`, `icons.rs`.
 - Tests of private internals live in `tests/ui/*_internal.rs` (not in `src/`); `src/context/*_tests.rs` no longer exist.
 - `examples/` — one per component plus `demo.rs`, `integration.rs` (custom host loop), `custom_widget.rs`, `custom_animation.rs`, `accessibility.rs` (a form for screen readers; `--smoke-test` checks the tree without a window); multi-file examples use a same-named dir (`accessibility/`, `settings/`, `multi_window/`, `tree/`, `modals/`, `drag_and_drop/`, `split_pane/`, `animations/`).
-- `benches/performance.rs` + `benches/support/scene/{build,cases,input,verify}.rs` — the single perf harness; add scenes here. `benches/support/access.rs` holds the accessibility cases (idle off/on, one change, full tree, text).
+- `benches/performance.rs` + `benches/support/scene/{build,cases,input,verify}.rs` — the single perf harness; add scenes here. `benches/support/access.rs` holds the accessibility cases (idle off/on, one change, full tree, text); component probes are one file each in `benches/support/` (`combo_box`, `modal`, `number` for NumberInput/DragValue, `text_area`, ...).
 - `docs/content/docs/` — mdx docs (`app`, `layout`, `input`, `repaint`, `renderer`, `protocol`, `animation`, `style`, `limitations`, `components/*`). Update with behavior changes.
 - `prompts/` — historical task briefs per component; not runtime code, ignore unless asked.
 
