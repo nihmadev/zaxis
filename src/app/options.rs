@@ -39,6 +39,7 @@ pub struct WindowOptions {
     pub attributes: WindowAttributes,
     pub(crate) parent: Option<WindowKey>,
     pub(crate) presentation_mode: Option<PresentationMode>,
+    pub(crate) accessibility: bool,
 }
 
 impl WindowOptions {
@@ -57,6 +58,7 @@ impl WindowOptions {
             attributes,
             parent: None,
             presentation_mode: None,
+            accessibility: true,
         }
     }
 
@@ -151,6 +153,15 @@ impl WindowOptions {
     /// Native rounded corners and shadow on Windows 11; see [`RunOptions::with_rounded_corners`](crate::RunOptions::with_rounded_corners).
     pub fn with_rounded_corners(mut self, rounded: bool) -> Self {
         self.attributes = super::round_corners(self.attributes, rounded);
+        self
+    }
+
+    /// Whether this window serves an accessibility tree to screen readers and other
+    /// assistive technology. On by default; a window without one is invisible to them.
+    /// [`RunOptions::with_accessibility`](crate::RunOptions::with_accessibility) turns it
+    /// off for every window.
+    pub fn with_accessibility(mut self, accessibility: bool) -> Self {
+        self.accessibility = accessibility;
         self
     }
 

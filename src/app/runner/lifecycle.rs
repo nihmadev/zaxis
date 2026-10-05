@@ -1,19 +1,15 @@
-//! Creating, closing and recovering windows, and executing queued window requests.
+//! Attaching, closing and executing queued requests for windows, on every platform.
+//! Creating a window's renderer is the platform module's job.
 
-use super::{native, Native, Runner, Slot};
+use super::{Native, Runner, Slot};
 use crate::{
     app::{
-        callbacks::CloseSource,
-        commands::Command,
-        registry::{Closed, OpenRequest},
-        App, RunError, WindowError, WindowKey, WindowOptions,
+        callbacks::CloseSource, commands::Command, registry::Closed, App, RunError, WindowError,
+        WindowKey, WindowOptions,
     },
-    Context, PresentationMode, RenderError, Renderer,
+    Context, RenderError,
 };
-use std::sync::Arc;
-use winit::{
-    dpi::LogicalSize, event_loop::ActiveEventLoop, keyboard::ModifiersState, window::Window,
-};
+use winit::{dpi::LogicalSize, event_loop::ActiveEventLoop, keyboard::ModifiersState};
 
 /// Requests a callback may queue per settle: a bound against callbacks that keep asking.
 const MAX_ROUNDS: usize = 16;
@@ -23,8 +19,9 @@ impl From<WindowError> for RunError {
         match error {
             WindowError::Create(error) => Self::Window(error),
             WindowError::Render(error) => Self::Render(error),
-            // The main window has no parent; this only keeps the conversion total.
-            WindowError::UnknownParent(_) => {
+            // The main window has no parent and is never refused; this only keeps the
+            // conversion total.
+            WindowError::UnknownParent(_) | WindowError::Unsupported(_) => {
                 Self::Render(RenderError::Validation(error.to_string()))
             }
         }
@@ -32,46 +29,11 @@ impl From<WindowError> for RunError {
 }
 
 impl<A: App> Runner<A> {
-    /// The first window. Unlike a secondary window, failing to create it ends the run.
-    pub(super) fn open_main(&mut self, event_loop: &ActiveEventLoop) -> Result<(), RunError> {
-        let key = self.options.main_window.clone();
-        let mut options = WindowOptions::from_attributes(self.options.window_attributes.clone());
-        options.presentation_mode = Some(self.options.presentation_mode);
-        self.hub.begin_open(&key, None, false);
-        let native = self.create_native(event_loop, &options)?;
-        self.attach(key, options, native);
-        Ok(())
-    }
-
-    fn create_native(
-        &self,
-        event_loop: &ActiveEventLoop,
-        options: &WindowOptions,
-    ) -> Result<Native, WindowError> {
-        let owner = options
-            .parent
-            .as_ref()
-            .and_then(|parent| self.slots.get(parent))
-            .and_then(|slot| slot.native.as_ref())
-            .map(|native| native.window.as_ref());
-        let sibling = self
-            .slots
-            .values()
-            .find_map(|slot| slot.native.as_ref())
-            .map(|native| &native.renderer);
-        native::create(
-            event_loop,
-            options,
-            owner,
-            sibling,
-            self.options.presentation_mode,
-            &self.hub.control.resources,
-        )
-    }
-
-    fn attach(&mut self, key: WindowKey, options: WindowOptions, native: Native) {
+    /// Give a window its slot, a context sized to it, and its place in the registry.
+    pub(super) fn attach(&mut self, key: WindowKey, options: WindowOptions, native: Native) {
         let mut context = Context::with_shared(&self.hub.control.resources);
         context.set_viewport(native.window.inner_size(), native.window.scale_factor());
+        context.set_accessibility_title(options.attributes.title.clone());
         self.hub.opened(&key, native.window.id());
         self.slots.insert(
             key,
@@ -85,62 +47,15 @@ impl<A: App> Runner<A> {
         );
     }
 
-    /// Open a secondary window. A failure is reported to the application and leaves every
-    /// other window untouched. One key yields at most one window.
-    pub(super) fn open_window(
+    pub(super) fn report_failure(
         &mut self,
         event_loop: &ActiveEventLoop,
         key: WindowKey,
-        options: WindowOptions,
-        declared: bool,
+        error: WindowError,
     ) {
-        match self.hub.begin_open(&key, options.parent.as_ref(), declared) {
-            OpenRequest::Exists => return,
-            OpenRequest::UnknownParent => {
-                let parent = options.parent.clone().unwrap_or_default();
-                return self.report_failure(event_loop, key, WindowError::UnknownParent(parent));
-            }
-            OpenRequest::Queued => {}
-        }
-        match self.create_native(event_loop, &options) {
-            Ok(native) => self.attach(key, options, native),
-            Err(error) => self.report_failure(event_loop, key, error),
-        }
-    }
-
-    fn report_failure(&mut self, event_loop: &ActiveEventLoop, key: WindowKey, error: WindowError) {
         self.app.window_failed(&key, &error);
         let closed = self.hub.open_failed(&key, error.to_string());
         self.finish_close(event_loop, closed);
-    }
-
-    /// After a suspension: give every window a native window and renderer again.
-    pub(super) fn recreate_natives(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-    ) -> Result<(), RunError> {
-        let mut keys: Vec<_> = self.slots.keys().cloned().collect();
-        keys.sort_by_key(|key| !self.hub.registry.is_main(key));
-        for key in keys {
-            let options = self.slots[&key].options.clone();
-            match self.create_native(event_loop, &options) {
-                Ok(native) => {
-                    self.hub.registry.attach(&key, native.window.id());
-                    let slot = self.slots.get_mut(&key).expect("slot exists");
-                    slot.context
-                        .set_viewport(native.window.inner_size(), native.window.scale_factor());
-                    slot.context.request_repaint();
-                    slot.native = Some(native);
-                }
-                Err(error) if self.hub.registry.is_main(&key) => return Err(error.into()),
-                Err(error) => {
-                    self.app.window_failed(&key, &error);
-                    let closed = self.hub.close(&key);
-                    self.finish_close(event_loop, closed);
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Ask the application to close a window; it is closed unless the application objects.
@@ -205,6 +120,11 @@ impl<A: App> Runner<A> {
                 options,
                 declared,
             } => self.open_window(event_loop, key, *options, declared),
+            Command::Refused(key, reason) => {
+                let error = WindowError::Unsupported(reason);
+                self.app.window_failed(&key, &error);
+                self.hub.control.stats.windows_failed += 1;
+            }
             Command::Close(key) => {
                 let closed = self.hub.close(&key);
                 self.finish_close(event_loop, closed);
@@ -235,6 +155,9 @@ impl<A: App> Runner<A> {
                 if let Some(native) = self.native(&key) {
                     native.window.set_title(&title);
                 }
+                if let Some(slot) = self.slots.get_mut(&key) {
+                    slot.context.set_accessibility_title(title);
+                }
             }
             Command::Size(key, width, height) => {
                 if let Some(native) = self.native(&key) {
@@ -259,61 +182,5 @@ impl<A: App> Runner<A> {
 
     fn native(&self, key: &WindowKey) -> Option<&Native> {
         self.slots.get(key).and_then(|slot| slot.native.as_ref())
-    }
-
-    /// The GPU device was lost: rebuild one renderer on a new device and give every other
-    /// window a sibling of it. A window that cannot be recovered is closed and reported;
-    /// losing the device for the first window is fatal, as for a single window.
-    pub(super) fn recover_device(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        reason: String,
-    ) -> Result<(), RenderError> {
-        self.device_resets += 1;
-        self.device_loss = Some(reason);
-        let mut windows: Vec<(WindowKey, Arc<Window>, PresentationMode)> = self
-            .slots
-            .iter()
-            .filter_map(|(key, slot)| {
-                let native = slot.native.as_ref()?;
-                Some((
-                    key.clone(),
-                    Arc::clone(&native.window),
-                    native.renderer.presentation_mode(),
-                ))
-            })
-            .collect();
-        windows.sort_by_key(|(key, ..)| !self.hub.registry.is_main(key));
-        let mut renderers: Vec<(WindowKey, Renderer)> = Vec::new();
-        let mut lost = Vec::new();
-        for (key, window, mode) in windows {
-            let renderer = match renderers.first() {
-                Some((_, first)) => first.create_sibling(window, mode),
-                None => pollster::block_on(Renderer::new_with_presentation_mode(window, mode)),
-            };
-            match renderer {
-                Ok(renderer) => renderers.push((key, renderer)),
-                Err(error) if renderers.is_empty() => return Err(error),
-                Err(error) => lost.push((key, error)),
-            }
-        }
-        for (key, mut renderer) in renderers {
-            let Some(slot) = self.slots.get_mut(&key) else {
-                continue;
-            };
-            let Some(native) = slot.native.as_mut() else {
-                continue;
-            };
-            renderer.set_transparent(native.transparent);
-            native::clamp_image_limits(&self.hub.control.resources, &renderer);
-            native.renderer = renderer;
-            native.retry_at = None;
-            slot.context.request_repaint();
-            native.window.request_redraw();
-        }
-        for (key, error) in lost {
-            self.report_failure(event_loop, key, WindowError::Render(error));
-        }
-        Ok(())
     }
 }

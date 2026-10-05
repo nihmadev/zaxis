@@ -1,25 +1,25 @@
 //! Desktop runner: one or several native windows, each with its own context and surface.
 //! The low-level Context and Renderer remain available for custom hosts.
 
+#[doc(hidden)]
+pub mod browser;
 mod callbacks;
-mod commands;
+#[doc(hidden)]
+pub mod commands;
 mod frame;
-mod hub;
-#[cfg(test)]
-mod hub_tests;
+#[doc(hidden)]
+pub mod hub;
 mod info;
 mod key;
-mod options;
-mod registry;
-#[cfg(test)]
-mod registry_tests;
+#[doc(hidden)]
+pub mod options;
+#[doc(hidden)]
+pub mod registry;
 mod runner;
-mod schedule;
-#[cfg(test)]
-mod shared_tests;
-#[cfg(test)]
-mod tests;
+#[doc(hidden)]
+pub mod schedule;
 
+pub use browser::{WebBackend, WebOptions};
 pub use callbacks::{CloseRequested, CloseSource, GlobalShortcut, WindowPlan};
 pub use commands::{OpenOutcome, Windows};
 pub use frame::Frame;
@@ -27,16 +27,10 @@ pub use info::{AppStats, WindowError, WindowInfo, WindowStatus};
 pub use key::WindowKey;
 pub use options::{ExitPolicy, WindowOptions};
 
-use crate::{Context, PresentationMode, RenderError, SharedResources};
-use runner::Runner;
-#[cfg(test)]
-use schedule::repaint_schedule;
-#[cfg(test)]
-use std::time::{Duration, Instant};
+use crate::{Context, PresentationMode, RenderError};
 use std::{error::Error, fmt};
 use winit::{
     dpi::LogicalSize,
-    event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowAttributes},
 };
 
@@ -98,6 +92,11 @@ pub struct RunOptions {
     pub main_window: WindowKey,
     /// What closing the main window does. Default: [`ExitPolicy::MainWindow`].
     pub exit_policy: ExitPolicy,
+    /// Canvas and graphics API in a browser. Native runners ignore it.
+    pub web: WebOptions,
+    /// Serve an accessibility tree to assistive technology. Default: on. Nothing is built
+    /// until a screen reader connects, so leaving it on costs nothing without one.
+    pub accessibility: bool,
 }
 
 impl Default for RunOptions {
@@ -111,6 +110,8 @@ impl Default for RunOptions {
             monospace_family: None,
             main_window: WindowKey::main(),
             exit_policy: ExitPolicy::default(),
+            web: WebOptions::default(),
+            accessibility: true,
         }
     }
 }
@@ -135,9 +136,36 @@ impl RunOptions {
         self
     }
 
+    /// Turn the accessibility integration off (or back on) for every window; see
+    /// [`WindowOptions::with_accessibility`] for one window. Has no effect without the
+    /// `accesskit` feature or in a browser, where there is no integration.
+    pub fn with_accessibility(mut self, accessibility: bool) -> Self {
+        self.accessibility = accessibility;
+        self
+    }
+
     /// Name the main window, for applications that address it by a key of their own.
     pub fn with_main_window(mut self, key: impl Into<WindowKey>) -> Self {
         self.main_window = key.into();
+        self
+    }
+
+    /// Draw on the `<canvas id="...">` of the page instead of creating one. Browser only.
+    pub fn with_canvas_id(mut self, id: impl Into<String>) -> Self {
+        self.web.canvas_id = Some(id.into());
+        self
+    }
+
+    /// Put the canvas the runner creates into the element with this `id` and fill it,
+    /// instead of covering the browser window. Browser only.
+    pub fn with_container_id(mut self, id: impl Into<String>) -> Self {
+        self.web.container_id = Some(id.into());
+        self
+    }
+
+    /// Choose WebGPU or WebGL2 in a browser. Browser only.
+    pub fn with_web_backend(mut self, backend: WebBackend) -> Self {
+        self.web.backend = backend;
         self
     }
 
@@ -169,9 +197,17 @@ fn round_corners(attributes: WindowAttributes, _rounded: bool) -> WindowAttribut
     attributes
 }
 
-/// Open a desktop window and run an application on the main thread until closed.
-/// Returns event-loop, window creation, and unrecoverable renderer errors.
-/// winit generally permits only one event loop per process.
+/// Open a window and run an application until it closes.
+///
+/// On the desktop this runs on the main thread until the last window closes, and returns
+/// event-loop, window creation, and unrecoverable renderer errors. winit generally permits
+/// only one event loop per process.
+///
+/// In a browser (`wasm32-unknown-unknown`) the application draws on one canvas and
+/// **this function returns immediately** after registering the event loop with the page:
+/// the loop keeps running from browser events, the renderer is created asynchronously, and
+/// the first frame appears afterwards. The application must be `'static`, and errors that
+/// occur after the return are written to the browser console. See [`WebOptions`].
 ///
 /// ```no_run
 /// use zaxis::{App, Context, Frame, Window};
@@ -185,40 +221,41 @@ fn round_corners(attributes: WindowAttributes, _rounded: bool) -> WindowAttribut
 ///     zaxis::run(MyApp)
 /// }
 /// ```
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run(app: impl App) -> Result<(), RunError> {
     run_with_options(app, RunOptions::default())
 }
 
-/// Run with explicit window attributes and presentation mode. See [`run`].
-pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunError> {
-    let event_loop = EventLoop::<()>::with_user_event()
-        .build()
-        .map_err(RunError::EventLoop)?;
-    event_loop.set_control_flow(ControlFlow::Wait);
-    let proxy = event_loop.create_proxy();
-    let resources = match (&options.font_family, &options.monospace_family) {
-        (None, None) => SharedResources::new(),
-        (family, monospace) => SharedResources::with_font_families(
-            family.clone().unwrap_or_default(),
-            monospace
-                .clone()
-                .or_else(crate::FontFamily::default_monospace),
-        ),
-    };
-    resources.set_image_waker(move || {
-        let _ = proxy.send_event(());
-    });
-    let mut runner = Runner::new(app, options, resources);
-    let result = event_loop.run_app(&mut runner).map_err(RunError::EventLoop);
-    runner.error.take().map_or(result, Err)
+/// Open a window and run an application until it closes; see the desktop documentation.
+/// In a browser this returns immediately after registering the event loop, and `app` must
+/// be `'static`.
+#[cfg(target_arch = "wasm32")]
+pub fn run(app: impl App + 'static) -> Result<(), RunError> {
+    run_with_options(app, RunOptions::default())
 }
 
-/// An unrecoverable desktop runner failure.
+/// Run with explicit window attributes and presentation mode. See [`run`].
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_with_options(app: impl App, options: RunOptions) -> Result<(), RunError> {
+    runner::run(app, options)
+}
+
+/// Run with explicit options. In a browser this returns immediately after registering the
+/// event loop, and `app` must be `'static`. See [`run`].
+#[cfg(target_arch = "wasm32")]
+pub fn run_with_options(app: impl App + 'static, options: RunOptions) -> Result<(), RunError> {
+    runner::run(app, options)
+}
+
+/// An unrecoverable runner failure.
 #[derive(Debug)]
 pub enum RunError {
     EventLoop(winit::error::EventLoopError),
     Window(winit::error::OsError),
     Render(RenderError),
+    /// The page could not provide what the browser runner needs, such as the canvas named
+    /// in [`WebOptions`]. Never returned on the desktop.
+    Web(String),
 }
 
 impl fmt::Display for RunError {
@@ -227,16 +264,18 @@ impl fmt::Display for RunError {
             Self::EventLoop(error) => write!(f, "running the event loop: {error}"),
             Self::Window(error) => write!(f, "creating the window: {error}"),
             Self::Render(error) => error.fmt(f),
+            Self::Web(message) => write!(f, "preparing the page: {message}"),
         }
     }
 }
 
 impl Error for RunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(match self {
-            Self::EventLoop(error) => error,
-            Self::Window(error) => error,
-            Self::Render(error) => error,
-        })
+        match self {
+            Self::EventLoop(error) => Some(error),
+            Self::Window(error) => Some(error),
+            Self::Render(error) => Some(error),
+            Self::Web(_) => None,
+        }
     }
 }

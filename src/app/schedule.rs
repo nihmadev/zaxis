@@ -1,9 +1,9 @@
 //! Repaint scheduling for one window and for all windows together.
 
-use std::time::Instant;
+use crate::time::Instant;
 use winit::event_loop::ControlFlow;
 
-pub(super) fn repaint_schedule(
+pub fn repaint_schedule(
     now: Instant,
     visible: bool,
     needs_repaint: bool,
@@ -25,7 +25,7 @@ pub(super) fn repaint_schedule(
 }
 
 /// The earlier of two wake-ups; `Wait` means "no deadline".
-pub(super) fn earliest(a: ControlFlow, b: ControlFlow) -> ControlFlow {
+pub fn earliest(a: ControlFlow, b: ControlFlow) -> ControlFlow {
     match (a, b) {
         (ControlFlow::WaitUntil(x), ControlFlow::WaitUntil(y)) => ControlFlow::WaitUntil(x.min(y)),
         (ControlFlow::WaitUntil(x), _) | (_, ControlFlow::WaitUntil(x)) => {
@@ -37,7 +37,7 @@ pub(super) fn earliest(a: ControlFlow, b: ControlFlow) -> ControlFlow {
 
 /// Everything the scheduler needs to know about one window.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct WindowTiming {
+pub struct WindowTiming {
     pub visible: bool,
     pub needs_repaint: bool,
     pub next_repaint: Option<Instant>,
@@ -47,7 +47,7 @@ pub(super) struct WindowTiming {
 /// The windows to redraw now and the single control flow that wakes the loop for the nearest
 /// deadline of any window. Each window is judged on its own timing, so an animation in one
 /// window never asks another to redraw, and windows at rest contribute no wake-up at all.
-pub(super) fn schedule_all<K>(
+pub fn schedule_all<K>(
     now: Instant,
     windows: impl IntoIterator<Item = (K, WindowTiming)>,
 ) -> (Vec<K>, ControlFlow) {

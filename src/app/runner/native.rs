@@ -1,70 +1,237 @@
-//! A native window with its renderer, and creating one.
+//! The desktop runner: a blocking event loop, GPU setup that waits for the adapter, several
+//! native windows, native window chrome, and device recovery on the spot.
 
-use crate::app::{WindowError, WindowInfo, WindowOptions};
-use crate::{Renderer, SharedResources, Vec2};
+use super::{
+    shared_resources,
+    window::{clamp_image_limits, Native},
+    Runner, UserEvent,
+};
+use crate::app::{
+    registry::OpenRequest, App, RunError, RunOptions, WindowError, WindowKey, WindowOptions,
+};
+use crate::{EventResponse, PresentationMode, RenderError, Renderer, SharedResources};
 use std::sync::Arc;
 use winit::{
-    event_loop::ActiveEventLoop,
-    window::{CursorIcon, Window},
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::ModifiersState,
+    window::Window,
 };
 
-/// Renderer first: it is dropped before the window it presents to.
-pub(in crate::app) struct Native {
-    pub(in crate::app) renderer: Renderer,
-    pub(in crate::app) window: Arc<Window>,
-    pub(in crate::app) occluded: bool,
-    pub(in crate::app) retry_at: Option<std::time::Instant>,
-    pub(in crate::app) cursor: CursorIcon,
-    pub(in crate::app) transparent: bool,
+/// What the desktop retains: the proxy through which accessibility adapters report.
+pub(in crate::app) struct State {
+    #[cfg(feature = "accesskit")]
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
 }
 
-impl Native {
-    /// Rendering is pointless for windows that are covered, minimized, hidden or empty.
-    pub(in crate::app) fn visible(&self) -> bool {
-        let size = self.window.inner_size();
-        !self.occluded
-            && self.window.is_minimized() != Some(true)
-            && self.window.is_visible() != Some(false)
-            && size.width > 0
-            && size.height > 0
+impl State {
+    pub(super) fn report_failure(&self, _error: &RunError) {}
+    pub(super) fn note_input(&self, _event: &WindowEvent, _response: EventResponse) {}
+}
+
+/// Desktop windows need no extra frame for any key.
+pub(super) fn frame_before_returning(_event: &WindowEvent, _modifiers: ModifiersState) -> bool {
+    false
+}
+
+/// Run an application on the main thread until its last window closes.
+pub(in crate::app) fn run<A: App>(app: A, options: RunOptions) -> Result<(), RunError> {
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
+        .build()
+        .map_err(RunError::EventLoop)?;
+    event_loop.set_control_flow(ControlFlow::Wait);
+    let proxy = event_loop.create_proxy();
+    let resources = shared_resources(&options);
+    resources.set_image_waker(move || {
+        let _ = proxy.send_event(UserEvent::Wake);
+    });
+    let state = State {
+        #[cfg(feature = "accesskit")]
+        proxy: event_loop.create_proxy(),
+    };
+    let mut runner = Runner::new(app, options, resources, state);
+    let result = event_loop.run_app(&mut runner).map_err(RunError::EventLoop);
+    runner.error.take().map_or(result, Err)
+}
+
+impl<A: App> Runner<A> {
+    /// The first window. Unlike a secondary window, failing to create it ends the run.
+    pub(super) fn open_main(&mut self, event_loop: &ActiveEventLoop) -> Result<(), RunError> {
+        let key = self.options.main_window.clone();
+        let mut options = WindowOptions::from_attributes(self.options.window_attributes.clone());
+        options.presentation_mode = Some(self.options.presentation_mode);
+        options.accessibility = self.options.accessibility;
+        self.hub.begin_open(&key, None, false);
+        let native = self.create_native(event_loop, &options)?;
+        self.attach(key, options, native);
+        Ok(())
     }
 
-    pub(in crate::app) fn info(&self) -> WindowInfo {
-        let size = self.window.inner_size();
-        let scale_factor = self.window.scale_factor();
-        WindowInfo {
-            size,
-            logical_size: Vec2::new(size.width as f32, size.height as f32) / scale_factor as f32,
-            scale_factor,
-            focused: self.window.has_focus(),
-            minimized: self.window.is_minimized() == Some(true),
-            maximized: self.window.is_maximized(),
-            fullscreen: self.window.fullscreen().is_some(),
-            occluded: self.occluded,
-            visible: self.window.is_visible() != Some(false),
+    fn create_native(
+        &self,
+        event_loop: &ActiveEventLoop,
+        options: &WindowOptions,
+    ) -> Result<Native, WindowError> {
+        let owner = options
+            .parent
+            .as_ref()
+            .and_then(|parent| self.slots.get(parent))
+            .and_then(|slot| slot.native.as_ref())
+            .map(|native| native.window.as_ref());
+        let sibling = self
+            .slots
+            .values()
+            .find_map(|slot| slot.native.as_ref())
+            .map(|native| &native.renderer);
+        #[cfg(feature = "accesskit")]
+        let proxy = (self.options.accessibility && options.accessibility)
+            .then(|| self.platform.proxy.clone());
+        create(
+            event_loop,
+            options,
+            owner,
+            sibling,
+            self.options.presentation_mode,
+            &self.hub.control.resources,
+            #[cfg(feature = "accesskit")]
+            proxy,
+        )
+    }
+
+    /// Open a secondary window. A failure is reported to the application and leaves every
+    /// other window untouched. One key yields at most one window.
+    pub(super) fn open_window(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        key: WindowKey,
+        options: WindowOptions,
+        declared: bool,
+    ) {
+        match self.hub.begin_open(&key, options.parent.as_ref(), declared) {
+            OpenRequest::Exists => return,
+            OpenRequest::UnknownParent => {
+                let parent = options.parent.clone().unwrap_or_default();
+                return self.report_failure(event_loop, key, WindowError::UnknownParent(parent));
+            }
+            OpenRequest::Queued => {}
         }
+        match self.create_native(event_loop, &options) {
+            Ok(native) => self.attach(key, options, native),
+            Err(error) => self.report_failure(event_loop, key, error),
+        }
+    }
+
+    /// After a suspension: give every window a native window and renderer again.
+    pub(super) fn recreate_natives(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+    ) -> Result<(), RunError> {
+        let mut keys: Vec<_> = self.slots.keys().cloned().collect();
+        keys.sort_by_key(|key| !self.hub.registry.is_main(key));
+        for key in keys {
+            let options = self.slots[&key].options.clone();
+            match self.create_native(event_loop, &options) {
+                Ok(native) => {
+                    self.hub.registry.attach(&key, native.window.id());
+                    let slot = self.slots.get_mut(&key).expect("slot exists");
+                    slot.context
+                        .set_viewport(native.window.inner_size(), native.window.scale_factor());
+                    slot.context.request_repaint();
+                    // The new window has a new adapter, which knows nothing yet.
+                    slot.context.set_accessibility_active(false);
+                    slot.native = Some(native);
+                }
+                Err(error) if self.hub.registry.is_main(&key) => return Err(error.into()),
+                Err(error) => {
+                    self.app.window_failed(&key, &error);
+                    let closed = self.hub.close(&key);
+                    self.finish_close(event_loop, closed);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The GPU device was lost: rebuild one renderer on a new device and give every other
+    /// window a sibling of it. A window that cannot be recovered is closed and reported;
+    /// losing the device for the first window is fatal, as for a single window.
+    pub(super) fn recover_device(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        reason: String,
+    ) -> Result<(), RenderError> {
+        self.device_resets += 1;
+        self.device_loss = Some(reason);
+        let mut windows: Vec<(WindowKey, Arc<Window>, PresentationMode)> = self
+            .slots
+            .iter()
+            .filter_map(|(key, slot)| {
+                let native = slot.native.as_ref()?;
+                Some((
+                    key.clone(),
+                    Arc::clone(&native.window),
+                    native.renderer.presentation_mode(),
+                ))
+            })
+            .collect();
+        windows.sort_by_key(|(key, ..)| !self.hub.registry.is_main(key));
+        let mut renderers: Vec<(WindowKey, Renderer)> = Vec::new();
+        let mut lost = Vec::new();
+        for (key, window, mode) in windows {
+            let renderer = match renderers.first() {
+                Some((_, first)) => first.create_sibling(window, mode),
+                None => pollster::block_on(Renderer::new_with_presentation_mode(window, mode)),
+            };
+            match renderer {
+                Ok(renderer) => renderers.push((key, renderer)),
+                Err(error) if renderers.is_empty() => return Err(error),
+                Err(error) => lost.push((key, error)),
+            }
+        }
+        for (key, mut renderer) in renderers {
+            let Some(slot) = self.slots.get_mut(&key) else {
+                continue;
+            };
+            let Some(native) = slot.native.as_mut() else {
+                continue;
+            };
+            renderer.set_transparent(native.transparent);
+            clamp_image_limits(&self.hub.control.resources, &renderer);
+            native.renderer = renderer;
+            native.retry_at = None;
+            slot.context.request_repaint();
+            native.window.request_redraw();
+        }
+        for (key, error) in lost {
+            self.report_failure(event_loop, key, WindowError::Render(error));
+        }
+        Ok(())
     }
 }
 
 /// Create the native window and its renderer. `sibling` is any existing renderer: the new
 /// window then shares its device, pipelines and textures instead of starting a new device.
-pub(in crate::app) fn create(
+fn create(
     event_loop: &ActiveEventLoop,
     options: &WindowOptions,
     owner: Option<&Window>,
     sibling: Option<&Renderer>,
-    default_mode: crate::PresentationMode,
+    default_mode: PresentationMode,
     resources: &SharedResources,
+    #[cfg(feature = "accesskit")] proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
 ) -> Result<Native, WindowError> {
     let attributes = options.attributes.clone();
-    let transparent = attributes.transparent;
     let decorations = cfg!(target_os = "macos") || attributes.decorations;
-    let attributes = attributes.with_decorations(decorations);
-    let window = Arc::new(
-        event_loop
-            .create_window(owned(attributes, owner))
-            .map_err(WindowError::Create)?,
-    );
+    let attributes = owned(attributes.with_decorations(decorations), owner);
+    #[cfg(feature = "accesskit")]
+    let (window, adapter) =
+        crate::accessibility::adapter::create_window(event_loop, attributes, proxy)
+            .map_err(WindowError::Create)?;
+    #[cfg(not(feature = "accesskit"))]
+    let window = event_loop
+        .create_window(attributes)
+        .map_err(WindowError::Create)?;
+    let window = Arc::new(window);
     let mode = options.presentation_mode.unwrap_or(default_mode);
     let mut renderer = match sibling {
         Some(sibling) => sibling.create_sibling(Arc::clone(&window), mode),
@@ -74,31 +241,18 @@ pub(in crate::app) fn create(
         )),
     }
     .map_err(WindowError::Render)?;
-    renderer.set_transparent(transparent);
+    renderer.set_transparent(options.attributes.transparent);
     clamp_image_limits(resources, &renderer);
     if window.is_visible() != Some(false) {
         window.request_redraw();
     }
-    Ok(Native {
-        renderer,
-        window,
-        occluded: false,
-        retry_at: None,
-        cursor: CursorIcon::Default,
-        transparent,
-    })
-}
-
-/// Images larger than the GPU can hold are rejected up front, for every window.
-pub(in crate::app) fn clamp_image_limits(resources: &SharedResources, renderer: &Renderer) {
-    let mut limits = resources.image_limits();
-    let max = limits
-        .max_dimension
-        .min(renderer.max_texture_dimension_2d());
-    if max != limits.max_dimension {
-        limits.max_dimension = max;
-        resources.set_image_limits(limits);
+    #[allow(unused_mut)]
+    let mut native = Native::new(renderer, window, options);
+    #[cfg(feature = "accesskit")]
+    {
+        native.adapter = adapter;
     }
+    Ok(native)
 }
 
 /// An owned window stays above its owner in the Z-order and is destroyed with it.

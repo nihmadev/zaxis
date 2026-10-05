@@ -55,6 +55,9 @@ pub enum WindowError {
     Render(RenderError),
     /// The requested parent is not open.
     UnknownParent(super::WindowKey),
+    /// The platform cannot show another window. The browser runner draws on one canvas, so
+    /// every window after the main one is refused with this error.
+    Unsupported(String),
 }
 
 impl fmt::Display for WindowError {
@@ -63,6 +66,7 @@ impl fmt::Display for WindowError {
             Self::Create(error) => write!(f, "creating the window: {error}"),
             Self::Render(error) => write!(f, "preparing the window surface: {error}"),
             Self::UnknownParent(key) => write!(f, "parent window {key} is not open"),
+            Self::Unsupported(reason) => write!(f, "window not opened: {reason}"),
         }
     }
 }
@@ -72,7 +76,7 @@ impl Error for WindowError {
         match self {
             Self::Create(error) => Some(error),
             Self::Render(error) => Some(error),
-            Self::UnknownParent(_) => None,
+            Self::UnknownParent(_) | Self::Unsupported(_) => None,
         }
     }
 }

@@ -18,7 +18,7 @@ include = [
 ]
 
 [workspace]
-members = ["crates/zaxis-emoji", "crates/z-icons"]
+members = ["crates/z-emoji", "crates/z-icons"]
 resolver = "2"
 
 [package.metadata.docs.rs]
@@ -31,19 +31,44 @@ wgpu = "30.0.1"
 glam = "0.33.12"
 ab_glyph = "0.2.32"
 bytemuck = { version = "1.25.2", features = ["derive"] }
-pollster = "1.0.1"
 unicode-segmentation = { version = "1.13", default-features = false }
-arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
 cosmic-text = "0.17.0"
 unicode-script = "0.5.8"
-zaxis-emoji = { version = "0.0.1", path = "crates/zaxis-emoji", optional = true }
+z-emoji = { version = "0.0.1", path = "crates/z-emoji", optional = true }
 z-icons = { version = "0.0.1", path = "crates/z-icons", optional = true }
 image = { version = "=0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 resvg = { version = "=0.48.1", default-features = false, features = ["text"] }
+accesskit = { version = "0.25.1", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "1.0.1"
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
+accesskit_winit = { version = "0.34.1", default-features = false, features = ["rwh_06"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "30.0.1", features = ["webgpu", "webgl"] }
+cosmic-text = { version = "0.17.0", features = ["wasm-web"] }
+web-time = "1.1"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = [
+    "Window", "Document", "HtmlCanvasElement", "HtmlElement", "Element", "Navigator",
+    "ClipboardEvent", "DataTransfer", "Event", "EventTarget", "Location",
+    "CssStyleDeclaration", "KeyboardEvent", "console",
+] }
 
 [features]
-default = ["bundled-emoji", "bundled-weights", "bundled-monospace", "image-gif", "image-tiff"]
-bundled-emoji = ["dep:zaxis-emoji"]
+default = [
+    "bundled-emoji", "bundled-weights", "bundled-monospace", "image-gif", "image-tiff",
+    "accesskit",
+]
+# OS accessibility tree (UI Automation, NSAccessibility). AT-SPI on Linux and the BSDs
+# needs `accesskit_unix` as well: it brings a D-Bus client and an async executor.
+accesskit = ["dep:accesskit", "dep:accesskit_winit"]
+accesskit_unix = ["accesskit", "accesskit_winit/accesskit_unix", "accesskit_winit/async-io"]
+bundled-emoji = ["dep:z-emoji"]
 bundled-weights = []
 bundled-monospace = []
 bundled-icons = ["dep:z-icons"]
@@ -54,6 +79,7 @@ image-tiff = ["image/tiff"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = { version = "=0.35.2", default-features = false, features = ["system"] }
+accesskit_consumer = "0.39.1"
 
 [[bench]]
 name = "performance"
@@ -74,9 +100,40 @@ path = "examples/icons.rs"
 required-features = ["bundled-icons"]
 
 [[example]]
+name = "list_box"
+path = "examples/list_box.rs"
+required-features = ["bundled-icons"]
+
+[[example]]
+name = "segmented_control"
+path = "examples/segmented_control.rs"
+required-features = ["bundled-icons"]
+
+[[example]]
 name = "settings"
 path = "examples/settings.rs"
 
 [[example]]
+name = "accessibility"
+path = "examples/accessibility.rs"
+required-features = ["accesskit"]
+
+[[example]]
 name = "integration"
 path = "examples/integration.rs"
+required-features = ["accesskit"]
+
+[[example]]
+name = "web_landing"
+path = "examples/web_landing.rs"
+required-features = ["bundled-icons"]
+
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "packed"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.bench]
+debug = false

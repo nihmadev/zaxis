@@ -12,7 +12,7 @@ use std::hash::Hash;
 
 /// What happened to a close request.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct CloseOutcome {
+pub struct CloseOutcome {
     /// The application was asked. False when the window was already closed.
     pub delivered: bool,
     /// The application kept the window open.
@@ -20,7 +20,7 @@ pub(crate) struct CloseOutcome {
     pub closed: Closed,
 }
 
-pub(crate) struct Hub<I> {
+pub struct Hub<I> {
     pub registry: Registry<I>,
     pub control: Control,
 }

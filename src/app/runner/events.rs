@@ -1,6 +1,7 @@
 //! Routing one window's events into its context, and drawing its frames.
 
 use super::{Runner, Slot};
+use crate::time::Instant;
 use crate::{
     app::{
         callbacks::{CloseSource, GlobalShortcut},
@@ -8,7 +9,7 @@ use crate::{
     },
     RenderError, RenderStatus,
 };
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use winit::{
     event::{ElementState, WindowEvent},
     event_loop::ActiveEventLoop,
@@ -24,6 +25,13 @@ impl<A: App> Runner<A> {
         key: &WindowKey,
         event: WindowEvent,
     ) -> Result<bool, RenderError> {
+        if let Some(Slot {
+            native: Some(native),
+            ..
+        }) = self.slots.get_mut(key)
+        {
+            native.accessibility_event(&event);
+        }
         match &event {
             WindowEvent::CloseRequested => {
                 self.request_close(event_loop, key, CloseSource::System);
@@ -55,6 +63,7 @@ impl<A: App> Runner<A> {
             return Ok(false);
         }
         let response = context.on_window_event(&event);
+        self.platform.note_input(&event, response);
         match event {
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 let size = native.window.inner_size();
@@ -82,6 +91,27 @@ impl<A: App> Runner<A> {
             native.cursor = cursor;
         }
         Ok(false)
+    }
+
+    /// Assistive technology asked `event.window_id` for its tree or for an action: the
+    /// request becomes input of that window and is answered by its next frame.
+    #[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
+    pub(super) fn accessibility_event(&mut self, event: crate::accessibility::adapter::Event) {
+        let Some(key) = self.hub.registry.route(event.window_id).cloned() else {
+            return;
+        };
+        let Some(Slot {
+            context,
+            native: Some(native),
+            ..
+        }) = self.slots.get_mut(&key)
+        else {
+            return;
+        };
+        if crate::accessibility::adapter::handle(context, event.window_event) && native.visible()
+        {
+            native.window.request_redraw();
+        }
     }
 
     /// Offer a key press to the application first; true when it took the key.
@@ -155,6 +185,7 @@ impl<A: App> Runner<A> {
             device_loss: device_loss.as_deref(),
         };
         context.run(|context| app.update(context, &mut frame));
+        native.publish_accessibility(context);
         context.sync_ime(&native.window);
         let status = native
             .renderer

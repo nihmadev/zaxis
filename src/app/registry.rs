@@ -15,7 +15,7 @@ struct Entry<I> {
 
 /// Result of asking for a window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum OpenRequest {
+pub enum OpenRequest {
     /// New entry; the caller creates the native window.
     Queued,
     /// The key is open or already requested; nothing to do, nothing duplicated.
@@ -25,19 +25,19 @@ pub(crate) enum OpenRequest {
 
 /// Windows removed by one close and whether the application ends with them.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct Closed {
+pub struct Closed {
     pub keys: Vec<WindowKey>,
     pub exit: bool,
 }
 
 /// What a declaration pass changes.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct Reconcile {
+pub struct Reconcile {
     pub open: Vec<WindowKey>,
     pub close: Vec<WindowKey>,
 }
 
-pub(crate) struct Registry<I> {
+pub struct Registry<I> {
     entries: Vec<Entry<I>>,
     /// Declared windows that closed (by the user, by failing, by their parent) while still
     /// declared. They stay closed until the application stops declaring them once.
@@ -68,7 +68,6 @@ impl<I: Copy + Eq + Hash> Registry<I> {
         self.entries.iter().any(|e| e.key == *key)
     }
 
-    #[cfg(test)]
     pub fn is_open(&self, key: &WindowKey) -> bool {
         self.entries.iter().any(|e| e.key == *key && e.open)
     }

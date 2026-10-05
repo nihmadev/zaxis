@@ -5,7 +5,7 @@ use super::{AppStats, WindowInfo, WindowKey, WindowOptions, WindowStatus};
 use crate::{SharedResources, Style, Theme};
 use std::collections::HashMap;
 
-pub(crate) enum Command {
+pub enum Command {
     Open {
         key: WindowKey,
         options: Box<WindowOptions>,
@@ -19,10 +19,13 @@ pub(crate) enum Command {
     Visible(WindowKey, bool),
     Repaint(Option<WindowKey>),
     Exit,
+    /// A request the platform cannot honour, with the reason; the application is told through
+    /// [`App::window_failed`](super::App::window_failed).
+    Refused(WindowKey, String),
 }
 
 /// State the runner publishes to callbacks and the requests they queue.
-pub(crate) struct Control {
+pub struct Control {
     pub commands: Vec<Command>,
     pub status: HashMap<WindowKey, WindowStatus>,
     pub infos: HashMap<WindowKey, WindowInfo>,
@@ -31,6 +34,9 @@ pub(crate) struct Control {
     /// Exit after the frame being built is presented ([`Frame::close`](super::Frame::close)).
     pub exit_after_present: bool,
     pub stats: AppStats,
+    /// How many windows the platform can show at once; `None` for no limit. The browser
+    /// has one canvas, so its runner sets `Some(1)`.
+    pub max_windows: Option<usize>,
 }
 
 impl Control {
@@ -43,6 +49,7 @@ impl Control {
             resources,
             exit_after_present: false,
             stats: AppStats::default(),
+            max_windows: None,
         }
     }
 }
@@ -54,6 +61,11 @@ pub enum OpenOutcome {
     Requested,
     /// The key is already open or already requested: nothing was created or recreated.
     AlreadyOpen,
+    /// The platform cannot show another window (the browser runner has a single canvas).
+    /// Nothing was queued; the key's [`status`](Windows::status) is `Failed` and
+    /// [`App::window_failed`](super::App::window_failed) receives
+    /// [`WindowError::Unsupported`](super::WindowError::Unsupported).
+    Unsupported,
 }
 
 /// Open, close, focus and inspect native windows by [`WindowKey`].
@@ -63,6 +75,13 @@ pub enum OpenOutcome {
 /// request is addressed to a key, so none of them can reach the wrong window.
 pub struct Windows<'a> {
     pub(crate) control: &'a mut Control,
+}
+
+impl<'a> Windows<'a> {
+    #[doc(hidden)]
+    pub fn from_control(control: &'a mut Control) -> Self {
+        Self { control }
+    }
 }
 
 impl Windows<'_> {
@@ -85,6 +104,22 @@ impl Windows<'_> {
             Some(WindowStatus::Pending | WindowStatus::Open)
         ) {
             return OpenOutcome::AlreadyOpen;
+        }
+        if let Some(limit) = self.control.max_windows {
+            let taken = self
+                .control
+                .status
+                .values()
+                .filter(|status| matches!(status, WindowStatus::Pending | WindowStatus::Open))
+                .count();
+            if taken >= limit {
+                let reason = format!("this platform shows at most {limit} window(s) at a time");
+                self.control
+                    .status
+                    .insert(key.clone(), WindowStatus::Failed(reason.clone()));
+                self.control.commands.push(Command::Refused(key, reason));
+                return OpenOutcome::Unsupported;
+            }
         }
         self.control
             .status

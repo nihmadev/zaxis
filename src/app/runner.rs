@@ -1,17 +1,30 @@
-//! The winit application handler: one native window and one context per [`WindowKey`].
+//! The winit application handler: one window and one context per [`WindowKey`].
+//!
+//! Everything here is platform independent: routing events into contexts, repaint
+//! scheduling, the window table. What differs lives in the platform module: `native`
+//! (blocking GPU setup, several windows, native chrome) or `web` (one canvas, asynchronous
+//! GPU setup, no blocking and no threads).
 
 mod events;
 mod lifecycle;
+#[cfg(not(target_arch = "wasm32"))]
 mod native;
+#[cfg(target_arch = "wasm32")]
+mod web;
+mod window;
 
 use super::{
     hub::Hub,
     schedule::{schedule_all, WindowTiming},
     App, RunError, RunOptions, WindowKey, WindowOptions,
 };
-use crate::{Context, PresentationMode};
-use native::Native;
-use std::{collections::HashMap, time::Instant};
+use crate::time::Instant;
+use crate::{Context, PresentationMode, SharedResources};
+#[cfg(not(target_arch = "wasm32"))]
+use native as platform;
+use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+use web as platform;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -20,10 +33,37 @@ use winit::{
     window::WindowId,
 };
 
+pub(super) use platform::run;
+pub(super) use window::Native;
+
+/// Events other threads and tasks send into the loop.
+pub(super) enum UserEvent {
+    /// A finished image job or a worker's wake-up: `about_to_wait` redraws exactly the
+    /// windows whose context reports that it needs a frame.
+    Wake,
+    /// The browser finished creating a renderer asynchronously; it waits in the runner's
+    /// inbox because a renderer cannot cross threads, and so could not ride in this event.
+    #[cfg(target_arch = "wasm32")]
+    Renderer,
+    /// Assistive technology asked a window for its tree, requested an action, or went
+    /// away. Platform adapters report from their own threads, hence through the proxy.
+    #[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
+    Access(crate::accessibility::adapter::Event),
+}
+
+#[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
+impl From<crate::accessibility::adapter::Event> for UserEvent {
+    fn from(event: crate::accessibility::adapter::Event) -> Self {
+        Self::Access(event)
+    }
+}
+
 /// Everything that belongs to one window. Dropping it releases the surface, the renderer's
 /// per-window buffers and all retained UI state of the window's context.
 pub(super) struct Slot {
     pub(super) context: Context,
+    /// Kept to recreate the window after a suspension, which only the desktop does.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(super) options: WindowOptions,
     /// `None` while the system has suspended the application.
     pub(super) native: Option<Native>,
@@ -40,10 +80,29 @@ pub(super) struct Runner<A> {
     pub(super) device_resets: u64,
     pub(super) device_loss: Option<String>,
     pub(super) started: bool,
+    pub(super) platform: platform::State,
+}
+
+/// The resources every window shares, with the fonts the options ask for.
+fn shared_resources(options: &RunOptions) -> SharedResources {
+    match (&options.font_family, &options.monospace_family) {
+        (None, None) => SharedResources::new(),
+        (family, monospace) => SharedResources::with_font_families(
+            family.clone().unwrap_or_default(),
+            monospace
+                .clone()
+                .or_else(crate::FontFamily::default_monospace),
+        ),
+    }
 }
 
 impl<A: App> Runner<A> {
-    pub(super) fn new(app: A, options: RunOptions, resources: crate::SharedResources) -> Self {
+    pub(super) fn new(
+        app: A,
+        options: RunOptions,
+        resources: SharedResources,
+        platform: platform::State,
+    ) -> Self {
         Self {
             hub: Hub::new(options.main_window.clone(), options.exit_policy, resources),
             app,
@@ -53,19 +112,28 @@ impl<A: App> Runner<A> {
             device_resets: 0,
             device_loss: None,
             started: false,
+            platform,
         }
     }
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, error: RunError) {
+        self.platform.report_failure(&error);
         self.error = Some(error);
         event_loop.exit();
     }
 }
 
-impl<A: App> ApplicationHandler for Runner<A> {
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _: ()) {
-        // A finished image job or a worker's wake-up: `about_to_wait` redraws exactly the
-        // windows whose context reports that it needs a frame.
+impl<A: App> ApplicationHandler<UserEvent> for Runner<A> {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
+        match event {
+            UserEvent::Wake => {}
+            #[cfg(target_arch = "wasm32")]
+            UserEvent::Renderer => self.renderers_ready(event_loop),
+            #[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
+            UserEvent::Access(event) => self.accessibility_event(event),
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = event_loop;
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -96,9 +164,18 @@ impl<A: App> ApplicationHandler for Runner<A> {
         let Some(key) = self.hub.registry.route(id).cloned() else {
             return;
         };
+        let modifiers = self.slots.get(&key).map(|slot| slot.modifiers);
+        let frame_now = modifiers.is_some_and(|m| platform::frame_before_returning(&event, m));
         match self.dispatch(event_loop, &key, event) {
             Ok(changed) => self.settle(event_loop, changed),
             Err(error) => self.fail(event_loop, RunError::Render(error)),
+        }
+        if frame_now {
+            // The browser allows a clipboard write only inside the gesture that asked
+            // for it, so the key press that copies draws its frame before the handler returns.
+            if let Err(error) = self.dispatch(event_loop, &key, WindowEvent::RedrawRequested) {
+                self.fail(event_loop, RunError::Render(error));
+            }
         }
     }
 
