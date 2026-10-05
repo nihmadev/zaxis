@@ -189,11 +189,7 @@ fn selection_requests_select_and_replace_whole_graphemes() {
         field(ctx, &mut text);
     });
     assert_eq!(text, "abécd");
-    let caret = *harness
-        .tree
-        .node(input)
-        .text_selection()
-        .expect("caret");
+    let caret = *harness.tree.node(input).text_selection().expect("caret");
     assert_eq!((caret.anchor, caret.focus), (at(3), at(3)));
     // A position past the end and a run of another node are harmless.
     let stray = ActionData::SetTextSelection(TextSelection {

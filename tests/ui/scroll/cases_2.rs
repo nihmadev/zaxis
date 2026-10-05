@@ -333,7 +333,16 @@ fn a_wheel_notch_glides_to_its_target_and_settles() {
     let top = pass(&mut c, t0 + Duration::from_millis(16));
     c.move_pointer(vec2(100.0, 100.0));
     // Place the pointer inside the area's viewport.
-    c.move_pointer(c.probe().scrolling.states.values().next().unwrap().viewport.center());
+    c.move_pointer(
+        c.probe()
+            .scrolling
+            .states
+            .values()
+            .next()
+            .unwrap()
+            .viewport
+            .center(),
+    );
     let event = WindowEvent::MouseWheel {
         device_id: DeviceId::dummy(),
         delta: MouseScrollDelta::LineDelta(0.0, -1.0),
@@ -341,14 +350,29 @@ fn a_wheel_notch_glides_to_its_target_and_settles() {
     };
     assert!(c.on_window_event(&event).consumed);
     let target = c.style().font_size * 4.5;
-    assert_eq!(c.probe().scrolling.states.values().next().unwrap().offset.y, target);
+    assert_eq!(
+        c.probe().scrolling.states.values().next().unwrap().offset.y,
+        target
+    );
     let early = pass(&mut c, t0 + Duration::from_millis(32));
     let later = pass(&mut c, t0 + Duration::from_millis(80));
-    assert!(top - early > 0.0 && top - early < target, "starts moving: {early}");
-    assert!(top - later > top - early && top - later < target, "keeps moving: {later}");
-    assert!(c.needs_repaint_at(t0 + Duration::from_millis(100)), "asks for the next frame");
+    assert!(
+        top - early > 0.0 && top - early < target,
+        "starts moving: {early}"
+    );
+    assert!(
+        top - later > top - early && top - later < target,
+        "keeps moving: {later}"
+    );
+    assert!(
+        c.needs_repaint_at(t0 + Duration::from_millis(100)),
+        "asks for the next frame"
+    );
     let done = pass(&mut c, t0 + Duration::from_secs(2));
     assert_eq!(top - done, target);
     pass(&mut c, t0 + Duration::from_secs(3));
-    assert!(!c.needs_repaint_at(t0 + Duration::from_secs(3)), "settled content sleeps");
+    assert!(
+        !c.needs_repaint_at(t0 + Duration::from_secs(3)),
+        "settled content sleeps"
+    );
 }

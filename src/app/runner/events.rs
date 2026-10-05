@@ -108,8 +108,7 @@ impl<A: App> Runner<A> {
         else {
             return;
         };
-        if crate::accessibility::adapter::handle(context, event.window_event) && native.visible()
-        {
+        if crate::accessibility::adapter::handle(context, event.window_event) && native.visible() {
             native.window.request_redraw();
         }
     }

@@ -2,10 +2,7 @@ use ab_glyph::{point, Font, FontVec, Glyph};
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 use zaxis::shapes::Mesh;
-use zaxis::text::{
-    layout::CachedLayout,
-    *,
-};
+use zaxis::text::{layout::CachedLayout, *};
 use zaxis::{Color, FontFamily, FontWeight, Id, Vec2};
 
 #[test]

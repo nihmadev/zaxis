@@ -31,8 +31,8 @@ pub mod variant;
 pub mod weight;
 
 pub use family::FontFamily;
-pub use rich::StyleRun;
 pub(crate) use rich::same_shape;
+pub use rich::StyleRun;
 pub use variant::{MonospaceMetrics, TextFamily};
 pub use weight::FontWeight;
 

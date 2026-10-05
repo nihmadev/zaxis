@@ -106,7 +106,10 @@ impl TextSystem {
             Some((runs, base)) => {
                 let spans = runs.iter().enumerate().map(|(i, run)| {
                     let spec = run.font(base);
-                    (&text[run.start..run.end], self.attrs(self.font_key(spec)).metadata(i))
+                    (
+                        &text[run.start..run.end],
+                        self.attrs(self.font_key(spec)).metadata(i),
+                    )
                 });
                 buffer.set_rich_text(&mut fonts, spans, &attrs, Shaping::Advanced, None);
             }
