@@ -162,7 +162,12 @@ impl Probe {
                 }
             }
             ListCase::Keys if self.step > 12 => assert!(out.active.is_some()),
-            ListCase::Select if self.step > 12 => assert!(!self.selected.is_empty()),
+            // In Multiple mode an arrow selects the row it moves to and Space toggles it.
+            ListCase::Select if self.step > 12 => assert_eq!(
+                self.selected.len(),
+                usize::from(self.step.is_multiple_of(2)),
+                "ArrowDown selects the active row, Space toggles it"
+            ),
             ListCase::Revision if self.step > 12 => assert!(out.rebuilt),
             _ => {}
         }

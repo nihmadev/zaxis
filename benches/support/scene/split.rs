@@ -298,7 +298,8 @@ impl Probe {
         }
         if let Some(expected) = self.expected {
             assert!(
-                (out.panels[0].size - expected).abs() < 0.05,
+                // The drag moves in whole physical pixels.
+                (out.panels[0].size - expected).abs() <= 0.5 / c.scale_factor() + 0.05,
                 "resize did not follow pointer"
             );
             let sum = self.origin.unwrap().2;
