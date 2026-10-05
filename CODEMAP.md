@@ -20,7 +20,7 @@ host redraw ─► Context::run(|ctx| ...)           src/context/frame.rs  (run_
                       layer order of paint/hits, a11y geometry, scrolling/images, geometry,
                       publish routing (transforms, hits, tabs), retire caches, settle
                       focus/capture, retire widget state, drop unclaimed routed input,
-                      accessibility tree + diff (src/accessibility/tree.rs, convert.rs)
+                      accessibility tree + diff (src/accessibility/tree.rs + tree/, convert.rs)
 Context::draw_data() -> DrawData                 src/context.rs, src/context/geometry.rs
 Renderer::render(&DrawData, clear)               src/renderer/frame.rs   (wgpu)
 repaint: Context::needs_repaint[_at]             src/context/repaint.rs, src/app/schedule.rs
@@ -54,7 +54,7 @@ accessibility in:  adapter ─► UserEvent::Access ─► Context::on_accessibi
 | Images | `src/images/` | decode (raster+SVG), `worker.rs` (job execution: threads via `worker/threads.rs`, or inline per-frame slices on wasm32), `file.rs` (path loading; an error in a page), cache/lifecycle, resize. Context glue: `src/context/images.rs`; component: `components/image.rs`. |
 | App runner | `src/app/` | `App` trait, `Windows` (multi-window), hub/registry (no winit/GPU, testable), runner (winit, split into platform-independent code and `native`/`web` platform modules), schedule (repaint deadlines), commands (window requests), `browser.rs` (`WebOptions`, browser key policy; plain data, all targets). |
 | Theme/Style | `src/components/{style,appearance}.rs`, `components/theme/` | `Style` is what widgets consume; typed `Theme` resolves into it (`resolve.rs`, `palette.rs`, `tokens.rs`, per-control `controls.rs`, `overrides.rs`). |
-| Accessibility | `src/accessibility/` | `node` (`AccessNode`), `role` (roles, actions, state enums), `collect` (nodes while the UI is built, `Ui::accessible`), `widget` (`Accessible` wrapper), `text` (text runs), `tree` (tree + diff), `convert` (to AccessKit nodes), `ids`, `actions` (updates out, requests in), `adapter` (accesskit_winit, native only), `audit` (missing names), `testing` (`AccessTree`, doc-hidden). Features `accesskit` (default), `accesskit_unix`. Complex components keep their description in a per-component `access.rs`. |
+| Accessibility | `src/accessibility/` | `node` (`AccessNode`), `role` (roles, actions, state enums), `collect` (nodes while the UI is built, `Ui::accessible`), `widget` (`Accessible` wrapper), `text` (text runs), `tree` (tree + diff, coordinated in `tree.rs`; stages `tree/{select,bounds,identity,outline,diff}.rs`, motion hold `tree/policy.rs`), `convert` (to AccessKit nodes), `ids`, `actions` (updates out, requests in), `adapter` (accesskit_winit, native only), `audit` (missing names), `testing` (`AccessTree`, doc-hidden). Features `accesskit` (default), `accesskit_unix`. Complex components keep their description in a per-component `access.rs`. |
 | Icons / emoji | `crates/z-icons` (feature `bundled-icons`), `crates/z-emoji` (crate `z-emoji`, feature `bundled-emoji`) | Separate workspace crates; `generated.rs` is exempt from the size limit. |
 
 ## Context concerns (`src/context/`)
@@ -96,13 +96,15 @@ Complex ones are a parent file plus a directory split by responsibility (`show`/
 | Component | Entry | Related |
 |---|---|---|
 | Static text: Hyperlink, SelectableLabel, `rich_label`, SelectionScope | `hyperlink.rs`, `hyperlink/{style,url}.rs`, `selectable_label.rs`, `selection_scope.rs`, `rich_text.rs` (flat `Span` model) | One engine, `text_block.rs` + `text_block/{options,state,layout,fit,links,select,paint,menu,copy_button,access}.rs`: reuses TextEdit's `Doc` paragraph table (`text_edit/doc.rs`; runs via `text/rich.rs` / `Paint::Rich`) and `text_geometry.rs`. Plain `Text` stays separate. |
-| TextEdit (single + multiline) | `text_edit.rs`, `text_edit/{single,area,doc,doc_layout,events,scroll}.rs` | Shared: `edit_buffer.rs`, `edit_history.rs`, `text_geometry.rs`. NumberInput reuses these (`number_input.rs`, `numeric.rs`). |
+| TextEdit (single + multiline) | `text_edit.rs`, `text_edit/{single,area,doc,doc_layout,events,scroll}.rs` | Shared: `edit_buffer.rs`, `edit_history.rs`, `text_geometry.rs`. Owners adapt it through internal hooks (event handler, affixes, character filter, whole-value selection): NumberInput and ColorPicker fields. |
+| NumberInput / DragValue | `number_input.rs` (API), `number_input/{show,state,drag,editor,display,access}.rs`, `drag_value.rs`, `numeric.rs` | One engine: `state` transitions and steps, `drag` pointer/keys, `editor` TextEdit adapter, `display` drag surface. |
 | ScrollArea | `scroll_area.rs`, `scroll_area/{chrome,rows}.rs` | Context: `context/scroll.rs`. |
 | ListBox | `list_box/` (`show`, `model`, `nav`, `select`, `paint`, `row`, `heights`) | Virtualized, keyed rows. |
 | TreeView | `tree_view.rs`, `tree_view/` | Input: `context/tree.rs`. |
 | Table / Grid | `table.rs`, `table/`, `grid.rs`, `grid/` | Table shares Grid columns + ScrollArea. |
 | SplitPane | `split_pane.rs`, `split_pane/{allocation,interaction,paint,show,style}.rs` | Input: `context/split.rs`. |
-| ComboBox, ColorPicker, KeyBox | `combo_box/`, `color_picker/`, `key_box/` | Use Popup. |
+| ComboBox, KeyBox | `combo_box/`, `key_box/` | Use Popup. |
+| ColorPicker | `color_picker.rs`, `color_picker/{show,row,panel,editor,fields,color,access}.rs` | Inline reveal or floating Window (`panel`); RGB/HEX `fields` are TextEdits with a draft adapter. |
 | ContextMenu, MenuBar | `context_menu.rs`, `menu_bar.rs` (+ dirs) | Cascading menus, keyboard nav. |
 | Modal / Dialog | `modal.rs`, `modal/{access,dialog,geometry,parts}.rs` | Stack: `context/modal.rs`. |
 | Carousel | `carousel/` | Wheel routing: `context/carousel.rs`. |
