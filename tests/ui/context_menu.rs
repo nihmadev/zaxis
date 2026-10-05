@@ -301,8 +301,7 @@ fn ten_thousand_mixed_rows_virtualize_and_refresh_after_mutation() {
     draw(&mut c, &items, None, false);
     let last = rows(&c)
         .into_iter()
-        .filter(|r| r.action == HitAction::Activate)
-        .last()
+        .rfind(|r| r.action == HitAction::Activate)
         .unwrap();
     assert!(!last.rect.intersect(last.clip).is_empty());
     key(&mut c, KeyCode::Enter);

@@ -121,7 +121,6 @@ impl Appearance {
             border: Border {
                 color: alpha(ring.color, self.opacity),
                 width: ring.width + under,
-                ..ring
             },
         }));
     }

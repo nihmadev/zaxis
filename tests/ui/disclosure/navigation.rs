@@ -97,7 +97,6 @@ fn tree_controlled_states_and_row_actions_do_not_leak() {
     assert_eq!(out.selected, None);
     assert!(out.events.is_empty());
     assert!(open.is_empty());
-    drop(render);
     assert_eq!(clicks, 1);
 }
 

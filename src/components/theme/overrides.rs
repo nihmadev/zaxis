@@ -237,49 +237,49 @@ pub struct StyleOverrides {
 impl StyleOverrides {
     pub fn apply(&self, style: &mut crate::Style) {
         if let Some(value) = &self.accent {
-            style.accent = value.clone();
+            style.accent = *value;
         }
         if let Some(value) = &self.on_accent {
-            style.on_accent = value.clone();
+            style.on_accent = *value;
         }
         if let Some(value) = &self.disabled_text {
-            style.disabled_text = value.clone();
+            style.disabled_text = *value;
         }
         if let Some(value) = &self.selected_fill {
-            style.selected_fill = value.clone();
+            style.selected_fill = *value;
         }
         if let Some(value) = &self.selected_text {
-            style.selected_text = value.clone();
+            style.selected_text = *value;
         }
         if let Some(value) = &self.success {
-            style.success = value.clone();
+            style.success = *value;
         }
         if let Some(value) = &self.on_success {
-            style.on_success = value.clone();
+            style.on_success = *value;
         }
         if let Some(value) = &self.warning {
-            style.warning = value.clone();
+            style.warning = *value;
         }
         if let Some(value) = &self.on_warning {
-            style.on_warning = value.clone();
+            style.on_warning = *value;
         }
         if let Some(value) = &self.error {
-            style.error = value.clone();
+            style.error = *value;
         }
         if let Some(value) = &self.on_error {
-            style.on_error = value.clone();
+            style.on_error = *value;
         }
         if let Some(value) = &self.control_height {
-            style.control_height = value.clone();
+            style.control_height = *value;
         }
         if let Some(value) = &self.opacity {
-            style.opacity = value.clone();
+            style.opacity = *value;
         }
         if let Some(value) = &self.elevation {
-            style.elevation = value.clone();
+            style.elevation = *value;
         }
         if let Some(value) = &self.typography {
-            style.typography = value.clone();
+            style.typography = *value;
         }
         style.button.merge(self.button);
         style.checkbox.merge(self.checkbox);
@@ -312,94 +312,94 @@ impl StyleOverrides {
             style.motion = value.clone();
         }
         if let Some(value) = &self.background {
-            style.background = value.clone();
+            style.background = *value;
         }
         if let Some(value) = &self.window_fill {
-            style.window_fill = value.clone();
+            style.window_fill = *value;
         }
         if let Some(value) = &self.title_fill {
-            style.title_fill = value.clone();
+            style.title_fill = *value;
         }
         if let Some(value) = &self.text_color {
-            style.text_color = value.clone();
+            style.text_color = *value;
         }
         if let Some(value) = &self.muted_text {
-            style.muted_text = value.clone();
+            style.muted_text = *value;
         }
         if let Some(value) = &self.border {
-            style.border = value.clone();
+            style.border = *value;
         }
         if let Some(value) = &self.button_fill {
-            style.button_fill = value.clone();
+            style.button_fill = *value;
         }
         if let Some(value) = &self.button_hovered {
-            style.button_hovered = value.clone();
+            style.button_hovered = *value;
         }
         if let Some(value) = &self.hover_style {
-            style.hover_style = value.clone();
+            style.hover_style = *value;
         }
         if let Some(value) = &self.button_pressed {
-            style.button_pressed = value.clone();
+            style.button_pressed = *value;
         }
         if let Some(value) = &self.text_edit_fill {
-            style.text_edit_fill = value.clone();
+            style.text_edit_fill = *value;
         }
         if let Some(value) = &self.text_edit_hovered {
-            style.text_edit_hovered = value.clone();
+            style.text_edit_hovered = *value;
         }
         if let Some(value) = &self.text_edit_placeholder {
-            style.text_edit_placeholder = value.clone();
+            style.text_edit_placeholder = *value;
         }
         if let Some(value) = &self.text_edit_selection {
-            style.text_edit_selection = value.clone();
+            style.text_edit_selection = *value;
         }
         if let Some(value) = &self.text_edit_padding {
-            style.text_edit_padding = value.clone();
+            style.text_edit_padding = *value;
         }
         if let Some(value) = &self.text_edit_rounding {
-            style.text_edit_rounding = value.clone();
+            style.text_edit_rounding = *value;
         }
         if let Some(value) = &self.text_edit_width {
-            style.text_edit_width = value.clone();
+            style.text_edit_width = *value;
         }
         if let Some(value) = &self.text_edit_height {
-            style.text_edit_height = value.clone();
+            style.text_edit_height = *value;
         }
         if let Some(value) = &self.text_edit_font_size {
-            style.text_edit_font_size = value.clone();
+            style.text_edit_font_size = *value;
         }
         if let Some(value) = &self.text_edit_cursor_width {
-            style.text_edit_cursor_width = value.clone();
+            style.text_edit_cursor_width = *value;
         }
         if let Some(value) = &self.text_edit_blink_interval {
-            style.text_edit_blink_interval = value.clone();
+            style.text_edit_blink_interval = *value;
         }
         if let Some(value) = &self.focus_border {
-            style.focus_border = value.clone();
+            style.focus_border = *value;
         }
         if let Some(value) = &self.rounding {
-            style.rounding = value.clone();
+            style.rounding = *value;
         }
         if let Some(value) = &self.window_padding {
-            style.window_padding = value.clone();
+            style.window_padding = *value;
         }
         if let Some(value) = &self.button_padding {
-            style.button_padding = value.clone();
+            style.button_padding = *value;
         }
         if let Some(value) = &self.font_size {
-            style.font_size = value.clone();
+            style.font_size = *value;
         }
         if let Some(value) = &self.title_height {
-            style.title_height = value.clone();
+            style.title_height = *value;
         }
         if let Some(value) = &self.spacing {
-            style.spacing = value.clone();
+            style.spacing = *value;
         }
         if let Some(value) = &self.blur_radius {
-            style.blur_radius = value.clone();
+            style.blur_radius = *value;
         }
         if let Some(value) = &self.blur_opacity {
-            style.blur_opacity = value.clone();
+            style.blur_opacity = *value;
         }
     }
     pub fn resolve(&self, base: &crate::Style) -> crate::Style {

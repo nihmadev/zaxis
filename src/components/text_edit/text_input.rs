@@ -7,25 +7,22 @@ const K: u64 = 0x9E37_79B9_7F4A_7C15;
 /// Fast non-cryptographic hash over 32-byte blocks; four independent lanes keep the
 /// multiplier chains overlapped, so large documents hash at memory speed.
 pub(crate) fn hash_bytes(bytes: &[u8]) -> u64 {
-    let word = |c: &[u8]| u64::from_le_bytes(c.try_into().expect("8 byte chunk"));
     let mut lanes = [K, K.rotate_left(16), K.rotate_left(32), K.rotate_left(48)];
-    let mut blocks = bytes.chunks_exact(32);
-    for block in &mut blocks {
-        for (lane, chunk) in lanes.iter_mut().zip(block.chunks_exact(8)) {
-            *lane = (lane.rotate_left(23) ^ word(chunk)).wrapping_mul(K);
+    let (blocks, rest) = bytes.as_chunks::<32>();
+    for block in blocks {
+        for (lane, chunk) in lanes.iter_mut().zip(block.as_chunks::<8>().0) {
+            *lane = (lane.rotate_left(23) ^ u64::from_le_bytes(*chunk)).wrapping_mul(K);
         }
     }
     let mut hash = bytes.len() as u64;
     for lane in lanes {
         hash = (hash.rotate_left(29) ^ lane).wrapping_mul(K);
     }
-    let rest = blocks.remainder();
-    let mut words = rest.chunks_exact(8);
-    for chunk in &mut words {
-        hash = (hash.rotate_left(23) ^ word(chunk)).wrapping_mul(K);
+    let (words, tail) = rest.as_chunks::<8>();
+    for chunk in words {
+        hash = (hash.rotate_left(23) ^ u64::from_le_bytes(*chunk)).wrapping_mul(K);
     }
-    let tail = words
-        .remainder()
+    let tail = tail
         .iter()
         .enumerate()
         .fold(0_u64, |t, (i, b)| t | u64::from(*b) << (8 * i));

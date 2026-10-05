@@ -237,7 +237,7 @@ fn moving_bounds_are_held_while_the_ui_is_in_motion() {
 fn semantic_changes_are_never_held() {
     let mut harness = Harness::new();
     let mut on = false;
-    let mut build = |ctx: &mut Context, on: &mut bool| {
+    let build = |ctx: &mut Context, on: &mut bool| {
         ctx.request_repaint();
         Window::new("Test").show(ctx, |ui| drop(ui.checkbox(on, "Live")));
     };

@@ -221,7 +221,8 @@ impl Smoke {
             }
             6 => {
                 // The application vetoed the close of the main window: everything stays.
-                if self.waiting(self.waited >= 5) {
+                let settled = self.waited >= 5;
+                if self.waiting(settled) {
                     assert!(data.doc_dirty());
                     assert_eq!(frame.stats().windows_open, 5);
                     println!("multi_window smoke test ok after {} frames", self.frames);

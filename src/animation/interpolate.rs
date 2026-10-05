@@ -59,6 +59,9 @@ fn encode_srgb(linear: f32) -> f32 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Oklab(pub Color);
 
+// The conversion matrices are quoted as published (Björn Ottosson, "A perceptual color
+// space for image processing"); f32 rounds the extra digits.
+#[allow(clippy::excessive_precision)]
 impl Oklab {
     fn lab(color: Color) -> [f32; 3] {
         let [r, g, b, _] = color.linear();

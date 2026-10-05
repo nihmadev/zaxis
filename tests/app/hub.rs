@@ -140,7 +140,7 @@ fn rejecting_keeps_the_window_and_a_later_request_asks_again() {
     assert_eq!(app.seen.len(), 2, "each user action is one event");
     app.veto.clear();
     let outcome = hub.close_requested(&mut app, &doc, CloseSource::Application);
-    assert_eq!(outcome.closed.keys, [doc.clone()]);
+    assert_eq!(outcome.closed.keys, std::slice::from_ref(&doc));
     assert_eq!(app.seen[2].1, CloseSource::Application);
     assert!(
         hub.registry.contains(&WindowKey::main()),
@@ -230,7 +230,7 @@ fn a_failed_window_is_reported_and_may_be_requested_again_without_touching_other
     Windows::from_control(&mut hub.control).open(&key, WindowOptions::new("Broken"));
     hub.begin_open(&key, None, false);
     let closed = hub.open_failed(&key, "no surface".into());
-    assert_eq!(closed.keys, [key.clone()]);
+    assert_eq!(closed.keys, std::slice::from_ref(&key));
     assert!(!closed.exit);
     assert_eq!(
         hub.control.status[&key],

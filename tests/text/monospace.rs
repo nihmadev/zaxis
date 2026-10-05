@@ -1,5 +1,4 @@
 //! Monospace cells, tabular figures and the family-aware layout cache.
-use ab_glyph::Font;
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 use zaxis::text::*;

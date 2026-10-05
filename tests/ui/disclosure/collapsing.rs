@@ -50,7 +50,6 @@ fn collapsing_default_controlled_keyboard_actions_and_focus_return() {
     click(&mut c, out.header_response.rect);
     assert!(!render(&mut c, None).open);
     assert!(!render(&mut c, None).open); // Repeated default(true) does not reset.
-    drop(render);
     assert_eq!(action_runs, 1);
     assert_eq!(body_runs, 3);
 }
@@ -124,7 +123,6 @@ fn collapsing_hidden_body_once_dynamic_height_animation_and_cleanup() {
         start + std::time::Duration::from_secs(2)
     )
     .is_none());
-    drop(render);
     assert_eq!(runs, 5);
     assert!(!c.needs_repaint_at(start + std::time::Duration::from_secs(2)));
     c.run(|_| {});
@@ -161,6 +159,5 @@ fn collapsing_locked_and_nested_stable_captions() {
     render(&mut c, &mut outer);
     outer = true;
     render(&mut c, &mut outer);
-    drop(render);
     assert_eq!(nested_open, Some(true));
 }

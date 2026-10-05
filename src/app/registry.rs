@@ -60,6 +60,8 @@ impl<I: Copy + Eq + Hash> Registry<I> {
         *key == self.main
     }
 
+    /// Never zero: the main window is always registered, so there is no `is_empty`.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }

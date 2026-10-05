@@ -334,7 +334,6 @@ fn theme_change_preserves_editor_focus_selection_undo_popup_scroll_and_values() 
         })
     };
     draw(&mut c, &mut text, &mut chosen);
-    drop(draw);
     c.dismiss_popup(true);
     c.request_focus(editor);
     c.key(KeyCode::KeyA, ElementState::Pressed, false); // Control modifier set below.

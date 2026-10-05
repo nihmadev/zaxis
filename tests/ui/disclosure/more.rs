@@ -137,7 +137,6 @@ fn split_tree_action_hits_follow_the_painted_right_edge() {
     );
     click(&mut c, row);
     render(&mut c);
-    drop(render);
     assert_eq!(edits, 0);
     assert_eq!(out.unwrap().selected, Some(id(1)));
 }
