@@ -51,7 +51,10 @@ impl Context {
             drag.scope == scope
                 && (self.selection.released == Some(drag.owner)
                     || (self.input.primary_down
-                        && self.capture.is_some_and(|c| c.hit.id == drag.owner)))
+                        && self
+                            .interaction
+                            .capture
+                            .is_some_and(|c| c.hit.id == drag.owner)))
         })
     }
 

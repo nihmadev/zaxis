@@ -71,7 +71,7 @@ pub(super) fn header<R>(
     let left = (inside.min.x + side + gap).min(inside.max.x);
     let action_bounds = Rect::from_min_max(Vec2::new(left, inside.min.y), inside.max);
     ui.context.begin_placement(ui.window);
-    ui.context.visual_depth += 1;
+    ui.context.visuals.depth += 1;
     let (result, used) = {
         let mut a = child(ui, h.id.with("actions"), action_bounds, Layout::Horizontal);
         a.enabled &= h.enabled;
@@ -80,7 +80,7 @@ pub(super) fn header<R>(
         a.finish_layout();
         (result, a.layout.used)
     };
-    ui.context.visual_depth -= 1;
+    ui.context.visuals.depth -= 1;
     let placement = ui.context.end_placement();
     let action_ids = ui.context.placement_hit_ids(&placement);
     let width = used.x.max(0.0).min(action_bounds.size().x);

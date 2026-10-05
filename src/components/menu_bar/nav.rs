@@ -144,7 +144,7 @@ impl MenuBar<'_> {
     ) -> bool {
         let (items, compact) = (self.items, self.compact);
         let mut moved = false;
-        for key in ui.context.combo_input.remove(&bar).unwrap_or_default() {
+        for key in ui.context.take_menu_keys(bar) {
             let deepest = state.depth.saturating_sub(1);
             let Some(here) = level(items, compact, state, deepest) else {
                 break;

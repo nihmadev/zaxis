@@ -63,10 +63,11 @@ impl Context {
     /// another focusable control (a button, a tree) needs Ctrl+Space, because the
     /// control keeps plain Space for itself. Text input never starts a drag.
     fn drag_pick_up(&mut self) -> bool {
-        let Some(focus) = self.focused_widget else {
+        let Some(focus) = self.interaction.focused else {
             return false;
         };
         let owner = self
+            .interaction
             .previous_hits
             .iter()
             .find(|hit| hit.id == focus)
@@ -84,7 +85,7 @@ impl Context {
             return false;
         }
         let ctrl = self.input.modifiers.control_key();
-        let Some((hit, info)) = self.previous_hits.iter().find_map(|hit| {
+        let Some((hit, info)) = self.interaction.previous_hits.iter().find_map(|hit| {
             let HitAction::DragSource { slot } = hit.action else {
                 return None;
             };
@@ -122,7 +123,7 @@ impl Context {
     /// payload, are visible, are not covered, and win at their own point.
     fn drag_stops(&self) -> Vec<(Vec2, Hover)> {
         let mut stops = Vec::new();
-        for hit in &self.previous_hits {
+        for hit in &self.interaction.previous_hits {
             let HitAction::DropTarget { slot } = hit.action else {
                 continue;
             };

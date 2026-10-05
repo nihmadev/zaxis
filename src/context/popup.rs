@@ -1,5 +1,30 @@
+//! The one open popup, popup-class layers and dismissals reported to popup builders.
 use super::{Context, Id};
 use crate::{AccessAction, AccessNode, Rect};
+use std::collections::HashSet;
+
+#[derive(Default)]
+pub(crate) struct Popups {
+    /// The open popup, if any.
+    pub(crate) current: Option<PopupState>,
+    /// Popup-class layers of this pass (popups, modals, toasts), in build order.
+    pub(crate) layers: Vec<Id>,
+    /// Popups closed from outside their builder (an outside press, Escape, focus loss),
+    /// until the builder hears of it.
+    dismissed: HashSet<Id>,
+}
+
+impl Popups {
+    pub(super) fn begin_pass(&mut self) {
+        self.layers.clear();
+    }
+
+    /// A dismissal is forgotten once the popup's body is no longer painted.
+    pub(super) fn retire(&mut self, painted: impl Fn(Id) -> bool) {
+        self.dismissed
+            .retain(|id| painted(crate::components::popup::body_id(*id)));
+    }
+}
 
 pub struct PopupState {
     pub id: Id,
@@ -27,31 +52,41 @@ impl Context {
         self.dismiss_popup(true);
     }
     pub(crate) fn dismiss_popup(&mut self, restore_focus: bool) {
-        if let Some(popup) = self.popup.take() {
+        if let Some(popup) = self.popups.current.take() {
             if let Some(target) = popup.key_target {
-                self.combo_input.remove(&target);
+                self.take_menu_keys(target);
             }
-            self.dismissed_popups.insert(popup.id);
+            self.popups.dismissed.insert(popup.id);
             self.remove_popup_hits(popup.id);
             if restore_focus {
                 self.set_focus(popup.return_focus);
             }
-            self.keyboard_active = None;
+            self.interaction.keyboard_active = None;
             self.stop_auto_scroll();
             self.request_repaint();
         }
+    }
+
+    /// Whether popup `id` was closed from outside since its builder last asked; asking
+    /// forgets it.
+    pub(crate) fn take_popup_dismissal(&mut self, id: Id) -> bool {
+        self.popups.dismissed.remove(&id)
+    }
+
+    /// Whether popup `id` is the open one.
+    pub(crate) fn popup_open(&self, id: Id) -> bool {
+        self.popups
+            .current
+            .as_ref()
+            .is_some_and(|popup| popup.id == id)
     }
 
     pub(crate) fn remove_popup_hits(&mut self, id: Id) {
         for placement in &mut self.placements.stack {
             placement.hits.retain(|(hit, _)| hit.window != id);
         }
-        self.hits.retain(|hit| hit.window != id);
-        self.previous_hits.retain(|hit| hit.window != id);
+        self.interaction.remove_layer(id);
         self.scrolling.remove_layer_hits(id);
-        if self.capture.is_some_and(|capture| capture.hit.window == id) {
-            self.capture = None;
-        }
     }
 
     /// The node of widget `id` among those described so far in this pass, newest first:
@@ -105,7 +140,7 @@ impl Context {
     }
 
     pub(crate) fn layer_rank(&self, id: Id) -> usize {
-        if let Some(rank) = self.popup_layers.iter().position(|layer| *layer == id) {
+        if let Some(rank) = self.popups.layers.iter().position(|layer| *layer == id) {
             self.layers.len() + 1 + rank
         } else {
             self.layers

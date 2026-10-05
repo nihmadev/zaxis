@@ -216,6 +216,11 @@ impl<'a> TextEdit<'a> {
     }
 }
 
+/// The paint of a field's body. Its state is retained while the body is painted.
+pub(crate) fn body_id(id: Id) -> Id {
+    id.with("body")
+}
+
 pub struct TextEditState {
     pub buffer: EditBuffer,
     pub scroll: f32,

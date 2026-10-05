@@ -301,7 +301,8 @@ impl Context {
         let mods = self.input.modifiers;
         let command = mods.control_key() || mods.super_key();
         let Some((_, scope)) = self
-            .focused_widget
+            .interaction
+            .focused
             .and_then(|id| self.selection.owners.get(&id).copied())
         else {
             return false;
@@ -335,7 +336,7 @@ impl Context {
         }
         state.pressed = None;
         state.released = None;
-        if state.drag.is_some() && self.capture.is_none() {
+        if state.drag.is_some() && self.interaction.capture.is_none() {
             state.drag = None;
         }
     }
@@ -343,7 +344,9 @@ impl Context {
     /// Whether the topmost region under the pointer is the link `id` and no other widget
     /// holds the pointer.
     pub(crate) fn link_hovered(&self, id: Id) -> bool {
-        self.capture.is_none_or(|capture| capture.hit.id == id)
+        self.interaction
+            .capture
+            .is_none_or(|capture| capture.hit.id == id)
             && self
                 .input
                 .pointer
@@ -358,11 +361,7 @@ impl Context {
             .selection
             .pressed
             .filter(|(target, ..)| *target == id)?;
-        let transform = self
-            .input_transforms
-            .get(&target)
-            .copied()
-            .unwrap_or_default();
+        let transform = self.visuals.input(target);
         Some((transform.inverse().point(point), mods))
     }
 
@@ -390,7 +389,8 @@ impl Context {
         self.input.focused
             && (self.selection_dragging(scope)
                 || self
-                    .focused_widget
+                    .interaction
+                    .focused
                     .and_then(|id| self.selection.owners.get(&id))
                     .is_some_and(|(_, s)| *s == scope))
     }
@@ -419,7 +419,7 @@ impl Context {
     /// A press that hit nothing selectable clears the selection.
     pub(super) fn selection_press_elsewhere(&mut self, hit: Option<super::HitRegion>) {
         let owned = hit.is_some_and(|hit| self.selection.owners.contains_key(&hit.id));
-        if !owned && self.popup.is_none() {
+        if !owned && self.popups.current.is_none() {
             self.clear_selection();
         }
     }

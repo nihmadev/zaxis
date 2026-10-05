@@ -164,7 +164,7 @@ impl<'a> MenuBar<'a> {
         self.style.normalize();
         let compact = self.compact;
         let bar = ui.scope.with(("menu-bar", self.source));
-        let mut state = ui.context.menu_bars.remove(&bar).unwrap_or_default();
+        let mut state = ui.context.menus.menu_bars.remove(&bar).unwrap_or_default();
         state.last_frame = ui.context.frame;
         let mut output = MenuBarOutput::default();
 
@@ -201,7 +201,7 @@ impl<'a> MenuBar<'a> {
             self.run_open(ui, bar, &mut state, &anchors, anchor.unwrap(), &mut output);
         }
         output.open = state.open;
-        ui.context.menu_bars.insert(bar, state);
+        ui.context.menus.menu_bars.insert(bar, state);
         output
     }
 
@@ -378,7 +378,13 @@ impl<'a> MenuBar<'a> {
             extra.push((layer, rect));
             parent = rect;
         }
-        if let Some(popup) = ui.context.popup.as_mut().filter(|p| p.id == popup_id) {
+        if let Some(popup) = ui
+            .context
+            .popups
+            .current
+            .as_mut()
+            .filter(|p| p.id == popup_id)
+        {
             popup.extra = extra;
         }
     }

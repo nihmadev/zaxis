@@ -7,16 +7,20 @@ Navigation map for agents. Start here instead of reading directories. Rules and 
 ```
 winit event ─► Context::on_window_event          src/context/events.rs
                  └─ input/gesture/pointer/keyboard accumulate into InputState (input.rs)
-host redraw ─► Context::run(|ctx| ...)           src/context/frame.rs  (run_at)
-                 ├─ clears per-pass state, begins animations/text/images/drag/scroll
-                 ├─ user build: Window::show → Ui → Ui::add(Widget) → Widget::ui
+host redraw ─► Context::run(|ctx| ...)           src/context/frame.rs  (run_at: stage order)
+                 ├─ begin_pass: clock, resources/theme, each subsystem's per-pass data
+                 ├─ user build (once): Window::show → Ui → Ui::add(Widget) → Widget::ui
                  │     widget = layout (Ui cursor) + hit regions (interaction.rs)
-                 │              + Paint descriptions (paint.rs) + retained state (Id-keyed)
+                 │              + Paint descriptions (paint.rs → paint/) + retained state
+                 │                (Id-keyed, in the owner of its family; see below)
+                 │              + deferred cell content (placement.rs → placement/)
                  │              + accessibility node, only while collection is on
                  │                (src/accessibility/collect.rs)
-                 └─ finish_frame: sort layers/hits, popups, modals, tooltips, toasts, drag preview
-                      └─ accessibility tree + diff against the previous pass
-                         (src/accessibility/tree.rs, convert.rs)
+                 └─ finish_frame: overlays (popup, modals, tooltips, toasts, drag preview),
+                      layer order of paint/hits, a11y geometry, scrolling/images, geometry,
+                      publish routing (transforms, hits, tabs), retire caches, settle
+                      focus/capture, retire widget state, drop unclaimed routed input,
+                      accessibility tree + diff (src/accessibility/tree.rs, convert.rs)
 Context::draw_data() -> DrawData                 src/context.rs, src/context/geometry.rs
 Renderer::render(&DrawData, clear)               src/renderer/frame.rs   (wgpu)
 repaint: Context::needs_repaint[_at]             src/context/repaint.rs, src/app/schedule.rs
@@ -39,7 +43,7 @@ accessibility in:  adapter ─► UserEvent::Access ─► Context::on_accessibi
 | Ui (layout scope) | `src/components/ui.rs`, `ui/{flow,scopes,theme}.rs` | `add`, `horizontal`, `vertical`, `allocate_space`, id scopes. |
 | Window / Root / Popup | `src/components/{window,root,popup}.rs` | Window = draggable/resizable layer; Popup = shared overlay layer. |
 | Response / Sense | `src/components/{response,sense}.rs` | Per-widget interaction result. One-shot events: `src/context/gesture.rs`. |
-| Context state | `src/context.rs` (struct), `src/context/*.rs` | One file per concern (see below). |
+| Context state | `src/context.rs` (struct of typed owners), `src/context/*.rs` | One owner/file per concern (see below). |
 | Layout primitives | `src/layout.rs` | Logical pixels. |
 | Shapes/tessellation | `src/shapes/`, `shapes/mesh/` | Rect, Color, Gradient, Shadow, Transform → meshes. |
 | Text | `src/text/` | cosmic-text shaping (`shape.rs`), glyph atlas, fonts, rich runs, weights. Measurement API for components: `src/context/text_api.rs`. |
@@ -55,19 +59,31 @@ accessibility in:  adapter ─► UserEvent::Access ─► Context::on_accessibi
 
 ## Context concerns (`src/context/`)
 
+`Context` (`src/context.rs`) coordinates typed owners; each owns its state, per-pass reset and cleanup rule.
+
 | File | Concern |
 |---|---|
 | `id.rs`, `shared.rs`, `init.rs` | Id hashing, resources shared across windows, construction. |
-| `events.rs`, `input.rs`, `pointer.rs`, `keyboard.rs`, `gesture.rs`, `ime.rs`, `viewport.rs` | Input pipeline, focus traversal, IME, DPI. |
+| `frame.rs` | Pass lifecycle: the order of begin/finish stages across all owners. |
+| `events.rs`, `input.rs`, `viewport.rs`, `ime.rs` | winit bridge, `InputState`, DPI, IME window anchor. |
+| `keyboard.rs`, `pointer.rs` | Explicit keyboard and pointer dispatchers (priority order, consumed/unhandled). |
+| `interaction.rs` | `Interaction`: hit regions (`HitAction`), capture, focus, activations; hover/hit-test queries; end-of-pass focus/capture settlement. Clipped hit regions also drive `cursor.rs`. |
+| `gesture.rs` | One-shot `Response` events and `ClickCounter` (double/triple click sequences shared by gestures, text, trees, splits). |
+| `text_input.rs` | `TextFields`: keys/text/IME/presses routed to fields, Tab-taking areas, field state. |
+| `values.rs` | `ValueControls`: slider and drag-value input, numeric and color editor state. |
+| `menus.rs` | `Menus`: combo box / context menu / menu bar state and their navigation keys. |
+| `table.rs`, `tree.rs`, `split.rs`, `carousel.rs` | Tables (column resize, state kept while hidden), trees, split panes, carousel wheel. |
+| `containers.rs` | `Containers`: grids, cards, flows, tab pages, carousels, list boxes, collapsing headers. |
+| `paint.rs`, `paint/` | `PaintState`; stages `route` (deferral, order, blur), `visual` (materialized transforms), `cache` (reuse/translation), `tessellate`, `data` (`Paint`). |
+| `geometry.rs` | `FrameGeometry`: elements → incremental frame meshes + draw-data revisions. |
+| `visual.rs` | `Visuals`: composed/published transforms, effects being built, retained effect state. |
+| `placement.rs`, `placement/` | Deferred/measured cell content: record (`placement.rs`), `visual` transform, `emit` (translate/clip/hand on), popup `portal`. |
+| `scroll.rs`, `scroll_input.rs` | Scroll routing, deferred scroll content, middle-button autoscroll. |
+| `windows.rs`, `popup.rs`, `modal.rs`, `tooltip.rs`, `toast.rs` | Layers and overlays: window order and drag, `Popups` (one popup, popup-class layers, dismissals), modal stack, tooltips, toasts. |
 | `clipboard.rs`, `clipboard/{native,web,memory}.rs` | `ClipboardBackend`: system clipboard, browser document events + `navigator.clipboard`, in-memory (tests). |
-| `interaction.rs` | Hit regions (`HitAction`), capture, hover/active queries. Clipped hit regions also drive `cursor.rs`. |
-| `paint.rs`, `paint/helpers.rs`, `geometry.rs` | Paint descriptions → per-element mesh cache → incremental frame meshes + draw-data revisions. |
-| `placement.rs`, `scroll.rs`, `scroll_input.rs` | Deferred/measured cell content, scroll routing, middle-button autoscroll. |
-| `windows.rs`, `popup.rs`, `modal.rs`, `tooltip.rs`, `toast.rs` | Layers and overlays: window order, single popup, modal stack, tooltips, toasts. |
 | `drag/` | Drag-and-drop runtime: `input` (pointer), `keyboard`, `state`, `targets`, `preview`, `autoscroll`, `frame`. UI side: `components/drag_drop/`. |
 | `selection.rs`, `selection/drag.rs` | Static text selection: one range per context (`SelectionState`: items by `Id`, scopes in build order), Ctrl/Cmd+A/C hook, drag and autoscroll. UI side: `components/text_block/`. Link middle-click is in `gesture.rs`. |
-| `split.rs`, `tree.rs`, `carousel.rs`, `disclosure.rs` | Input routing specific to those components. |
-| `animation.rs`, `repaint.rs`, `frame.rs` | Animation tick, repaint invalidation/deadlines, pass lifecycle and cleanup. |
+| `animation.rs`, `repaint.rs`, `images.rs` | Animation tick, repaint invalidation/deadlines, image glue (requests at displayed size, settle deadlines). |
 | `diagnostics.rs`, `debug_overlay.rs`, `testing.rs` | Usage diagnostics, debug drawing, simulated input for tests (`zaxis::testing`). |
 | `theme.rs`, `native_chrome.rs`, `text_api.rs` | Theme sampling, title-bar/native chrome, text measurement. |
 
@@ -111,5 +127,5 @@ Adding a component usually touches: the component files, `components/mod.rs` exp
 
 - Public API of a type: `rg "pub struct Name|impl .* for Name|impl Name" src`.
 - Who consumes a hit action / input path: `rg "HitAction::Name" src` (interaction.rs defines, pointer.rs/keyboard.rs/gesture.rs dispatch).
-- Retained per-widget state is keyed by `Id` in Context maps; start from the component's `state.rs` or the Context file with the matching name.
+- Retained per-widget state is keyed by `Id` in the Context owner of its family (`text_input`, `values`, `menus`, `table`, `tree`, `split`, `containers`, `visual`); start from the component's `state.rs` or that owner. Cleanup rules live in each owner's `retire`; `frame.rs` only orders the stages.
 - Feature gates: `bundled-emoji`, `bundled-weights`, `bundled-monospace`, `bundled-icons`, `image-gif`, `image-tiff`, `accesskit`, `accesskit_unix` (Cargo.toml).

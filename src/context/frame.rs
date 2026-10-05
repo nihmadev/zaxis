@@ -1,4 +1,12 @@
-//! UI pass lifecycle and retained-state cleanup.
+//! UI pass lifecycle: the order in which a pass drives every subsystem.
+//!
+//! Begin: clock, shared resources and theme, then each subsystem's per-pass data. The user
+//! build runs once. Finish, in this order: overlays (stale popup, modals, tooltips, toasts,
+//! drag preview), diagnostics, layer order of paint and hits, accessibility geometry,
+//! scrolling and images, frame geometry; then what the pass built is published to route
+//! the next input, caches are retired, focus and capture settle against the published
+//! regions, retained widget state and routed input that nobody took are dropped, and the
+//! accessibility tree and input state finish last.
 
 use super::Context;
 use crate::time::Instant;
@@ -17,6 +25,14 @@ impl Context {
     /// directly, without simulating missed frames. Use `needs_repaint_at` with this
     /// same clock in deterministic/custom hosts.
     pub fn run_at(&mut self, now: Instant, build: impl FnOnce(&mut Self)) -> bool {
+        self.begin_pass(now);
+        build(self);
+        self.finish_frame();
+        self.in_pass = false;
+        true
+    }
+
+    fn begin_pass(&mut self, now: Instant) {
         self.frame_time = now.max(self.frame_time);
         self.in_pass = true;
         self.animations.begin_pass();
@@ -36,16 +52,12 @@ impl Context {
         self.images.lock().begin_frame(self.frame_time);
         self.text.begin_frame();
         self.stats.ui_passes += 1;
-        self.elements.clear();
-        self.paint_order.clear();
-        self.hits.clear();
+        self.paint_state.begin_pass();
+        self.interaction.begin_pass();
         self.native_chrome = None;
-        self.hit_order.clear();
-        self.seen.clear();
-        self.modified.clear();
-        self.current_transforms.clear();
+        self.visuals.begin_pass();
         self.auto_ids.clear();
-        self.popup_layers.clear();
+        self.popups.begin_pass();
         self.modals.begin_pass();
         self.tick_auto_scroll();
         self.drag_begin_frame();
@@ -53,22 +65,50 @@ impl Context {
         self.scrolling.begin_frame();
         self.carousel_wheel.begin_frame();
         self.a11y.begin_pass();
-        build(self);
-        self.finish_frame();
-        self.in_pass = false;
-        true
     }
 
     pub(super) fn finish_frame(&mut self) {
         // Events were delivered to this pass; anything recorded from here on
         // (vanished widgets, cancelled captures) belongs to the next one.
         self.gestures.finish_frame();
-        if self.popup.as_ref().is_some_and(|popup| {
-            popup.last_frame != self.frame
-                || !self
-                    .windows
+        self.finish_overlays();
+        #[cfg(feature = "accesskit")]
+        self.audit_accessibility();
+        self.finish_diagnostics();
+        self.order_by_layer();
+        if self.a11y.active {
+            self.a11y_resolve_geometry();
+        }
+        self.interaction.drop_unreachable();
+        self.scrolling.finish_frame(self.frame);
+        self.finish_auto_scroll();
+        self.finish_images();
+        self.rebuild_geometry();
+        self.images_epoch = self.images.lock().epoch();
+        self.text.end_frame();
+        self.animations.finish_pass(self.frame);
+        self.publish_routing();
+        self.drag_finish_state();
+        self.paint_state.retire(self.frame);
+        self.settle_focus();
+        self.finish_selection();
+        self.retire_widget_state();
+        self.finish_routed_input();
+        #[cfg(feature = "accesskit")]
+        self.finish_accessibility();
+        self.a11y.end_pass(self.frame);
+        self.input.finish_frame();
+    }
+
+    /// Close a popup that was not built in this pass or whose owner window was not, note
+    /// the windows that were, then finish modals, tooltips, toasts and the drag preview.
+    fn finish_overlays(&mut self) {
+        let (frame, windows) = (self.frame, &self.windows);
+        if self.popups.current.as_ref().is_some_and(|popup| {
+            popup.last_frame != frame
+                || !windows
                     .get(&popup.owner)
-                    .is_some_and(|w| w.last_frame == self.frame)
+                    .is_some_and(|w| w.last_frame == frame)
         }) {
             self.dismiss_popup(true);
         }
@@ -82,126 +122,64 @@ impl Context {
         self.finish_tooltips();
         self.finish_toasts();
         self.drag_emit_preview();
-        #[cfg(feature = "accesskit")]
-        self.audit_accessibility();
-        self.finish_diagnostics();
+    }
+
+    /// Elements and hits in layer order (windows, then popup-class layers), each kept in
+    /// paint or registration order within a layer.
+    fn order_by_layer(&mut self) {
         let ranks: std::collections::HashMap<_, _> = self
             .layers
             .iter()
-            .chain(self.popup_layers.iter())
+            .chain(self.popups.layers.iter())
             .copied()
             .map(|id| (id, self.layer_rank(id)))
             .collect();
-        self.elements.sort_by_key(|e| {
-            (
-                ranks.get(&e.layer).copied().unwrap_or(0),
-                self.paint_order.get(&e.id).copied().unwrap_or(0),
-            )
-        });
-        self.hits.sort_by_key(|hit| {
-            (
-                ranks.get(&hit.window).copied().unwrap_or(0),
-                self.hit_order.get(&hit.id).map_or(0, |slot| slot.0),
-            )
-        });
-        if self.a11y.active {
-            self.a11y_resolve_geometry();
-        }
-        self.hits.retain(|h| !h.rect.intersect(h.clip).is_empty());
-        self.scrolling.finish_frame(self.frame);
-        self.finish_auto_scroll();
-        let settle = self.images.lock().finish_frame();
-        if let Some(deadline) = settle {
-            self.request_repaint_after(deadline.saturating_duration_since(self.frame_time));
-        }
-        if self.images.lock().take_state_changed() {
-            self.request_repaint();
-        }
-        self.rebuild_geometry();
-        self.images_epoch = self.images.lock().epoch();
-        self.text.end_frame();
-        self.animations.finish_pass(self.frame);
-        self.tab_pages
-            .retain(|_, state| state.last_frame == self.frame);
-        self.context_menus
-            .retain(|_, state| state.last_frame == self.frame);
-        self.menu_bars
-            .retain(|_, state| state.last_frame == self.frame);
-        self.effect_states
-            .retain(|_, state| state.last_frame == self.frame);
-        self.visual_meshes.retain(|id, _| self.seen.contains(id));
-        self.current_transforms
-            .retain(|id, _| self.seen.contains(id) || self.hits.iter().any(|hit| hit.id == *id));
-        self.input_transforms = std::mem::take(&mut self.current_transforms);
-        self.grids.retain(|_, state| state.last_frame == self.frame);
-        self.cards.retain(|_, state| state.last_frame == self.frame);
-        self.carousels
-            .retain(|_, state| state.last_frame == self.frame);
+        self.paint_state.sort(&ranks);
+        self.interaction.sort(&ranks);
+    }
+
+    /// What this pass built routes the next input: the transforms of widgets that painted
+    /// or registered a region, carousel wheel targets, hit regions and Tab registrations.
+    fn publish_routing(&mut self) {
+        let (paint, hits) = (&self.paint_state, &self.interaction.hits);
+        self.visuals
+            .publish(|id| paint.painted(id) || hits.iter().any(|hit| hit.id == id));
         self.carousel_wheel.finish_frame();
-        self.layouts
-            .retain(|_, state| state.last_frame == self.frame);
-        self.local_styles.retain(|_, s| s.2 == self.frame);
-        self.previous_hits = std::mem::take(&mut self.hits);
-        self.text_edit_tabs_previous = std::mem::take(&mut self.text_edit_tabs);
-        self.drag_finish_state();
-        self.cache
-            .retain(|_, element| element.last_frame == self.frame);
-        self.settle_modal_focus();
-        if self.focused_widget.is_some_and(|id| {
-            !self
-                .previous_hits
-                .iter()
-                .any(|h| h.id == id && h.action.focusable())
-        }) {
-            self.set_focus(None);
-            self.keyboard_active = None;
-        }
-        if self.capture.is_some_and(|capture| {
-            !self
-                .previous_hits
-                .iter()
-                .any(|h| h.id == capture.hit.id && h.action == capture.hit.action)
-                // A selection keeps following the pointer after scrolling carried the text
-                // it began in out of sight.
-                && !self.selection_holds(capture.hit.id)
-                && !matches!(capture.hit.action, super::HitAction::ColumnResize { table, column }
-                    if self.tables.get(&table).is_some_and(|state| state.last_frame == self.frame && state.resize_columns.contains(&column))
-                        && self.visible_windows.contains(&capture.hit.window))
-        }) {
-            self.capture = None;
-            self.gesture_cancel();
-        }
-        self.finish_selection();
-        self.splits
-            .retain(|_, state| state.last_frame == self.frame);
-        self.trees.retain(|_, state| state.last_frame == self.frame);
-        self.list_boxes
-            .retain(|_, state| state.last_frame == self.frame);
-        self.tree_input.clear();
-        self.finish_collapsing_headers();
-        self.split_input.clear();
-        self.clicked.clear();
+        self.interaction.publish();
+        self.text_fields.publish_tabs();
+    }
+
+    /// Retained state of widgets not built in this pass is dropped, each family by its own
+    /// rule. Popup dismissals, color pickers and text fields live while their body (or
+    /// swatch) is painted. Tables and scroll areas keep their state while hidden.
+    fn retire_widget_state(&mut self) {
+        let frame = self.frame;
+        self.visuals.retire_effects(frame);
+        self.containers.retire(frame);
+        self.local_styles.retain(|_, style| style.2 == frame);
+        self.splits.retire(frame);
+        self.trees.retire(frame);
+        self.menus.retire(frame);
+        self.values.retire_numbers(frame);
+        let paint = &self.paint_state;
+        self.popups.retire(|id| paint.painted(id));
+        self.values.retire_color_pickers(|id| paint.painted(id));
+        self.text_fields.retire(|id| paint.painted(id));
+    }
+
+    /// Routed input nobody took is dropped, after focus settled: focus changes for
+    /// vanished fields go with it. Clicks that assistive technology delivered late (after
+    /// scrolling their widget into view) belong to the next pass.
+    fn finish_routed_input(&mut self) {
+        self.trees.clear_input();
+        self.splits.clear_input();
+        self.interaction.clicked.clear();
         for id in self.a11y.take_late_clicks() {
-            self.clicked.insert(id);
+            self.interaction.clicked.insert(id);
             self.request_repaint();
         }
-        self.slider_input.clear();
-        self.text_edit_input.clear();
-        self.number_input.clear();
-        self.numbers
-            .retain(|_, state| state.last_frame == self.frame);
-        self.combo_input.clear();
-        self.combo_boxes
-            .retain(|_, state| state.last_frame == self.frame);
-        self.dismissed_popups
-            .retain(|id| self.seen.contains(&id.with("body")));
-        self.color_pickers
-            .retain(|id, _| self.seen.contains(&id.with("swatch")));
-        self.text_edits
-            .retain(|id, _| self.seen.contains(&id.with("body")));
-        #[cfg(feature = "accesskit")]
-        self.finish_accessibility();
-        self.a11y.end_pass(self.frame);
-        self.input.finish_frame();
+        self.values.clear_queues();
+        self.text_fields.clear_queue();
+        self.menus.clear_keys();
     }
 }

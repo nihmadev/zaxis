@@ -94,6 +94,11 @@ impl<'a> ColorPicker<'a> {
     }
 }
 
+/// The paint of a picker's color swatch. Its state is retained while the swatch is painted.
+pub(crate) fn swatch_id(id: Id) -> Id {
+    id.with("swatch")
+}
+
 impl ColorPicker<'_> {
     fn editor_height(&self, style: &crate::Style) -> f32 {
         let c = style.color_picker;

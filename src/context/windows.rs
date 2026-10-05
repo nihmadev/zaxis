@@ -88,8 +88,33 @@ impl Context {
         state.rect
     }
 
+    /// A captured title bar or resize grip follows the pointer: the window moves (kept
+    /// reachable inside the viewport) or resizes (not below its minimum size).
+    pub(super) fn drag_window(&mut self, capture: super::interaction::Capture, pointer: Vec2) {
+        let Some(window) = self.windows.get_mut(&capture.hit.window) else {
+            return;
+        };
+        let delta = pointer - capture.pointer;
+        match capture.hit.action {
+            super::HitAction::Move => {
+                let max = (self.logical_size - Vec2::new(48.0, 32.0)).max(Vec2::ZERO);
+                window.rect = Rect::from_min_size(
+                    (capture.rect.min + delta).clamp(Vec2::ZERO, max),
+                    capture.rect.size(),
+                );
+            }
+            super::HitAction::Resize => {
+                window.rect = Rect::from_min_size(
+                    capture.rect.min,
+                    (capture.rect.size() + delta).max(window.min_size),
+                )
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn top_window(&self, pointer: Vec2) -> Option<Id> {
-        if let Some(popup) = &self.popup {
+        if let Some(popup) = &self.popups.current {
             if self.viewport().contains(pointer) {
                 if let Some((layer, _)) =
                     popup.extra.iter().rev().find(|(_, r)| r.contains(pointer))

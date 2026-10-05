@@ -10,11 +10,15 @@ impl Context {
         if let Some(session) = &self.drag.session {
             return session.cursor;
         }
-        let hit = self.capture.map(|capture| capture.hit).or_else(|| {
-            self.input
-                .pointer
-                .and_then(|pointer| self.hit_test(pointer))
-        });
+        let hit = self
+            .interaction
+            .capture
+            .map(|capture| capture.hit)
+            .or_else(|| {
+                self.input
+                    .pointer
+                    .and_then(|pointer| self.hit_test(pointer))
+            });
         match hit.map(|hit| hit.action) {
             Some(HitAction::ColumnResize { .. }) => CursorIcon::ColResize,
             Some(HitAction::SplitResize { vertical: false }) => CursorIcon::EwResize,

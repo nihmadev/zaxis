@@ -35,7 +35,7 @@ impl Context {
             return;
         };
         let mut best = None;
-        for hit in self.previous_hits.iter() {
+        for hit in self.interaction.previous_hits.iter() {
             let HitAction::DragSource { slot } = hit.action else {
                 continue;
             };
@@ -109,13 +109,13 @@ impl Context {
         self.gesture_adopt(pending.info.id, pending.press, pointer);
         // The press belonged to whatever was under it; from here on the source
         // owns the capture, so that widget sees neither release nor click.
-        self.capture = Some(Capture {
+        self.interaction.capture = Some(Capture {
             hit,
             pointer,
             rect: hit.rect,
         });
-        self.text_click = None;
-        self.keyboard_active = None;
+        self.text_fields.clicks.reset();
+        self.interaction.keyboard_active = None;
         self.drag.session = Some(Session {
             info: pending.info,
             window: hit.window,
@@ -183,10 +183,11 @@ impl Context {
 
     pub(super) fn drag_conclude(&mut self, mut session: Session, mut reason: DragReason) {
         if self
+            .interaction
             .capture
             .is_some_and(|capture| capture.hit.id == session.info.id)
         {
-            self.capture = None;
+            self.interaction.capture = None;
         }
         self.gesture_end();
         self.drag.deadline = None;

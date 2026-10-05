@@ -25,10 +25,66 @@ struct DragGesture {
 struct SecondaryPress {
     ids: [Option<Id>; 2],
 }
-struct LastClick {
+/// Successive presses or clicks on one target, close in time and place: double and
+/// triple clicks. Each input path keeps its own sequence; they count differently (text
+/// cycles through three, splits and trees through two) but share these rules.
+#[derive(Default)]
+pub(crate) struct ClickCounter(Option<LastPress>);
+
+struct LastPress {
     id: Id,
     position: Vec2,
     time: Instant,
+    count: u8,
+}
+
+impl ClickCounter {
+    /// Count a press on `id` at `pointer`: 1 starts a sequence, a press that continues it
+    /// (same target, within the double-click time and distance, `chain` allowing) takes
+    /// the next count, wrapping after `cycle`.
+    pub(super) fn count(
+        &mut self,
+        id: Id,
+        pointer: Vec2,
+        now: Instant,
+        cycle: u8,
+        chain: bool,
+    ) -> u8 {
+        let count = self.0.as_ref().map_or(1, |last| {
+            if chain
+                && last.id == id
+                && now.saturating_duration_since(last.time) <= DOUBLE_CLICK_TIME
+                && (pointer - last.position).length_squared() <= DRAG_THRESHOLD_SQ
+            {
+                last.count % cycle + 1
+            } else {
+                1
+            }
+        });
+        self.0 = Some(LastPress {
+            id,
+            position: pointer,
+            time: now,
+            count,
+        });
+        count
+    }
+
+    /// Break the sequence: focus moved or a press went elsewhere.
+    pub(super) fn reset(&mut self) {
+        self.0 = None;
+    }
+
+    /// A pointer that moved away from the last press made it a drag, not a click.
+    pub(super) fn moved(&mut self, pointer: Vec2) {
+        if self
+            .0
+            .as_ref()
+            .is_some_and(|last| (pointer - last.position).length_squared() > DRAG_THRESHOLD_SQ)
+        {
+            self.0 = None;
+        }
+    }
 }
 
 /// Events of one widget for the current pass.
@@ -57,7 +113,7 @@ pub(crate) struct Gestures {
     middle_press: Option<Id>,
     drag: Option<DragGesture>,
     secondary_press: Option<SecondaryPress>,
-    last_click: Option<LastClick>,
+    clicks: ClickCounter,
 }
 
 impl Gestures {
@@ -173,24 +229,17 @@ impl Context {
     }
 
     pub(super) fn register_click(&mut self, id: Id) {
-        self.clicked.insert(id);
+        self.interaction.clicked.insert(id);
         let Some(pointer) = self.input.pointer else {
             return;
         };
-        let now = Instant::now();
-        let double = self.gestures.last_click.take().is_some_and(|last| {
-            last.id == id
-                && now.saturating_duration_since(last.time) <= DOUBLE_CLICK_TIME
-                && (pointer - last.position).length_squared() <= DRAG_THRESHOLD_SQ
-        });
-        if double {
+        if self
+            .gestures
+            .clicks
+            .count(id, pointer, Instant::now(), 2, true)
+            == 2
+        {
             self.gestures.double_clicked.insert(id);
-        } else {
-            self.gestures.last_click = Some(LastClick {
-                id,
-                position: pointer,
-                time: now,
-            });
         }
     }
 
@@ -240,6 +289,7 @@ impl Context {
     fn secondary_targets(&self, pointer: Vec2) -> [Option<Id>; 2] {
         let window = self.top_window(pointer);
         let anchor = self
+            .interaction
             .previous_hits
             .iter()
             .rev()

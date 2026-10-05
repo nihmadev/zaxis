@@ -11,6 +11,7 @@ impl Widget for ColorPicker<'_> {
         let original = *self.color;
         let mut state = ui
             .context
+            .values
             .color_pickers
             .remove(&id)
             .unwrap_or_else(|| ColorPickerState {
@@ -143,7 +144,7 @@ impl Widget for ColorPicker<'_> {
                     let enabled = self.enabled;
                     self.enabled &= open;
                     let reveal_id = ui.scope.with(("reveal", Id::new(id)));
-                    if open && !ui.context.effect_states.contains_key(&reveal_id) {
+                    if open && ui.context.visuals.effect_value(reveal_id).is_none() {
                         // Preserve the existing first-appearance snap for default_open.
                         ui.context.transition(
                             reveal_id,
@@ -166,11 +167,7 @@ impl Widget for ColorPicker<'_> {
                         ui.a11y_end(group, None);
                         ui.allocate_space(Vec2::new(width, editor_height));
                     });
-                    let height = ui
-                        .context
-                        .effect_states
-                        .get(&reveal_id)
-                        .map_or(0.0, |s| s.value);
+                    let height = ui.context.visuals.effect_value(reveal_id).unwrap_or(0.0);
                     rect.max.y = row.max.y + height;
                     response.rect = rect;
                     self.enabled = enabled;
@@ -303,7 +300,7 @@ impl Widget for ColorPicker<'_> {
             style.border,
         )];
         ui.context
-            .paint(id.with("swatch"), ui.window, ui.clip, swatch_paint);
+            .paint(swatch_id(id), ui.window, ui.clip, swatch_paint);
         let label = visible_label(&self.text);
         let label_size = crate::components::font_size(style.font_size);
         let weight = style.typography.weights.control;
@@ -377,7 +374,7 @@ impl Widget for ColorPicker<'_> {
         }
         response.changed = original != *self.color;
         state.last_color = *self.color;
-        ui.context.color_pickers.insert(id, state);
+        ui.context.values.color_pickers.insert(id, state);
         response
     }
 }

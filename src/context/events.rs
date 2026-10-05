@@ -19,7 +19,7 @@ impl Context {
         let repaint = match event {
             WindowEvent::CursorMoved { position, .. } => {
                 let pointer = Vec2::new(position.x as f32, position.y as f32) / self.scale;
-                consumed = self.capture.is_some()
+                consumed = self.interaction.capture.is_some()
                     || self.scrolling.auto.is_some()
                     || self.hit_test(pointer).is_some();
                 let changed = self.input.pointer != Some(pointer);
@@ -42,7 +42,7 @@ impl Context {
                 } else if *button == MouseButton::Right {
                     consumed = self.secondary_button(*state);
                 }
-                consumed |= self.popup.is_some() || self.modal_active();
+                consumed |= self.popups.current.is_some() || self.modal_active();
                 true
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -72,7 +72,7 @@ impl Context {
                 }
                 if event.state == ElementState::Pressed {
                     if let Some(text) = &event.text {
-                        if !self.ime_composing
+                        if !self.text_fields.composing
                             && !self.input.modifiers.control_key()
                             && !self.input.modifiers.super_key()
                         {
@@ -87,52 +87,22 @@ impl Context {
                 true
             }
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
-                self.ime_composing = false;
+                self.text_fields.composing = false;
                 consumed = self.on_committed_text(text, true).consumed;
                 true
             }
             WindowEvent::Ime(winit::event::Ime::Preedit(text, cursor)) => {
-                self.ime_composing = !text.is_empty();
-                if let Some(id) = self.focused_widget.filter(|id| {
-                    self.previous_hits
-                        .iter()
-                        .any(|h| h.id == *id && h.action == super::HitAction::TextEdit)
-                }) {
-                    self.text_edit_input
-                        .entry(id)
-                        .or_default()
-                        .push(super::TextEditInput::Preedit(text.clone(), *cursor));
-                    consumed = true;
-                }
+                consumed = self.ime_preedit(text, *cursor);
                 true
             }
             WindowEvent::Ime(winit::event::Ime::Disabled) => {
-                self.ime_composing = false;
-                if let Some(id) = self.focused_widget {
-                    self.text_edit_input
-                        .entry(id)
-                        .or_default()
-                        .push(super::TextEditInput::Preedit(String::new(), None));
-                }
+                self.ime_disabled();
                 true
             }
             WindowEvent::Focused(focused) => {
                 self.input.focused = *focused;
                 if !focused {
-                    self.dismiss_popup(false);
-                    self.drag_cancel(crate::components::drag_drop::DragReason::FocusLost);
-                    self.input.primary_down = false;
-                    self.input.middle_down = false;
-                    self.input.secondary_down = false;
-                    self.gesture_cancel();
-                    self.stop_auto_scroll();
-                    self.input.keys_down.clear();
-                    self.capture = None;
-                    self.text_click = None;
-                    self.keyboard_active = None;
-                    self.set_focus(None);
-                    self.ime_composing = false;
-                    self.input.pointer = None;
+                    self.focus_lost();
                 }
                 true
             }
@@ -156,6 +126,27 @@ impl Context {
             self.request_repaint();
         }
         EventResponse { consumed, repaint }
+    }
+}
+
+impl Context {
+    /// The window lost focus: popups close without restoring focus, drags and gestures
+    /// end, buttons and keys count as released, and nothing keeps focus or composition.
+    fn focus_lost(&mut self) {
+        self.dismiss_popup(false);
+        self.drag_cancel(crate::components::drag_drop::DragReason::FocusLost);
+        self.input.primary_down = false;
+        self.input.middle_down = false;
+        self.input.secondary_down = false;
+        self.gesture_cancel();
+        self.stop_auto_scroll();
+        self.input.keys_down.clear();
+        self.interaction.capture = None;
+        self.text_fields.clicks.reset();
+        self.interaction.keyboard_active = None;
+        self.set_focus(None);
+        self.text_fields.composing = false;
+        self.input.pointer = None;
     }
 }
 

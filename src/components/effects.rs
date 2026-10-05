@@ -205,7 +205,8 @@ impl Ui<'_> {
         build: impl FnOnce(&mut Ui<'_>) -> R,
     ) -> R {
         if self.flow.is_some() {
-            return self.layout_item(|ui| ui.visual_gated(source, transform, opacity, input, build));
+            return self
+                .layout_item(|ui| ui.visual_gated(source, transform, opacity, input, build));
         }
         let (transform, opacity) = if transform.angle.is_finite()
             && transform.scale.is_finite()
@@ -260,8 +261,8 @@ impl Ui<'_> {
         let spacing = self.style().spacing.max(0.0);
         let parent_clip = self.clip_rect();
         self.context.begin_placement(self.window);
-        self.context.visual_depth += 1;
-        self.context.visual_clips.push((self.window, parent_clip));
+        self.context.visuals.depth += 1;
+        self.context.visuals.clips.push((self.window, parent_clip));
         let mut child = Ui {
             flow: None,
             context: self.context,
@@ -280,8 +281,8 @@ impl Ui<'_> {
         let inner = build(&mut child);
         child.finish_layout();
         let size = child.layout.used;
-        child.context.visual_depth -= 1;
-        child.context.visual_clips.pop();
+        child.context.visuals.depth -= 1;
+        child.context.visuals.clips.pop();
         let placement = child.context.end_placement();
         (inner, size, placement)
     }
@@ -315,7 +316,12 @@ impl Ui<'_> {
         let motion = super::sanitize::forward("reveal motion", motion);
         let id = self.scope.with(("reveal", Id::new(source)));
         let visible = !self.clip_rect().is_empty();
-        let old_height = self.context.effect_states.get(&id).map_or(0.0, |s| s.value);
+        let old_height = self
+            .context
+            .visuals
+            .effects
+            .get(&id)
+            .map_or(0.0, |s| s.value);
         let mut state = EffectState::new(self.context.frame);
         if !open {
             let progress =
@@ -323,7 +329,7 @@ impl Ui<'_> {
                     .transition_visible(id, Some(0.0), 0.0_f32, motion.clone(), visible);
             state.value = progress.value;
             if state.value <= 0.0 {
-                self.context.effect_states.insert(id, state);
+                self.context.visuals.effects.insert(id, state);
                 return None;
             }
         }
@@ -340,7 +346,7 @@ impl Ui<'_> {
             .value
             .max(0.0);
         state.value = height;
-        self.context.effect_states.insert(id, state);
+        self.context.visuals.effects.insert(id, state);
         let rect = Rect::from_min_size(self.layout.cursor, Vec2::new(size.x, height));
         let clip = self.clip_rect().intersect(rect);
         let target_bounds = Rect::from_min_size(self.layout.cursor, size);

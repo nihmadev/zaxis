@@ -1,71 +1,73 @@
-use super::*;
-pub(super) fn paint_is_scroll_hint(paint: &[Paint]) -> bool {
-    matches!(paint, [Paint::ScrollHint { .. }])
+//! Paint descriptions: what a widget asks to draw, compared between passes to reuse geometry.
+
+use crate::{text::TextFont, Color, CornerRadius, FontWeight, Rect, Shape, Vec2};
+use std::sync::Arc;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Paint {
+    Visual {
+        paint: Vec<Paint>,
+        transform: crate::Transform,
+        opacity: f32,
+    },
+    Shape(Shape),
+    Image {
+        rect: Rect,
+        uv: Rect,
+        rounding: CornerRadius,
+        color: Color,
+        opacity: f32,
+        handle: crate::ImageHandle,
+        texture: crate::TextureId,
+        hidden: bool,
+    },
+    ScrollHint {
+        rect: Rect,
+        axis: usize,
+        color: Color,
+    },
+    Gradient {
+        rect: Rect,
+        rounding: CornerRadius,
+        colors: Vec<Color>,
+        columns: usize,
+        rows: usize,
+    },
+    Text {
+        text: String,
+        position: Vec2,
+        size: f32,
+        weight: FontWeight,
+        wrap_width: f32,
+        color: Color,
+    },
+    /// Text shaped with explicit options: a tab width and a family or figure style. A
+    /// multi-line field paints its paragraphs with it, so painting reads the same cached
+    /// layout as the field's position queries. Plain text keeps using `Text`.
+    Paragraph {
+        text: String,
+        position: Vec2,
+        size: f32,
+        font: TextFont,
+        wrap_width: f32,
+        tab: u16,
+        color: Color,
+    },
+    /// A paragraph whose runs differ in weight, family or color, shaped in one pass; see
+    /// [`crate::text::StyleRun`]. Glyph positions come from the same cached layout as
+    /// the component's hit testing.
+    Rich {
+        text: String,
+        runs: Arc<[crate::text::StyleRun]>,
+        position: Vec2,
+        size: f32,
+        font: TextFont,
+        wrap_width: f32,
+        tab: u16,
+        color: Color,
+    },
 }
 
-pub(super) fn mesh_bounds(mesh: &Mesh) -> Option<Rect> {
-    let first = mesh.vertices.first()?;
-    let mut min = Vec2::from_array(first.position);
-    let mut max = min;
-    for vertex in &mesh.vertices[1..] {
-        let p = Vec2::from_array(vertex.position);
-        min = min.min(p);
-        max = max.max(p);
-    }
-    Some(Rect::from_min_max(min, max))
-}
-pub(super) fn paint_translation(old: &[Paint], new: &[Paint], scale: f32) -> Option<Vec2> {
-    if old.len() != new.len() {
-        return None;
-    }
-    let delta = new.first()?.origin() - old.first()?.origin();
-    if !delta.is_finite() {
-        return None;
-    }
-    for (a, b) in old.iter().zip(new) {
-        if let (
-            Paint::Text {
-                text: at,
-                position: ap,
-                size: az,
-                weight: aweight,
-                wrap_width: aw,
-                color: ac,
-            },
-            Paint::Text {
-                text: bt,
-                position: bp,
-                size: bz,
-                weight: bweight,
-                wrap_width: bw,
-                color: bc,
-            },
-        ) = (a, b)
-        {
-            let physical = delta * scale;
-            if scale > 0.0 && (physical.x != physical.x.round() || physical.y != physical.y.round())
-            {
-                return None;
-            }
-            if at != bt
-                || *ap + delta != *bp
-                || az != bz
-                || aweight != bweight
-                || aw != bw
-                || ac != bc
-            {
-                return None;
-            }
-        } else {
-            let mut translated = a.clone();
-            translated.translate(delta);
-            if translated != *b {
-                return None;
-            }
-        }
-    }
-    Some(delta)
-}
 impl Paint {
     /// Text in `font`. Plain proportional text at the default tab stays `Text`, so its cache
     /// entries and translation fast paths are unchanged; anything else is a `Paragraph`.
@@ -73,10 +75,10 @@ impl Paint {
         text: String,
         position: Vec2,
         size: f32,
-        font: crate::text::TextFont,
+        font: TextFont,
         wrap_width: f32,
         tab: u16,
-        color: crate::Color,
+        color: Color,
     ) -> Self {
         if font.is_plain() && tab == crate::text::DEFAULT_TAB {
             Self::Text {
@@ -100,7 +102,8 @@ impl Paint {
         }
     }
 
-    fn origin(&self) -> Vec2 {
+    /// The point a translation between two descriptions is measured from.
+    pub(super) fn origin(&self) -> Vec2 {
         match self {
             Self::Visual {
                 paint, transform, ..
@@ -120,6 +123,7 @@ impl Paint {
             },
         }
     }
+
     pub(crate) fn translate(&mut self, delta: Vec2) {
         match self {
             Self::Visual {
@@ -148,4 +152,9 @@ impl Paint {
             },
         }
     }
+}
+
+/// A scroll hint is drawn by a dedicated shader path; it is always an element of its own.
+pub(super) fn is_scroll_hint(paint: &[Paint]) -> bool {
+    matches!(paint, [Paint::ScrollHint { .. }])
 }

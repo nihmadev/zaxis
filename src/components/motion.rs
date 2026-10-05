@@ -131,13 +131,18 @@ impl Ui<'_> {
     ) {
         let id = self.scope.with(("tab-pages", Id::new(source)));
         let rect = self.allocate_space(size.min(Vec2::new(self.available_width(), size.y)));
-        let mut state = self.context.tab_pages.remove(&id).unwrap_or(TabPagesState {
-            last_frame: 0,
-            current: selected,
-            outgoing: None,
-            pending: None,
-            direction: 1.0,
-        });
+        let mut state = self
+            .context
+            .containers
+            .tab_pages
+            .remove(&id)
+            .unwrap_or(TabPagesState {
+                last_frame: 0,
+                current: selected,
+                outgoing: None,
+                pending: None,
+                direction: 1.0,
+            });
         state.last_frame = self.context.frame;
         let progress_id = id.with("slide");
         let mut progress = 1.0;
@@ -219,7 +224,7 @@ impl Ui<'_> {
             &mut build,
         );
         self.a11y_end(scope, Some(rect));
-        self.context.tab_pages.insert(id, state);
+        self.context.containers.tab_pages.insert(id, state);
     }
 
     /// The tab that `panel` belongs to: the selected tab of the tab list built last before

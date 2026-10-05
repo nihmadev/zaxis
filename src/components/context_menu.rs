@@ -199,9 +199,14 @@ impl<'a> ContextMenu<'a> {
             ui.context.register_hit(hit);
         }
         let popup_id = Popup::id(ui, Id::new(id));
-        let mut state = ui.context.context_menus.remove(&id).unwrap_or_default();
+        let mut state = ui
+            .context
+            .menus
+            .context_menus
+            .remove(&id)
+            .unwrap_or_default();
         state.last_frame = ui.context.frame;
-        if ui.context.dismissed_popups.remove(&popup_id) {
+        if ui.context.take_popup_dismissal(popup_id) {
             state.open = false;
         }
         // The same secondary-click signal that `Response::secondary_clicked` reports.
@@ -240,7 +245,7 @@ impl<'a> ContextMenu<'a> {
                 state.active = enabled.first().copied();
             }
             let mut reveal = false;
-            for key in ui.context.combo_input.remove(&id).unwrap_or_default() {
+            for key in ui.context.take_menu_keys(id) {
                 let index = state
                     .active
                     .and_then(|a| enabled.iter().position(|i| *i == a))
@@ -364,7 +369,7 @@ impl<'a> ContextMenu<'a> {
             state.cache = Some(cache);
         }
         output.open = state.open;
-        ui.context.context_menus.insert(id, state);
+        ui.context.menus.context_menus.insert(id, state);
         output
     }
 }

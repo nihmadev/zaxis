@@ -1,49 +1,65 @@
-//! Split boundaries participate in the existing capture/focus/transform routing.
-use super::{Context, HitAction, Id};
-use crate::{components::split_pane::SplitInput, Vec2};
+//! Split boundaries: pointer drags (a double press resets), keys of the focused boundary
+//! and the retained state of every split pane, through the existing capture, focus and
+//! transform routing.
+use super::{gesture::ClickCounter, Context, HitAction, Id};
+use crate::{
+    components::split_pane::{SplitInput, SplitState},
+    Vec2,
+};
+use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
+#[derive(Default)]
+pub(crate) struct Splits {
+    pub(crate) states: HashMap<Id, SplitState>,
+    /// Input waiting for each boundary's next pass.
+    input: HashMap<Id, Vec<SplitInput>>,
+    /// Presses on one boundary: a second press in place is a double press.
+    clicks: ClickCounter,
+}
+
+impl Splits {
+    pub(super) fn retire(&mut self, frame: u64) {
+        self.states.retain(|_, state| state.last_frame == frame);
+    }
+
+    pub(super) fn clear_input(&mut self) {
+        self.input.clear();
+    }
+
+    pub(super) fn pending(&self) -> usize {
+        self.input.len()
+    }
+}
+
+/// Where a captured boundary drag is.
+#[derive(Clone, Copy)]
+pub(super) enum Phase {
+    Press,
+    Move,
+    Release,
+}
+
 impl Context {
-    pub(super) fn split_pointer(&mut self, id: Id, pointer: Vec2, phase: u8) {
+    pub(super) fn split_pointer(&mut self, id: Id, pointer: Vec2, phase: Phase) {
         let event = match phase {
-            1 => {
+            Phase::Press => {
                 let now = crate::time::Instant::now();
-                let double = self.split_click.as_ref().is_some_and(|last| {
-                    last.id == id
-                        && now.duration_since(last.time).as_millis() <= 500
-                        && (last.position - pointer).length_squared() <= 16.0
-                        && last.count == 1
-                });
-                self.split_click = Some(super::interaction::ClickSequence {
-                    id,
-                    position: pointer,
-                    time: now,
-                    count: if double { 2 } else { 1 },
-                });
+                let double = self.splits.clicks.count(id, pointer, now, 2, true) == 2;
                 SplitInput::Begin(pointer, double)
             }
-            2 => SplitInput::End(pointer),
-            _ => {
-                if self
-                    .split_click
-                    .as_ref()
-                    .is_some_and(|last| (last.position - pointer).length_squared() > 16.0)
-                {
-                    self.split_click = None;
-                }
+            Phase::Release => SplitInput::End(pointer),
+            Phase::Move => {
+                self.splits.clicks.moved(pointer);
                 SplitInput::Move(pointer)
             }
         };
-        self.split_input.entry(id).or_default().push(event);
+        self.splits.input.entry(id).or_default().push(event);
     }
     pub(crate) fn take_split_input(&mut self, id: Id) -> Vec<SplitInput> {
-        let inverse = self
-            .input_transforms
-            .get(&id)
-            .copied()
-            .unwrap_or_default()
-            .inverse();
-        self.split_input
+        let inverse = self.visuals.to_local(id);
+        self.splits
+            .input
             .remove(&id)
             .unwrap_or_default()
             .into_iter()
@@ -56,17 +72,17 @@ impl Context {
             .collect()
     }
     pub(crate) fn cancel_split_capture(&mut self, id: Id) {
-        if self.capture.is_some_and(|c| {
+        if self.interaction.capture.is_some_and(|c| {
             c.hit.id == id && matches!(c.hit.action, HitAction::SplitResize { .. })
         }) {
-            self.capture = None;
+            self.interaction.capture = None;
         }
     }
     pub(super) fn split_key(&mut self, code: KeyCode, pressed: bool) -> bool {
-        let Some(id) = self.focused_widget else {
+        let Some(id) = self.interaction.focused else {
             return false;
         };
-        let Some(vertical) = self.previous_hits.iter().find_map(|h| {
+        let Some(vertical) = self.interaction.previous_hits.iter().find_map(|h| {
             if h.id != id {
                 return None;
             }
@@ -86,20 +102,14 @@ impl Context {
         if !supported {
             return false;
         }
+        self.input.record_key(code, pressed);
         if pressed {
-            self.input.keys_down.insert(code);
-            self.input.keys_pressed.insert(code);
             if code == KeyCode::Escape {
                 self.cancel_split_capture(id);
             } else {
-                self.split_input
-                    .entry(id)
-                    .or_default()
-                    .push(SplitInput::Key(code, self.input.modifiers));
+                let event = SplitInput::Key(code, self.input.modifiers);
+                self.splits.input.entry(id).or_default().push(event);
             }
-        } else {
-            self.input.keys_down.remove(&code);
-            self.input.keys_released.insert(code);
         }
         true
     }

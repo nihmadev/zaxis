@@ -98,6 +98,7 @@ impl Context {
             if let Some(pointer) = self.input.pointer {
                 let window = self.top_window(pointer);
                 let under: Vec<_> = self
+                    .interaction
                     .previous_hits
                     .iter()
                     .rev()
@@ -141,7 +142,7 @@ impl Context {
             return;
         }
         let id = Id::new("debug-overlay");
-        self.popup_layers.push(id);
+        self.popups.layers.push(id);
         self.paint(id, id, viewport, paint);
     }
 }

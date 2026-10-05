@@ -35,7 +35,7 @@ impl Ui<'_> {
         let origin = self.content_origin();
         let scope = self.motion_scope();
         let target = rect.min - origin;
-        let previous = self.context.effect_states.get(&key);
+        let previous = self.context.visuals.effects.get(&key);
         let absent = previous.is_none_or(|s| s.built_frame + 1 < self.context.frame);
         let old = match previous {
             Some(s) if !absent && s.scope == Some(scope) => Some(s.position),
@@ -66,7 +66,7 @@ impl Ui<'_> {
         state.position = shown.value;
         state.origin = origin;
         state.scope = Some(scope);
-        self.context.effect_states.insert(key, state);
+        self.context.visuals.effects.insert(key, state);
         self.context
             .place_visual(placement, Transform::translation(delta), 1.0, clip, true);
         self.allocate_space(size);
@@ -98,7 +98,8 @@ impl Ui<'_> {
         let key = Id::new(("shared", source));
         if self
             .context
-            .effect_states
+            .visuals
+            .effects
             .get(&key)
             .is_some_and(|s| s.built_frame == self.context.frame)
         {

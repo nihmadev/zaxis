@@ -74,7 +74,12 @@ impl ListBox<'_> {
 
     fn run<M: ListModel>(mut self, ui: &mut Ui<'_>, model: &M, content: Content<'_>) -> ListOutput {
         let id = ui.scope.with(("list_box", self.id));
-        let mut state = ui.context.list_boxes.remove(&id).unwrap_or_default();
+        let mut state = ui
+            .context
+            .containers
+            .list_boxes
+            .remove(&id)
+            .unwrap_or_default();
         if state.last_frame == ui.context.frame {
             ui.context
                 .report(crate::DiagnosticKind::IdCollision, Some(id), None, || {
@@ -142,7 +147,7 @@ impl ListBox<'_> {
         let held = !focused
             && enabled
             && state.owner_focused
-            && ui.context.focused_widget.is_none()
+            && ui.context.focused().is_none()
             && ui.context.input().primary_down
             && ui
                 .context
@@ -347,7 +352,7 @@ impl ListBox<'_> {
         if !events.is_empty() {
             ui.context.request_repaint();
         }
-        ui.context.list_boxes.insert(id, state);
+        ui.context.containers.list_boxes.insert(id, state);
         ListOutput {
             id: owner.id,
             events,

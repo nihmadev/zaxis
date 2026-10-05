@@ -53,7 +53,7 @@ impl Context {
         if self.stop_auto_scroll() {
             return true;
         }
-        if !self.input.focused || self.capture.is_some() {
+        if !self.input.focused || self.interaction.capture.is_some() {
             return false;
         }
         let Some(pointer) = self.input.pointer else {

@@ -240,7 +240,7 @@ impl Table {
                 );
             }
         }
-        let mut state = ui.context.tables.remove(&id).unwrap_or_default();
+        let mut state = ui.context.tables.states.remove(&id).unwrap_or_default();
         state.last_frame = ui.context.frame;
         if let Some(selected) = self.selected {
             state.selected = selected;
@@ -401,7 +401,7 @@ impl Table {
             self.resizable,
         );
         let selected_row = state.selected;
-        child.context.tables.insert(id, state);
+        child.context.tables.states.insert(id, state);
         let body = ScrollArea::state_id(&child, Id::new("body"));
         let total = setup.total.unwrap_or(setup.rows.len());
         nodes.finish(ui, header_rect, rect, total, body);

@@ -150,7 +150,7 @@ impl Context {
             clickable,
             ..
         } = &mut self.a11y;
-        self.hits.retain(|hit| {
+        self.interaction.retain_hits(|hit| {
             let Some(&index) = geometry.get(&hit.id) else {
                 if hit.action.sense().click() {
                     clickable.insert(hit.id);

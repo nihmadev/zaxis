@@ -97,7 +97,8 @@ impl Ui<'_> {
     pub(crate) fn begin_layout(&mut self, align: Align) {
         let previous = self
             .context
-            .layouts
+            .containers
+            .flows
             .remove(&self.scope)
             .map_or(Vec::new(), |s| s.measured);
         self.flow = Some(Flow {
@@ -189,7 +190,7 @@ impl Ui<'_> {
         if needs_repaint {
             self.context.request_repaint();
         }
-        self.context.layouts.insert(
+        self.context.containers.flows.insert(
             self.scope,
             FlowState {
                 last_frame: self.context.frame,
@@ -246,8 +247,8 @@ impl Ui<'_> {
         }
         let parent_clip = self.clip_rect();
         self.context.begin_placement(self.window);
-        self.context.visual_depth += 1;
-        self.context.visual_clips.push((self.window, parent_clip));
+        self.context.visuals.depth += 1;
+        self.context.visuals.clips.push((self.window, parent_clip));
         let mut child = Ui {
             context: self.context,
             window: self.window,
@@ -271,8 +272,8 @@ impl Ui<'_> {
         child.finish_layout();
         let size = child.layout.used;
         self.sequence = child.sequence;
-        self.context.visual_depth -= 1;
-        self.context.visual_clips.pop();
+        self.context.visuals.depth -= 1;
+        self.context.visuals.clips.pop();
         let placement = self.context.end_placement();
         self.layout.allocate(size);
         self.flow.as_mut().unwrap().items.push(Item {

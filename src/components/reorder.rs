@@ -148,7 +148,7 @@ impl Reorder {
                 );
             }
             let key = id.with(member);
-            if let Some(state) = ui.context.effect_states.get_mut(&key) {
+            if let Some(state) = ui.context.visuals.effects.get_mut(&key) {
                 state.last_frame = ui.context.frame;
             }
             ui.context.animations.read::<Vec2>(key, hidden_pass);

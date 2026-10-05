@@ -89,7 +89,8 @@ impl TextEdit<'_> {
         let mut response = ui.response(id, rect, self.enabled);
         let mut state = ui
             .context
-            .text_edits
+            .text_fields
+            .states
             .remove(&id)
             .unwrap_or_else(|| TextEditState::new(self.text, style.text_edit_blink_interval));
         let mut fingerprint = Fingerprint::of(self.text);
@@ -165,7 +166,13 @@ impl TextEdit<'_> {
                     None => (state.buffer.anchor, state.buffer.cursor),
                 },
             };
-            self.describe(ui, id, rect, Some(lines), composition.map(|_| shown.as_str()));
+            self.describe(
+                ui,
+                id,
+                rect,
+                Some(lines),
+                composition.map(|_| shown.as_str()),
+            );
         }
         let chrome = self.paint_chrome(ui, id, rect, response, &look);
         let (color, caret) = (chrome.color, chrome.caret);
@@ -302,7 +309,7 @@ impl TextEdit<'_> {
         state.focused = response.has_focus;
         state.blink_interval = style.text_edit_blink_interval;
         state.fingerprint = fingerprint;
-        ui.context.text_edits.insert(id, state);
+        ui.context.text_fields.states.insert(id, state);
         response
     }
 }

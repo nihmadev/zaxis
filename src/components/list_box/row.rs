@@ -32,7 +32,7 @@ impl ListRow<'_> {
     /// after being measured and keeps normal input priority over the row.
     pub fn trailing<R>(&self, ui: &mut Ui<'_>, build: impl FnOnce(&mut Ui<'_>) -> R) -> R {
         ui.context.begin_placement(ui.window);
-        ui.context.visual_depth += 1;
+        ui.context.visuals.depth += 1;
         let scope = ui.scope.with("trailing");
         let (result, used) = {
             let mut child = disclosure::child(ui, scope, self.bounds, Layout::Horizontal);
@@ -41,7 +41,7 @@ impl ListRow<'_> {
             child.finish_layout();
             (result, child.layout.used)
         };
-        ui.context.visual_depth -= 1;
+        ui.context.visuals.depth -= 1;
         let placement = ui.context.end_placement();
         let delta = Vec2::new((self.bounds.size().x - used.x).max(0.0), 0.0);
         ui.context
@@ -147,7 +147,7 @@ impl<M: ListModel> Pass<'_, M> {
             self.active_node = Some(hit.id);
         }
         ui.context.begin_placement(ui.window);
-        ui.context.visual_depth += 1;
+        ui.context.visuals.depth += 1;
         let scope = ui.scope.with("content");
         let used = {
             let mut cell = disclosure::child(ui, scope, area, Layout::Horizontal);
@@ -170,7 +170,7 @@ impl<M: ListModel> Pass<'_, M> {
             cell.finish_layout();
             cell.layout.used
         };
-        ui.context.visual_depth -= 1;
+        ui.context.visuals.depth -= 1;
         let placement = ui.context.end_placement();
 
         let frame = 2.0 * (pad) + look.pad.top + look.pad.bottom;
@@ -217,7 +217,7 @@ impl<M: ListModel> Pass<'_, M> {
     }
 
     fn pointer(&mut self, ui: &mut Ui<'_>, index: usize, key: Id, hit: crate::Response) {
-        if (hit.pressed || hit.clicked()) && ui.context.focused_widget != Some(self.owner) {
+        if (hit.pressed || hit.clicked()) && ui.context.focused() != Some(self.owner) {
             ui.context.request_focus(self.owner);
         }
         if hit.secondary_clicked() {

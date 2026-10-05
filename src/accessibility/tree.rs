@@ -124,6 +124,7 @@ impl Context {
         let modal_rank = modal.map(|id| self.layer_rank(id));
         let mut ranks: HashMap<Id, usize> = HashMap::new();
         let hits: HashMap<Id, (bool, bool)> = self
+            .interaction
             .previous_hits
             .iter()
             .map(|hit| (hit.id, (hit.action.focusable(), hit.action.sense().click())))
@@ -283,7 +284,7 @@ impl Context {
             })
         });
         let focus = self
-            .focused_widget
+            .focused()
             .and_then(|id| focus_owner.get(&id).copied())
             .or(dialog.map(|i| entries[i].nid))
             .unwrap_or(ids::ROOT);

@@ -8,7 +8,7 @@
 use super::*;
 use crate::{Rect, Vec2};
 use std::sync::Arc;
-use winit::event::ElementState;
+use winit::{event::ElementState, keyboard::KeyCode};
 
 /// Input and focus injection for [`Context`].
 pub trait Driver {
@@ -189,7 +189,7 @@ pub struct Probe<'a> {
     pub effect_states: &'a HashMap<Id, crate::components::effects::EffectState>,
     pub elements: &'a [Element],
     pub previous_hits: &'a [HitRegion],
-    pub capture: &'a Option<Capture>,
+    pub capture: &'a Option<interaction::Capture>,
     pub clicked: &'a HashSet<Id>,
     pub slider_input: &'a HashMap<Id, Vec<SliderInput>>,
     pub combo_boxes: &'a HashMap<Id, crate::components::combo_box::ComboBoxState>,
@@ -240,45 +240,45 @@ impl Inspect for Context {
             frame_time: self.frame_time,
             style_revision: self.style_revision,
             local_style_serial: self.local_style_serial,
-            visual_depth: self.visual_depth,
+            visual_depth: self.visuals.depth,
             stats: self.stats,
-            cache: &self.cache,
-            visual_meshes: &self.visual_meshes,
-            input_transforms: &self.input_transforms,
-            effect_states: &self.effect_states,
-            elements: &self.elements,
-            previous_hits: &self.previous_hits,
-            capture: &self.capture,
-            clicked: &self.clicked,
-            slider_input: &self.slider_input,
-            combo_boxes: &self.combo_boxes,
-            popup: &self.popup,
-            popup_layers: &self.popup_layers,
+            cache: &self.paint_state.cache,
+            visual_meshes: &self.paint_state.visual_meshes,
+            input_transforms: self.visuals.published(),
+            effect_states: &self.visuals.effects,
+            elements: &self.paint_state.elements,
+            previous_hits: &self.interaction.previous_hits,
+            capture: &self.interaction.capture,
+            clicked: &self.interaction.clicked,
+            slider_input: &self.values.sliders_input,
+            combo_boxes: &self.menus.combo_boxes,
+            popup: &self.popups.current,
+            popup_layers: &self.popups.layers,
             modals: &self.modals,
-            color_pickers: &self.color_pickers,
-            text_edits: &self.text_edits,
+            color_pickers: &self.values.color_pickers,
+            text_edits: &self.text_fields.states,
             ime_area: self.ime_area,
-            focused_widget: self.focused_widget,
+            focused_widget: self.interaction.focused,
             windows: &self.windows,
-            tab_pages: &self.tab_pages,
+            tab_pages: &self.containers.tab_pages,
             visible_windows: &self.visible_windows,
             scrolling: &self.scrolling,
             placements: &self.placements,
-            cards: &self.cards,
-            carousels: &self.carousels,
+            cards: &self.containers.cards,
+            carousels: &self.containers.carousels,
             carousel_wheel_queued: self.carousel_wheel.queued(),
-            grids: &self.grids,
-            list_boxes: &self.list_boxes,
+            grids: &self.containers.grids,
+            list_boxes: &self.containers.list_boxes,
             drag: &self.drag,
-            seen: &self.seen,
+            seen: &self.paint_state.seen,
             native_chrome: &self.native_chrome,
-            draw_data: &self.draw_data,
+            draw_data: &self.geometry.draw_data,
             counts: Counts {
-                context_menus: self.context_menus.len(),
-                splits: self.splits.len(),
-                collapsing_headers: self.collapsing_headers.len(),
-                split_input: self.split_input.len(),
-                tree_input: self.tree_input.len(),
+                context_menus: self.menus.context_menus.len(),
+                splits: self.splits.states.len(),
+                collapsing_headers: self.containers.collapsing_headers.len(),
+                split_input: self.splits.pending(),
+                tree_input: self.trees.pending(),
                 selection_items: self.selection.items.len(),
                 selection_scopes: self.selection.scopes.len(),
             },
@@ -289,22 +289,22 @@ impl Inspect for Context {
     }
     fn probe_mut(&mut self) -> ProbeMut<'_> {
         ProbeMut {
-            cache: &mut self.cache,
+            cache: &mut self.paint_state.cache,
             scrolling: &mut self.scrolling,
             drag: &mut self.drag,
             placements: &mut self.placements,
-            visual_depth: &mut self.visual_depth,
-            slider_input: &mut self.slider_input,
+            visual_depth: &mut self.visuals.depth,
+            slider_input: &mut self.values.sliders_input,
             next_repaint: &mut self.next_repaint,
             text: &mut self.text,
-            elements: &mut self.elements,
+            elements: &mut self.paint_state.elements,
             logical_size: &mut self.logical_size,
-            modified: &mut self.modified,
-            seen: &mut self.seen,
+            modified: &mut self.paint_state.modified,
+            seen: &mut self.paint_state.seen,
             stats: &mut self.stats,
             style: &mut self.style,
             native_chrome: &mut self.native_chrome,
-            draw_data: &mut self.draw_data,
+            draw_data: &mut self.geometry.draw_data,
         }
     }
     fn hovered(&self, id: Id, window: Id, rect: Rect, clip: Rect) -> bool {
@@ -333,13 +333,14 @@ impl Inspect for Context {
     }
 }
 
-#[cfg(feature = "accesskit")]
-pub use crate::accessibility::{testing::AccessTree, AccessStats};
 pub use super::clipboard::MemoryClipboard;
 pub use super::drag::{preview::layer_id as drag_preview_layer, state::Payload};
 pub use super::geometry::Element;
-pub use super::interaction::{HitAction, HitRegion, SliderInput};
+pub use super::interaction::{HitAction, HitRegion};
 pub use super::paint::{CachedElement, Paint};
+pub use super::values::SliderInput;
+#[cfg(feature = "accesskit")]
+pub use crate::accessibility::{testing::AccessTree, AccessStats};
 pub use crate::components::list_box::{heights::HeightIndex, state::ListState};
 pub use crate::components::scroll_area::RowMetrics;
 pub use crate::text::{TextFont, DEFAULT_TAB};

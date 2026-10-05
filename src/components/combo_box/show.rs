@@ -75,14 +75,14 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             access::trigger(node, id, label, self.enabled);
         });
         let list_id = id.with("listbox");
-        let existing = ui.context.combo_boxes.remove(&id);
+        let existing = ui.context.menus.combo_boxes.remove(&id);
         let mut was_open = existing.as_ref().is_some_and(|state| state.open);
         let mut state = existing.unwrap_or_else(|| ComboBoxState {
             open: self.default_open,
             ..Default::default()
         });
         state.last_frame = ui.context.frame;
-        if ui.context.dismissed_popups.remove(&popup_id) {
+        if ui.context.take_popup_dismissal(popup_id) {
             state.open = false;
             was_open = false;
         }
@@ -112,7 +112,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
                 _ => {}
             }
         }
-        let keys = ui.context.combo_input.remove(&id).unwrap_or_default();
+        let keys = ui.context.take_menu_keys(id);
         let mut navigation = Vec::new();
         for key in keys {
             if !self.enabled || self.options.is_empty() || !visible {
@@ -350,9 +350,9 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             }
             state.open = false;
         }
-        if !state.open && ui.context.popup.as_ref().is_some_and(|p| p.id == popup_id) {
+        if !state.open && ui.context.popup_open(popup_id) {
             ui.context.dismiss_popup(true);
-            ui.context.dismissed_popups.remove(&popup_id);
+            ui.context.take_popup_dismissal(popup_id);
             ui.context
                 .transition_visible(id.with("open"), None, 0.0_f32, motion.clone(), visible);
         }
@@ -389,7 +389,7 @@ impl<T: Clone + PartialEq> Widget for ComboBox<'_, T> {
             status,
             self.hover_style.or(ui.hover_style),
         );
-        ui.context.combo_boxes.insert(id, state);
+        ui.context.menus.combo_boxes.insert(id, state);
         response
     }
 }

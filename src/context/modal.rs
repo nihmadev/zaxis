@@ -97,7 +97,7 @@ impl Context {
     }
     /// Register a popup-class layer; layers built inside a modal sort above it.
     pub(crate) fn push_popup_layer(&mut self, id: Id) {
-        self.popup_layers.push(id);
+        self.popups.layers.push(id);
         let depth = self.modal_layer_depth();
         if depth > 0 {
             self.modals.depth.insert(id, depth);
@@ -128,9 +128,9 @@ impl Context {
             modal.last_frame = frame;
             return false;
         }
-        let return_focus = return_focus.or(match &self.popup {
+        let return_focus = return_focus.or(match &self.popups.current {
             Some(popup) => popup.return_focus,
-            None => self.focused_widget,
+            None => self.interaction.focused,
         });
         self.cancel_underlying_interactions();
         self.modals.stack.push(ModalState {
@@ -153,24 +153,20 @@ impl Context {
     fn cancel_underlying_interactions(&mut self) {
         self.dismiss_popup(false);
         self.drag_cancel(DragReason::Cancelled);
-        if let Some(capture) = self.capture.take() {
+        if let Some(capture) = self.interaction.capture.take() {
             match capture.hit.action {
                 HitAction::SplitResize { .. } => {
                     let pointer = self.input.pointer.unwrap_or(capture.pointer);
-                    self.split_pointer(capture.hit.id, pointer, 2);
+                    self.split_pointer(capture.hit.id, pointer, super::split::Phase::Release);
                 }
-                HitAction::ColumnResize { table, .. } => {
-                    if let Some(state) = self.tables.get_mut(&table) {
-                        state.drag = None;
-                    }
-                }
+                HitAction::ColumnResize { table, .. } => self.cancel_column_resize(table),
                 _ => {}
             }
         }
         self.gesture_cancel();
         self.stop_auto_scroll();
-        self.keyboard_active = None;
-        self.text_click = None;
+        self.interaction.keyboard_active = None;
+        self.text_fields.clicks.reset();
         self.set_focus(None);
     }
 
@@ -196,10 +192,10 @@ impl Context {
         };
         let state = self.modals.stack.remove(position);
         self.remove_popup_hits(id);
-        self.keyboard_active = None;
+        self.interaction.keyboard_active = None;
         let inside = self.top_modal_id();
         let target = state.return_focus.filter(|focus| {
-            self.previous_hits.iter().any(|hit| {
+            self.interaction.previous_hits.iter().any(|hit| {
                 hit.id == *focus
                     && hit.action.focusable()
                     && inside.is_none_or(|top| hit.window == top)
@@ -216,7 +212,7 @@ impl Context {
         if let Some(placement) = self.placements.stack.last_mut() {
             placement.hits.retain(|(hit, _)| !gone(hit));
         }
-        self.hits.retain(|hit| !gone(hit));
+        self.interaction.hits.retain(|hit| !gone(hit));
     }
 
     /// Escape while a modal is open belongs to the modal and nothing below it.
@@ -226,7 +222,7 @@ impl Context {
         state: ElementState,
         repeat: bool,
     ) -> bool {
-        if code != KeyCode::Escape || self.ime_composing {
+        if code != KeyCode::Escape || self.text_fields.composing {
             return false;
         }
         if let Some(modal) = self.modals.stack.last_mut() {
@@ -239,7 +235,7 @@ impl Context {
     }
     /// Enter outside a field that handles it activates the modal's default action.
     pub(super) fn modal_default_action(&mut self) -> bool {
-        if self.ime_composing {
+        if self.text_fields.composing {
             return false;
         }
         self.modals.stack.last_mut().is_some_and(|modal| {
@@ -274,7 +270,8 @@ impl Context {
             live
         });
         let depth = &self.modals.depth;
-        self.popup_layers
+        self.popups
+            .layers
             .sort_by_key(|id| depth.get(id).copied().unwrap_or(0));
         self.modals.blocked_input.focused = self.input.focused;
     }
@@ -286,23 +283,24 @@ impl Context {
             return;
         };
         let (id, pending) = (top.id, top.pending_focus);
-        let popup = self.popup.as_ref().map(|popup| popup.id);
-        let focused = self.focused_widget.is_some_and(|focus| {
-            self.previous_hits.iter().any(|hit| {
+        let popup = self.popups.current.as_ref().map(|popup| popup.id);
+        let focused = self.interaction.focused.is_some_and(|focus| {
+            self.interaction.previous_hits.iter().any(|hit| {
                 hit.id == focus
                     && hit.action.focusable()
                     && (hit.window == id || Some(hit.window) == popup)
             })
         });
         let mut settled = focused;
-        if !focused && (pending || self.focused_widget.is_some()) {
+        if !focused && (pending || self.interaction.focused.is_some()) {
             let first = self
+                .interaction
                 .previous_hits
                 .iter()
                 .find(|hit| hit.window == id && hit.action.focusable())
                 .map(|hit| hit.id);
             self.set_focus(first);
-            self.keyboard_active = None;
+            self.interaction.keyboard_active = None;
             settled = first.is_some();
         }
         // Content that is not interactive yet (first measured pass) keeps waiting.

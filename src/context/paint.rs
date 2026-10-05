@@ -1,525 +1,72 @@
-//! Paint descriptions, tessellation, and per-element mesh caching.
+//! Paint descriptions to cached meshes and this pass's elements.
+//!
+//! One paint call goes through the same stages every time: routing (`route`), visual
+//! materialization (`visual`), identity (a repeated id draws under an alias), resource
+//! requests, reuse of the cached mesh (`cache`) or tessellation (`tessellate`), and
+//! emission of the element. The data lives in [`PaintState`] (`state`).
 
-use super::{geometry::Element, Context, Id};
-use crate::{shapes::Mesh, text::TextFont, Color, CornerRadius, FontWeight, Rect, Shape, Vec2};
-use std::sync::Arc;
+mod cache;
+mod data;
+mod route;
+mod state;
+mod tessellate;
+mod visual;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Paint {
-    Visual {
-        paint: Vec<Paint>,
-        transform: crate::Transform,
-        opacity: f32,
-    },
-    Shape(Shape),
-    Image {
-        rect: Rect,
-        uv: Rect,
-        rounding: CornerRadius,
-        color: Color,
-        opacity: f32,
-        handle: crate::ImageHandle,
-        texture: crate::TextureId,
-        hidden: bool,
-    },
-    ScrollHint {
-        rect: Rect,
-        axis: usize,
-        color: Color,
-    },
-    Gradient {
-        rect: Rect,
-        rounding: CornerRadius,
-        colors: Vec<Color>,
-        columns: usize,
-        rows: usize,
-    },
-    Text {
-        text: String,
-        position: Vec2,
-        size: f32,
-        weight: FontWeight,
-        wrap_width: f32,
-        color: Color,
-    },
-    /// Text shaped with explicit options: a tab width and a family or figure style. A
-    /// multi-line field paints its paragraphs with it, so painting reads the same cached
-    /// layout as the field's position queries. Plain text keeps using `Text`.
-    Paragraph {
-        text: String,
-        position: Vec2,
-        size: f32,
-        font: TextFont,
-        wrap_width: f32,
-        tab: u16,
-        color: Color,
-    },
-    /// A paragraph whose runs differ in weight, family or color, shaped in one pass; see
-    /// [`crate::text::StyleRun`]. Glyph positions come from the same cached layout as
-    /// the component's hit testing.
-    Rich {
-        text: String,
-        runs: Arc<[crate::text::StyleRun]>,
-        position: Vec2,
-        size: f32,
-        font: TextFont,
-        wrap_width: f32,
-        tab: u16,
-        color: Color,
-    },
-}
+use super::{Context, Id};
+use crate::Rect;
+use cache::Reuse;
 
-pub struct CachedElement {
-    pub paint: Vec<Paint>,
-    pub scale: f32,
-    pub mesh: Arc<Mesh>,
-    pub bounds: Option<Rect>,
-    pub last_frame: u64,
-}
-pub struct VisualMesh {
-    base: Arc<Mesh>,
-    transform: crate::Transform,
-    opacity: f32,
-    mesh: Arc<Mesh>,
-}
+pub use data::Paint;
+pub use state::CachedElement;
+pub(crate) use state::PaintState;
+pub use visual::VisualMesh;
 
 impl Context {
-    pub(crate) fn record_paint_order(&mut self, id: Id) {
-        let order = self.paint_order.len();
-        self.paint_order.entry(id).or_insert(order);
-    }
-    /// Paint a cached shape behind all panels. Call before building windows.
-    /// This provides a backdrop for translucent panels and their blur effects.
-    pub fn paint_background(&mut self, shape: impl Into<Shape>) {
-        let id = Id::new(("background", self.elements.len()));
-        self.paint(
-            id,
-            Id::new("background-layer"),
-            self.viewport(),
-            vec![Paint::Shape(shape.into())],
-        );
-    }
-
-    pub(crate) fn paint_blur(&mut self, id: Id, layer: Id, clip: Rect, blur: crate::Blur) {
-        if blur.radius <= 0.0 || blur.rect.is_empty() {
-            return;
-        }
-        self.paint(
-            id,
-            layer,
-            clip,
-            vec![Paint::Shape(Shape::Rect {
-                rect: blur.rect,
-                fill: Color::WHITE,
-                rounding: blur.rounding,
-                border: crate::Border::NONE,
-            })],
-        );
-        self.mark_blur(id, blur.radius);
-    }
-
-    pub(crate) fn mark_blur(&mut self, id: Id, radius: f32) {
-        if let Some(paint) = self
-            .placements
-            .stack
-            .last_mut()
-            .and_then(|p| p.paints.last_mut())
-            .filter(|p| p.id == id)
-        {
-            paint.blur = Some(radius);
-        } else if let Some(paint) = self.scrolling.pending.last_mut().filter(|p| p.id == id) {
-            paint.blur = Some(radius);
-        } else {
-            if let Some(element) = self.elements.last_mut().filter(|e| e.id == id) {
-                element.blur = Some(radius);
-            }
-        }
-    }
-
     pub(crate) fn paint(&mut self, id: Id, layer: Id, clip: Rect, paint: Vec<Paint>) {
-        let paint = match self.defer_placement_paint(id, layer, clip, paint) {
-            Ok(()) => return,
+        let Some(paint) = self.route_paint(id, layer, clip, paint) else {
+            return;
+        };
+        let paint = match visual::flatten(paint) {
+            Ok(visual) => return self.paint_visual(id, layer, clip, visual),
             Err(paint) => paint,
         };
-        self.record_paint_order(id);
-        let paint = match self.defer_scroll_paint(id, layer, clip, paint) {
-            Ok(()) => return,
-            Err(paint) => paint,
-        };
-        if matches!(paint.as_slice(), [Paint::Visual { .. }]) {
-            let mut paint = paint;
-            let mut transform = crate::Transform::IDENTITY;
-            let mut opacity = 1.0;
-            while matches!(paint.as_slice(), [Paint::Visual { .. }]) {
-                let Paint::Visual {
-                    paint: inner,
-                    transform: t,
-                    opacity: alpha,
-                } = paint.pop().unwrap()
-                else {
-                    unreachable!()
-                };
-                transform = transform.compose(t);
-                opacity *= alpha;
-                paint = inner;
+        self.paint_state.drop_visual(id);
+        let id = self.claim_paint_id(id);
+        let paint_scale = self.request_painted_images(&paint, clip);
+        let frame = self.frame;
+        let reuse =
+            self.paint_state
+                .reuse(id, &paint, clip, paint_scale, self.scale, &mut self.text);
+        match reuse {
+            Reuse::Hidden => self.paint_state.touch(id, frame),
+            Reuse::Translated(delta) => {
+                self.paint_state.translate(id, delta, paint, frame);
+                self.stats.reused_elements += 1;
+                self.paint_state.emit(id, layer, clip, false);
             }
-            self.visual_materializing = true;
-            let previous_scale = self.image_visual_scale;
-            self.image_visual_scale *= transform.scale;
-            self.paint(id, layer, transform.inverse().rect(clip), paint);
-            self.image_visual_scale = previous_scale;
-            self.visual_materializing = false;
-            if let Some(element) = self.elements.last_mut().filter(|element| element.id == id) {
-                element.clip = clip;
-                let base = &element.mesh;
-                let reusable = self.visual_meshes.get(&id).is_some_and(|v| {
-                    Arc::ptr_eq(&v.base, base) && v.transform == transform && v.opacity == opacity
-                });
-                if !reusable {
-                    let mut mesh = (**base).clone();
-                    for vertex in &mut mesh.vertices {
-                        vertex.position = transform
-                            .point(Vec2::from_array(vertex.position))
-                            .to_array();
-                        // Colors in the protocol are straight alpha; shader premultiplies.
-                        vertex.color[3] *= opacity;
-                    }
-                    self.visual_meshes.insert(
-                        id,
-                        VisualMesh {
-                            base: Arc::clone(base),
-                            transform,
-                            opacity,
-                            mesh: Arc::new(mesh),
-                        },
-                    );
-                    self.modified.insert(id);
-                }
-                element.mesh = Arc::clone(&self.visual_meshes[&id].mesh);
+            Reuse::Unchanged => {
+                self.stats.reused_elements += 1;
+                self.paint_state.touch(id, frame);
+                self.paint_state.emit(id, layer, clip, true);
             }
-            return;
-        }
-        if !self.visual_materializing && self.visual_meshes.remove(&id).is_some() {
-            self.modified.insert(id);
-        }
-        let id = if self.seen.insert(id) {
-            id
-        } else {
-            // Two elements share an ID: report it and draw the second under an alias,
-            // so neither disappears and the geometry cache stays consistent.
-            self.report_paint_collision(id);
-            let mut n = 1_u32;
-            let alias = loop {
-                let alias = id.with(("duplicate", n));
-                if self.seen.insert(alias) {
-                    break alias;
-                }
-                n += 1;
-            };
-            self.record_paint_order(alias);
-            alias
-        };
-        for primitive in &paint {
-            if let Paint::Image {
-                rect,
-                uv,
-                handle,
-                texture,
-                ..
-            } = primitive
-            {
-                if !rect.intersect(clip).is_empty() {
-                    self.images.lock().request(
-                        *handle,
-                        rect.size() / uv.size().max(Vec2::splat(0.001))
-                            * self.scale
-                            * self.image_visual_scale,
-                        *texture,
-                    );
-                }
+            Reuse::Rebuild => {
+                let mesh = tessellate::mesh(&mut self.text, &paint, self.scale, paint_scale);
+                self.paint_state.store(id, paint, paint_scale, mesh, frame);
+                self.stats.tessellated_elements += 1;
+                self.paint_state.emit(id, layer, clip, true);
             }
         }
-        let paint_scale = if paint.iter().any(|p| matches!(p, Paint::Image { .. })) {
-            self.scale * self.image_visual_scale
-        } else {
-            self.scale
-        };
-        // A pure translation keeps contours and glyph UVs intact, including DPI
-        // and subpixel raster keys. Text translations are reusable only at whole
-        // physical pixels, so fractional touchpad motion still rasterizes correctly.
-        let mut translation = self.cache.get(&id).and_then(|cached| {
-            if cached.scale != paint_scale {
-                return None;
-            }
-            paint_translation(&cached.paint, &paint, self.scale)
-        });
-        if translation.is_none() {
-            if let Some(cached) = self.cache.get_mut(&id) {
-                if cached.scale == paint_scale {
-                    if let Some(delta) = paint_translation(&cached.paint, &paint, 0.0) {
-                        if cached.bounds.is_some_and(|bounds| {
-                            let bounds = bounds.translate(delta);
-                            let margin = Vec2::splat(1.0 / self.scale);
-                            Rect::from_min_max(bounds.min - margin, bounds.max + margin)
-                                .intersect(clip)
-                                .is_empty()
-                        }) {
-                            cached.last_frame = self.frame;
-                            return;
-                        }
-                    }
-                }
+    }
+
+    /// The id this paint is drawn under: its own, or an alias when it was already painted
+    /// in this pass, which is reported.
+    fn claim_paint_id(&mut self, id: Id) -> Id {
+        match self.paint_state.claim(id) {
+            Ok(id) => id,
+            Err(alias) => {
+                self.report_paint_collision(id);
+                alias
             }
         }
-        if let Some(delta) = translation.filter(|delta| *delta != Vec2::ZERO) {
-            let cached = &self.cache[&id];
-            if cached
-                .bounds
-                .is_some_and(|bounds| bounds.translate(delta).intersect(clip).is_empty())
-            {
-                self.cache.get_mut(&id).unwrap().last_frame = self.frame;
-                return;
-            }
-            if !cached.paint.iter().all(|primitive| match primitive {
-                Paint::Text {
-                    text,
-                    position,
-                    size,
-                    weight,
-                    wrap_width,
-                    ..
-                } => self.text.translation_preserves_raster(
-                    text,
-                    *position,
-                    *size,
-                    *weight,
-                    *wrap_width,
-                    crate::text::DEFAULT_TAB,
-                    delta,
-                    self.scale,
-                ),
-                Paint::Paragraph {
-                    text,
-                    position,
-                    size,
-                    font,
-                    wrap_width,
-                    tab,
-                    ..
-                } => self.text.translation_preserves_raster(
-                    text,
-                    *position,
-                    *size,
-                    *font,
-                    *wrap_width,
-                    *tab,
-                    delta,
-                    self.scale,
-                ),
-                Paint::Rich {
-                    text,
-                    runs,
-                    position,
-                    size,
-                    font,
-                    wrap_width,
-                    tab,
-                    ..
-                } => self.text.rich_translation_preserves_raster(
-                    text,
-                    runs,
-                    *position,
-                    *size,
-                    *font,
-                    *wrap_width,
-                    *tab,
-                    delta,
-                    self.scale,
-                ),
-                _ => true,
-            }) {
-                translation = None;
-            }
-        }
-        if let Some(delta) = translation {
-            let cached = self.cache.get_mut(&id).unwrap();
-            cached.last_frame = self.frame;
-            if cached
-                .bounds
-                .is_some_and(|bounds| bounds.translate(delta).intersect(clip).is_empty())
-            {
-                return;
-            }
-            if delta != Vec2::ZERO {
-                for vertex in &mut Arc::make_mut(&mut cached.mesh).vertices {
-                    vertex.position[0] += delta.x;
-                    vertex.position[1] += delta.y;
-                }
-                cached.bounds = cached.bounds.map(|bounds| bounds.translate(delta));
-                cached.paint = paint;
-                self.modified.insert(id);
-            }
-            self.stats.reused_elements += 1;
-            self.elements.push(Element {
-                id,
-                layer,
-                clip,
-                mesh: Arc::clone(&cached.mesh),
-                blur: None,
-                scroll_hint: paint_is_scroll_hint(&cached.paint),
-            });
-            return;
-        }
-        let reusable = self
-            .cache
-            .get(&id)
-            .is_some_and(|cached| cached.paint == paint && cached.scale == paint_scale);
-        if reusable {
-            self.stats.reused_elements += 1;
-            self.cache.get_mut(&id).unwrap().last_frame = self.frame;
-        } else {
-            let mut mesh = Mesh::default();
-            for primitive in &paint {
-                match primitive {
-                    Paint::Visual { .. } => {
-                        unreachable!("visual transforms must wrap the whole element")
-                    }
-                    Paint::ScrollHint { rect, axis, color } => {
-                        let start = mesh.vertices.len();
-                        mesh.quad(
-                            *rect,
-                            Rect::from_min_size(Vec2::ZERO, Vec2::ONE),
-                            color.linear(),
-                            crate::TextureId::WHITE,
-                        );
-                        if *axis == 0 {
-                            for vertex in &mut mesh.vertices[start..] {
-                                vertex.uv.swap(0, 1);
-                            }
-                        }
-                    }
-                    Paint::Shape(shape) => mesh.shape(shape, self.scale),
-                    Paint::Image {
-                        rect,
-                        uv,
-                        rounding,
-                        color,
-                        opacity,
-                        texture,
-                        hidden,
-                        ..
-                    } => {
-                        if !hidden {
-                            mesh.image(
-                                *rect,
-                                *uv,
-                                *rounding,
-                                *color,
-                                *opacity,
-                                *texture,
-                                paint_scale,
-                            );
-                        }
-                    }
-                    Paint::Gradient {
-                        rect,
-                        rounding,
-                        colors,
-                        columns,
-                        rows,
-                    } => {
-                        mesh.gradient(*rect, *rounding, colors, *columns, *rows, self.scale);
-                    }
-                    Paint::Text {
-                        text,
-                        position,
-                        size,
-                        weight,
-                        wrap_width,
-                        color,
-                    } => self.text.paint(
-                        &mut mesh,
-                        text,
-                        *position,
-                        *size,
-                        *weight,
-                        *wrap_width,
-                        *color,
-                        self.scale,
-                    ),
-                    Paint::Paragraph {
-                        text,
-                        position,
-                        size,
-                        font,
-                        wrap_width,
-                        tab,
-                        color,
-                    } => self.text.paint_with_tab(
-                        &mut mesh,
-                        text,
-                        *position,
-                        *size,
-                        *font,
-                        *wrap_width,
-                        *tab,
-                        *color,
-                        self.scale,
-                    ),
-                    Paint::Rich {
-                        text,
-                        runs,
-                        position,
-                        size,
-                        font,
-                        wrap_width,
-                        tab,
-                        color,
-                    } => self.text.paint_rich(
-                        &mut mesh,
-                        text,
-                        runs,
-                        *position,
-                        *size,
-                        *font,
-                        *wrap_width,
-                        *tab,
-                        *color,
-                        self.scale,
-                    ),
-                }
-            }
-            let bounds = mesh_bounds(&mesh);
-            self.cache.insert(
-                id,
-                CachedElement {
-                    paint,
-                    scale: paint_scale,
-                    mesh: Arc::new(mesh),
-                    bounds,
-                    last_frame: self.frame,
-                },
-            );
-            self.modified.insert(id);
-            self.stats.tessellated_elements += 1;
-        }
-        if self.cache[&id]
-            .bounds
-            .is_some_and(|bounds| bounds.intersect(clip).is_empty())
-        {
-            return;
-        }
-        let scroll_hint = paint_is_scroll_hint(&self.cache[&id].paint);
-        self.elements.push(Element {
-            id,
-            layer,
-            clip,
-            mesh: Arc::clone(&self.cache[&id].mesh),
-            blur: None,
-            scroll_hint,
-        });
     }
 }
-
-mod helpers;
-use helpers::{mesh_bounds, paint_is_scroll_hint, paint_translation};

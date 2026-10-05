@@ -55,7 +55,7 @@ impl Context {
         delta: Vec2,
         inner: Option<Id>,
     ) -> bool {
-        let found = self.previous_hits.iter().rev().find_map(|hit| {
+        let found = self.interaction.previous_hits.iter().rev().find_map(|hit| {
             let target = self.carousel_wheel.previous.get(&hit.id)?;
             (hit.window == window && hit.rect.contains(pointer) && hit.clip.contains(pointer))
                 .then_some((hit.id, *target))

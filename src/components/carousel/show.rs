@@ -133,7 +133,7 @@ impl Carousel {
         let enabled = self.enabled && ui.is_enabled();
         if count == 0 {
             invalid_value("Carousel", "no pages to show".into());
-            ui.context.carousels.remove(&id);
+            ui.context.containers.carousels.remove(&id);
             let response = ui.interact(stage, "pages", Sense::HOVER);
             return CarouselOutput {
                 response,
@@ -155,7 +155,12 @@ impl Carousel {
             }
         }
         let wrap = self.wrap && count > 1;
-        let mut state = ui.context.carousels.remove(&id).unwrap_or_default();
+        let mut state = ui
+            .context
+            .containers
+            .carousels
+            .remove(&id)
+            .unwrap_or_default();
         state.last_frame = ui.context.frame;
         let synced = state.sync(&model, page, wrap, self.initial);
         if synced.external {
@@ -277,14 +282,14 @@ impl Carousel {
         state.layers = painted.layers;
         let progress = (1.0 - (driven.position - state.target as f32).abs()).clamp(0.0, 1.0);
         let dragging = state.drag.is_some();
-        ui.context.carousels.insert(id, state);
+        ui.context.containers.carousels.insert(id, state);
         let mut response = response;
         if driven.changed {
             response.mark_changed();
         }
         CarouselOutput {
             response,
-            page: ui.context.carousels[&id].page,
+            page: ui.context.containers.carousels[&id].page,
             key,
             changed: driven.changed,
             autoplayed: driven.autoplayed,

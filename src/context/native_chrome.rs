@@ -34,7 +34,7 @@ impl Context {
         };
         let top = self.top_window(pointer);
         if top != Some(chrome.owner) && !top.is_some_and(|id| self.is_modal_layer(id))
-            || self.capture.is_some()
+            || self.interaction.capture.is_some()
         {
             return false;
         }

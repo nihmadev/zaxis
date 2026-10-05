@@ -30,7 +30,7 @@ impl Context {
     }
 
     /// A redraw has been requested since the current pass began.
-#[cfg_attr(not(feature = "accesskit"), allow(dead_code))]
+    #[cfg_attr(not(feature = "accesskit"), allow(dead_code))]
     pub(crate) fn repaint_requested(&self) -> bool {
         self.dirty
     }

@@ -115,9 +115,8 @@ pub(super) fn inputs(
                             // Move in physical-pixel steps, including an enclosing visual
                             // scale. Fractional raster phases otherwise make borders and
                             // translated text shimmer during a slow drag.
-                            let transform = ui.context.input_transforms.get(&bid);
                             let scale =
-                                ui.context.scale_factor() * transform.map_or(1.0, |t| t.scale);
+                                ui.context.scale_factor() * ui.context.visuals.input(bid).scale;
                             let delta = ((pointer as f64 - d.pointer as f64) * scale as f64)
                                 .round()
                                 / scale as f64;

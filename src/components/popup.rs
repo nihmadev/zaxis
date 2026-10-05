@@ -10,6 +10,16 @@ use crate::{
 /// Anchored overlay above every window, independent of the parent's clip.
 /// One popup owns input at a time. Outside presses and Escape restore focus;
 /// the outside press is consumed before reaching lower content.
+/// The popup's full-viewport blocker. It stays where it is when the popup's anchor moves.
+pub(crate) fn block_id(id: Id) -> Id {
+    id.with("block")
+}
+
+/// The paint of a popup's body. A dismissal is remembered while the body is painted.
+pub(crate) fn body_id(id: Id) -> Id {
+    id.with("body")
+}
+
 pub struct Popup {
     source: Id,
     anchor: Rect,
@@ -115,15 +125,15 @@ impl Popup {
             *open = false;
             return None;
         }
-        if ui.context.dismissed_popups.remove(&id) {
+        if ui.context.take_popup_dismissal(id) {
             *open = false;
         }
         if !ui.enabled || ui.context.modal_blocks_popup() {
             *open = false;
         }
-        if !*open && ui.context.popup.as_ref().is_some_and(|p| p.id == id) {
+        if !*open && ui.context.popup_open(id) {
             ui.context.dismiss_popup(true);
-            ui.context.dismissed_popups.remove(&id);
+            ui.context.take_popup_dismissal(id);
         }
         if !*open && (!self.animated || self.progress <= 0.0) {
             return None;
@@ -149,9 +159,9 @@ impl Popup {
                 );
             }
             *open = false;
-            if ui.context.popup.as_ref().is_some_and(|p| p.id == id) {
+            if ui.context.popup_open(id) {
                 ui.context.dismiss_popup(true);
-                ui.context.dismissed_popups.remove(&id);
+                ui.context.take_popup_dismissal(id);
             }
             return None;
         }
@@ -162,22 +172,28 @@ impl Popup {
             Rect::from_min_size(full.min, Vec2::new(full.size().x, height))
         };
         if *open {
-            let existing = ui.context.popup.as_ref().filter(|p| p.id == id);
+            let existing = ui.context.popups.current.as_ref().filter(|p| p.id == id);
             let return_focus = self
                 .return_focus
                 .or_else(|| existing.and_then(|p| p.return_focus))
-                .or(ui.context.focused_widget);
+                .or(ui.context.focused());
             // Extra panels (cascading submenus) belong to the popup across frames: hover
             // routing during this pass needs the previous pass's rectangles.
             let extra = existing.map(|p| p.extra.clone()).unwrap_or_default();
             let opening = existing.is_none();
-            if ui.context.popup.as_ref().is_some_and(|p| p.id != id) {
+            if ui
+                .context
+                .popups
+                .current
+                .as_ref()
+                .is_some_and(|p| p.id != id)
+            {
                 ui.context.dismiss_popup(true);
             }
             if opening {
                 ui.context.set_focus(self.key_target);
             }
-            ui.context.popup = Some(PopupState {
+            ui.context.popups.current = Some(PopupState {
                 id,
                 owner: ui.window,
                 anchor: self.anchor.intersect(anchor_clip),
@@ -195,7 +211,7 @@ impl Popup {
             .a11y_begin_layer(id, id, crate::AccessRole::Group, |_| {});
         if *open {
             ui.context.register_hit(HitRegion {
-                id: id.with("block"),
+                id: block_id(id),
                 window: id,
                 rect: viewport,
                 clip: viewport,
@@ -240,7 +256,7 @@ impl Popup {
                 .corner_radius(body.rounding),
         );
         ui.context
-            .paint(id.with("body"), id, rect.intersect(viewport), paint);
+            .paint(body_id(id), id, rect.intersect(viewport), paint);
         let mut child_style = style.clone();
         child_style.text_color = body.text_color;
         let mut child = Ui {
@@ -266,9 +282,9 @@ impl Popup {
         child.finish_layout();
         // Placed before a closing popup drops its hits: its nodes leave the tree with them.
         child.context.a11y_end(access, Some((rect, viewport)));
-        if *open && !child.context.popup.as_ref().is_some_and(|p| p.id == id) {
+        if *open && !child.context.popup_open(id) {
             *open = false;
-            child.context.dismissed_popups.remove(&id);
+            child.context.take_popup_dismissal(id);
         }
         if !*open {
             child.context.remove_popup_hits(id);

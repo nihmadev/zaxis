@@ -5,8 +5,8 @@ use super::{
     Response, Ui,
 };
 use crate::{
-    context::HitAction, AccessAction, AccessActionKind, AccessRole, Id,
-    ImageSource, Layout, Padding, Rect, Vec2,
+    context::HitAction, AccessAction, AccessActionKind, AccessRole, Id, ImageSource, Layout,
+    Padding, Rect, Vec2,
 };
 use std::hash::Hash;
 
@@ -114,6 +114,7 @@ impl<'a> CollapsingHeader<'a> {
         let id = ui.scope.with(("collapsing", self.id));
         let mut state = ui
             .context
+            .containers
             .collapsing_headers
             .remove(&id)
             .unwrap_or(CollapsingState {
@@ -194,10 +195,10 @@ impl<'a> CollapsingHeader<'a> {
         if !state.open
             && ui
                 .context
-                .focused_widget
+                .focused()
                 .is_some_and(|f| state.descendants.contains(&f))
         {
-            if ui.context.popup.as_ref().is_some_and(|p| {
+            if ui.context.popups.current.as_ref().is_some_and(|p| {
                 p.return_focus
                     .is_some_and(|f| state.descendants.contains(&f))
             }) {
@@ -249,7 +250,7 @@ impl<'a> CollapsingHeader<'a> {
             body: result,
             actions: output.actions,
         };
-        ui.context.collapsing_headers.insert(id, state);
+        ui.context.containers.collapsing_headers.insert(id, state);
         out
     }
 }

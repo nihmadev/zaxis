@@ -25,6 +25,17 @@ pub struct InputState {
 }
 
 impl InputState {
+    /// Note a key routed to a control in the pass's key sets.
+    pub(super) fn record_key(&mut self, code: KeyCode, pressed: bool) {
+        if pressed {
+            self.keys_down.insert(code);
+            self.keys_pressed.insert(code);
+        } else {
+            self.keys_down.remove(&code);
+            self.keys_released.insert(code);
+        }
+    }
+
     pub(super) fn finish_frame(&mut self) {
         self.primary_pressed = false;
         self.secondary_pressed = false;

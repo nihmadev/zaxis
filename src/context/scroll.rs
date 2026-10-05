@@ -35,7 +35,10 @@ impl ScrollState {
     /// (drags, explicit offsets, reveals and reduced motion snap). Returns whether it is
     /// still moving, so the caller schedules another pass.
     pub fn glide_to(&mut self, now: Instant, smooth: bool) -> bool {
-        let dt = self.shown_at.replace(now).map_or(Duration::ZERO, |at| now.saturating_duration_since(at));
+        let dt = self
+            .shown_at
+            .replace(now)
+            .map_or(Duration::ZERO, |at| now.saturating_duration_since(at));
         if !self.glide || !smooth || (self.offset - self.shown).abs().max_element() < 0.5 {
             self.shown = self.offset;
             self.glide = false;
@@ -88,6 +91,15 @@ pub struct ScrollScope {
     pub target: Option<Rect>,
     pub origin: Vec2,
 }
+impl ScrollScope {
+    /// Move the scope's geometry and content origin; its scroll correction is unchanged.
+    pub(crate) fn translate(&mut self, delta: Vec2) {
+        self.viewport = self.viewport.translate(delta);
+        self.region = self.region.translate(delta);
+        self.outer_clip = self.outer_clip.translate(delta);
+        self.origin += delta;
+    }
+}
 pub struct PendingPaint {
     pub id: Id,
     pub layer: Id,
@@ -95,6 +107,14 @@ pub struct PendingPaint {
     pub paint: Vec<Paint>,
     pub blur: Option<f32>,
     pub scope: usize,
+}
+impl PendingPaint {
+    pub(crate) fn translate(&mut self, delta: Vec2) {
+        self.clip = self.clip.translate(delta);
+        for primitive in &mut self.paint {
+            primitive.translate(delta);
+        }
+    }
 }
 #[derive(Default)]
 pub struct Scrolling {
@@ -215,28 +235,20 @@ impl Context {
         if !self.scrolling.stack.is_empty() || self.placements.outstanding > 0 {
             return;
         }
-        for pending in std::mem::take(&mut self.scrolling.pending) {
-            let shift = self.scrolling.shift(Some(pending.scope));
-            let clip = self
-                .scrolling
-                .clip(pending.scope, pending.clip.translate(shift));
-            let mut paint = pending.paint;
-            for primitive in &mut paint {
-                primitive.translate(shift);
-            }
-            self.paint(pending.id, pending.layer, clip, paint);
-            if let Some(element) = self.elements.last_mut().filter(|e| e.id == pending.id) {
+        for mut pending in std::mem::take(&mut self.scrolling.pending) {
+            pending.translate(self.scrolling.shift(Some(pending.scope)));
+            let clip = self.scrolling.clip(pending.scope, pending.clip);
+            self.paint(pending.id, pending.layer, clip, pending.paint);
+            if let Some(element) = self.paint_state.last_element_mut(pending.id) {
                 element.blur = pending.blur;
             }
         }
         for (mut hit, scope) in std::mem::take(&mut self.scrolling.hits) {
             let shift = self.scrolling.shift(Some(scope));
-            if let Some(transform) = self.current_transforms.get_mut(&hit.id) {
-                transform.translation += shift;
-            }
-            hit.rect = hit.rect.translate(shift);
-            hit.clip = self.scrolling.clip(scope, hit.clip.translate(shift));
-            self.hits.push(hit);
+            self.visuals.shift(hit.id, shift);
+            hit.translate(shift);
+            hit.clip = self.scrolling.clip(scope, hit.clip);
+            self.interaction.hits.push(hit);
         }
         if let Some((scope, rect)) = self.scrolling.ime.take() {
             let rect = self
@@ -296,7 +308,7 @@ impl Context {
             });
         self.route_carousel_wheel(pointer, window, delta, target)
             || target.is_some_and(|id| self.scroll_from(id, delta, false))
-            || self.popup.is_some()
+            || self.popups.current.is_some()
             || self.modal_active()
     }
     pub(crate) fn scroll_from(&mut self, id: Id, mut delta: Vec2, middle: bool) -> bool {
@@ -346,7 +358,7 @@ impl Context {
     }
     pub(super) fn invalidate_scroll_hits(&mut self, window: Id) {
         // Input can arrive in bursts before redraw. Never activate stale content geometry.
-        self.previous_hits.retain(|h| {
+        self.interaction.previous_hits.retain(|h| {
             h.window != window
                 || matches!(
                     h.action,

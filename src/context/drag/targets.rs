@@ -17,7 +17,7 @@ impl Context {
     pub(crate) fn drag_resolve(&self, pointer: Vec2) -> Option<Hover> {
         let window = self.top_window(pointer)?;
         let mut candidates: Vec<(u16, usize, Rect, TargetInfo)> = Vec::new();
-        for (index, hit) in self.previous_hits.iter().enumerate() {
+        for (index, hit) in self.interaction.previous_hits.iter().enumerate() {
             let HitAction::DropTarget { slot } = hit.action else {
                 continue;
             };

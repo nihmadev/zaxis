@@ -48,6 +48,7 @@ impl Context {
         }
         let (id, window) = (session.info.id, session.window);
         let Some(rect) = self
+            .interaction
             .hits
             .iter()
             .find(|hit| hit.id == id && matches!(hit.action, HitAction::DragSource { .. }))
@@ -57,11 +58,11 @@ impl Context {
         };
         let limit = Rect::from_min_max(rect.min - Vec2::ONE, rect.max + Vec2::ONE);
         let mut items = Vec::new();
-        for element in &self.elements {
+        for element in &self.paint_state.elements {
             if element.layer != window || element.blur.is_some() {
                 continue;
             }
-            let Some(cached) = self.cache.get(&element.id) else {
+            let Some(cached) = self.paint_state.cache.get(&element.id) else {
                 continue;
             };
             let inside = cached.bounds.is_some_and(|b| {
@@ -71,7 +72,12 @@ impl Context {
                     && b.max.y <= limit.max.y
             });
             if inside {
-                let order = self.paint_order.get(&element.id).copied().unwrap_or(0);
+                let order = self
+                    .paint_state
+                    .order
+                    .get(&element.id)
+                    .copied()
+                    .unwrap_or(0);
                 items.push((order, element.id, cached.paint.clone()));
             }
         }
@@ -104,6 +110,7 @@ impl Context {
             }
         } else if let Some(returning) = self.drag.returning.take() {
             let to = self
+                .interaction
                 .previous_hits
                 .iter()
                 .find(|hit| hit.id == returning.source)
@@ -132,7 +139,7 @@ impl Context {
             }
         }
         if painted {
-            self.popup_layers.push(layer);
+            self.popups.layers.push(layer);
         }
     }
 

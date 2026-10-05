@@ -90,7 +90,8 @@ impl TextEdit<'_> {
         };
         let mut state = ui
             .context
-            .text_edits
+            .text_fields
+            .states
             .remove(&id)
             .unwrap_or_else(|| TextEditState::new(self.text, style.text_edit_blink_interval));
         let mut area = state
@@ -226,7 +227,7 @@ impl TextEdit<'_> {
         response.changed = out.changed;
         let chrome = self.paint_chrome(ui, id, rect, response, &look);
         if opts.tab_indent && self.enabled && !self.read_only {
-            ui.context.text_edit_tabs.insert(id);
+            ui.context.text_fields.take_tab(id);
         }
 
         let mut scroll = if opts.wrap {
@@ -279,7 +280,7 @@ impl TextEdit<'_> {
         state.focused = response.has_focus;
         state.blink_interval = style.text_edit_blink_interval;
         state.fingerprint = fingerprint;
-        ui.context.text_edits.insert(id, state);
+        ui.context.text_fields.states.insert(id, state);
         response
     }
 }

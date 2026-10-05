@@ -30,7 +30,7 @@ impl Ui<'_> {
     ) {
         let release = crate::components::sanitize::forward("highlight release", release);
         let id = self.scope.with(("highlight", Id::new(source)));
-        let mut state = self.context.effect_states.remove(&id).unwrap_or_else(|| {
+        let mut state = self.context.visuals.effects.remove(&id).unwrap_or_else(|| {
             let mut state = EffectState::new(self.context.frame);
             state.revision = revision;
             state
@@ -77,6 +77,6 @@ impl Ui<'_> {
                     .into(),
             )],
         );
-        self.context.effect_states.insert(id, state);
+        self.context.visuals.effects.insert(id, state);
     }
 }

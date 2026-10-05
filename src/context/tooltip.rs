@@ -35,6 +35,7 @@ impl Context {
         let mut requested = None;
         for request in requests {
             let marker = self
+                .interaction
                 .hits
                 .iter()
                 .find(|hit| hit.id == request.anchor)
@@ -42,12 +43,13 @@ impl Context {
             // Real widget hits have the final geometry even if show() was called
             // after the widget's individual layout capture finished.
             let hit = self
+                .interaction
                 .hits
                 .iter()
                 .find(|hit| hit.id == request.target)
                 .copied()
                 .or(marker);
-            self.hits.retain(|hit| hit.id != request.anchor);
+            self.interaction.hits.retain(|hit| hit.id != request.anchor);
             let Some(hit) = hit else { continue };
             if self.input.focused
                 && !self.input.primary_down
@@ -112,7 +114,7 @@ impl Context {
         let size = size + inset;
         let rect = place(anchor, size, viewport);
         let id = request.target.with("tooltip");
-        self.popup_layers.push(id);
+        self.popups.layers.push(id);
         let access = self.a11y_begin_layer(id, id, crate::AccessRole::Tooltip, |node| {
             node.label(request.text.as_str());
         });

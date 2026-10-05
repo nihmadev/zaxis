@@ -103,7 +103,7 @@ impl<T: PartialEq + Hash> Widget for RadioGroup<'_, T> {
         let mut chosen = None;
         let mut focus = ui
             .context
-            .focused_widget
+            .focused()
             .and_then(|f| ids.iter().position(|id| *id == f))
             .filter(|i| enabled[*i]);
         if let Some(from) = focus {

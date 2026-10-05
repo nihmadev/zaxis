@@ -134,7 +134,8 @@ impl TextEdit<'_> {
         let mut body = Vec::new();
         appearance.paint_shadow(rect, appearance.rounding, &mut body);
         appearance.paint_body(rect, appearance.rounding, style, appearance.blur, &mut body);
-        ui.context.paint(id.with("body"), ui.window, ui.clip, body);
+        ui.context
+            .paint(super::body_id(id), ui.window, ui.clip, body);
         Chrome { color, caret }
     }
 

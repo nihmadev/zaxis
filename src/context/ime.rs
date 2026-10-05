@@ -13,7 +13,7 @@ impl Context {
 
     /// Custom hosts must call this after `run`. The built-in runner does it automatically.
     pub fn sync_ime(&mut self, window: &Window) {
-        let target = self.ime_area.and(self.focused_widget);
+        let target = self.ime_area.and(self.interaction.focused);
         if target != self.ime_target {
             // Native composition belongs to one field, even within a single window.
             if self.ime_target.is_some() {

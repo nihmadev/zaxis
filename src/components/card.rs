@@ -84,7 +84,12 @@ impl Card {
             .width
             .unwrap_or(f32::INFINITY)
             .min(ui.available_width());
-        let previous = ui.context.cards.get(&id).map_or(0.0, |s| s.height);
+        let previous = ui
+            .context
+            .containers
+            .cards
+            .get(&id)
+            .map_or(0.0, |s| s.height);
 
         let mut height = 0.0;
         let mut origin = Vec2::ZERO;
@@ -130,7 +135,7 @@ impl Card {
             ui.context.request_repaint();
         }
         let frame = ui.context.frame;
-        ui.context.cards.insert(
+        ui.context.containers.cards.insert(
             id,
             CardState {
                 height,

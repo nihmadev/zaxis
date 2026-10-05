@@ -60,7 +60,7 @@ impl SplitPane {
             style.gap.min(total / count as f32)
         };
         let budget = (total - gap * count as f32).max(0.0);
-        let mut state = ui.context.splits.remove(&id).unwrap_or_default();
+        let mut state = ui.context.splits.states.remove(&id).unwrap_or_default();
         state.last_frame = ui.context.frame;
         state.prefs.retain(|id, _| unique.contains(id));
         if self.reset {
@@ -203,7 +203,7 @@ impl SplitPane {
         if boundaries.iter().any(|b| b.changed) || resize_started || resize_ended {
             ui.context.request_repaint();
         }
-        ui.context.splits.insert(id, state);
+        ui.context.splits.states.insert(id, state);
         SplitOutput {
             inner,
             rect,
@@ -256,7 +256,7 @@ impl SplitUi<'_, '_> {
             None => crate::accessibility::Scope::NONE,
         };
         self.ui.context.begin_placement(self.ui.window);
-        self.ui.context.visual_clips.push((self.ui.window, clip));
+        self.ui.context.visuals.clips.push((self.ui.window, clip));
         let mut child = Ui {
             context: self.ui.context,
             window: self.ui.window,
@@ -278,7 +278,7 @@ impl SplitUi<'_, '_> {
         child.begin_layout(Align::Start);
         let result = build(&mut child);
         child.finish_layout();
-        child.context.visual_clips.pop();
+        child.context.visuals.clips.pop();
         let placement = child.context.end_placement();
         child.context.place(placement, Vec2::ZERO, clip);
         if let Some(index) = known.filter(|_| group.0.is_some()) {

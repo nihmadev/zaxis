@@ -16,6 +16,7 @@ impl TreeView<'_> {
         let mut state = ui
             .context
             .trees
+            .states
             .remove(&id)
             .unwrap_or_else(|| TreeState::new(self.initial_open, self.initial_selected));
         if state.last_frame == ui.context.frame {
@@ -27,7 +28,7 @@ impl TreeView<'_> {
         state.last_frame = ui.context.frame;
         let action_focus = ui
             .context
-            .focused_widget
+            .focused()
             .filter(|f| state.action_ids.contains_key(f));
         state.action_ids.clear();
         if let Some(open) = &self.controlled_open {
@@ -58,7 +59,7 @@ impl TreeView<'_> {
                 state.reveal(node, model, &mut events);
                 ui.context.set_focus(Some(id));
             }
-            let mut inputs = ui.context.tree_input.remove(&id).unwrap_or_default();
+            let mut inputs = ui.context.take_tree_input(id);
             access::requests(ui, id, &state, &mut inputs);
             for input in inputs {
                 if state.dirty {
@@ -74,7 +75,7 @@ impl TreeView<'_> {
                 );
             }
         } else {
-            ui.context.tree_input.remove(&id);
+            ui.context.take_tree_input(id);
         }
         if state.dirty {
             state.rebuild(model, &mut events);
@@ -228,7 +229,8 @@ impl TreeView<'_> {
         if action_focus.is_some_and(|f| !state.action_ids.contains_key(&f)) {
             if ui
                 .context
-                .popup
+                .popups
+                .current
                 .as_ref()
                 .is_some_and(|p| p.return_focus == action_focus)
             {
@@ -274,7 +276,7 @@ impl TreeView<'_> {
             viewport: output.viewport,
             scroll_offset: output.offset,
         };
-        ui.context.trees.insert(id, state);
+        ui.context.trees.states.insert(id, state);
         out
     }
 }

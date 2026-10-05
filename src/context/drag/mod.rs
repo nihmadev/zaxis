@@ -78,7 +78,6 @@ impl Context {
     /// Registering the hit later keeps this position, so a region wrapped around
     /// content that is built first still sits below that content's own hits.
     pub(crate) fn drag_reserve_order(&mut self, id: Id) {
-        let order = self.hit_order.len();
-        self.hit_order.entry(id).or_insert((order, None));
+        self.interaction.reserve(id);
     }
 }

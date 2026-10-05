@@ -1,6 +1,7 @@
+use super::Paint;
 use crate::{
     Context, ImageDecoder, ImageError, ImageHandle, ImageLimits, ImageMetrics, ImageSource,
-    ImageState, ImageTiming,
+    ImageState, ImageTiming, Rect, Vec2,
 };
 use std::{sync::Arc, time::Duration};
 
@@ -82,5 +83,49 @@ impl Context {
     /// Bounded diagnostic history; drain outside measured UI work in benchmarks.
     pub fn take_image_timings(&mut self) -> Vec<ImageTiming> {
         self.images.lock().take_timings()
+    }
+
+    /// Request the images of one element at the size they are displayed at, visuals
+    /// included. Returns the scale the element is tessellated at: an element with images
+    /// is cached per displayed scale.
+    pub(super) fn request_painted_images(&mut self, paint: &[Paint], clip: Rect) -> f32 {
+        let mut images = false;
+        for primitive in paint {
+            if let Paint::Image {
+                rect,
+                uv,
+                handle,
+                texture,
+                ..
+            } = primitive
+            {
+                images = true;
+                if !rect.intersect(clip).is_empty() {
+                    self.images.lock().request(
+                        *handle,
+                        rect.size() / uv.size().max(Vec2::splat(0.001))
+                            * self.scale
+                            * self.paint_state.image_visual_scale(),
+                        *texture,
+                    );
+                }
+            }
+        }
+        if images {
+            self.scale * self.paint_state.image_visual_scale()
+        } else {
+            self.scale
+        }
+    }
+
+    /// End of pass: images that settle later schedule their pass, finished loads repaint.
+    pub(super) fn finish_images(&mut self) {
+        let settle = self.images.lock().finish_frame();
+        if let Some(deadline) = settle {
+            self.request_repaint_after(deadline.saturating_duration_since(self.frame_time));
+        }
+        if self.images.lock().take_state_changed() {
+            self.request_repaint();
+        }
     }
 }

@@ -107,7 +107,7 @@ pub(super) fn show<T: Numeric>(
     style.rounding = options.rounding.unwrap_or(style.rounding);
     style.normalize();
     let before = *value;
-    let mut state = ui.context.numbers.remove(&id).unwrap_or_default();
+    let mut state = ui.context.values.numbers.remove(&id).unwrap_or_default();
     let was_editing = state.editing;
     state.last_frame = ui.context.frame;
     let focused = ui.context.has_focus(id);
@@ -132,14 +132,15 @@ pub(super) fn show<T: Numeric>(
     if drag && options.enabled {
         for event in events {
             match event {
-                NumberInputEvent::Pointer(p, 1, _) => {
+                NumberInputEvent::Press(p, _) => {
                     state.pointer = Some(p);
                     state.distance = 0.0;
                     state.origin = value.to_string();
                     state.units = 0.0;
                     state.snapshot = value.to_string();
                 }
-                NumberInputEvent::Pointer(p, phase, mods) => {
+                NumberInputEvent::Drag(p, mods) | NumberInputEvent::Release(p, mods) => {
+                    let release = matches!(event, NumberInputEvent::Release(..));
                     if let Some(previous) = state.pointer {
                         let dx = p.x - previous.x;
                         let prior_distance = state.distance;
@@ -160,7 +161,7 @@ pub(super) fn show<T: Numeric>(
                                     * multiplier(mods, &style),
                             );
                         }
-                        if phase == 2 {
+                        if release {
                             state.pointer = None;
                             if state.distance <= 3.0 {
                                 begin(&mut state, *value);
@@ -441,6 +442,6 @@ pub(super) fn show<T: Numeric>(
     if submitted || cancelled {
         ui.context.request_repaint();
     }
-    ui.context.numbers.insert(id, state);
+    ui.context.values.numbers.insert(id, state);
     response
 }

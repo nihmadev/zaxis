@@ -86,7 +86,8 @@ impl Ui<'_> {
     pub fn clip_rect(&self) -> Rect {
         let clip = self.context.scroll_clip(self.window, self.clip);
         self.context
-            .visual_clips
+            .visuals
+            .clips
             .iter()
             .rev()
             .find(|(window, _)| *window == self.window)

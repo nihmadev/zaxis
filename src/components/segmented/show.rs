@@ -123,7 +123,7 @@ impl<T: PartialEq + Hash + Clone> Widget for SegmentedControl<'_, T> {
         let mut changed = false;
         let mut focus = ui
             .context
-            .focused_widget
+            .focused()
             .and_then(|f| ids.iter().position(|id| *id == f))
             .filter(|i| enabled[*i]);
         if let Some(from) = focus {

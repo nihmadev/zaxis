@@ -188,7 +188,7 @@ impl Grid {
             .unwrap_or(ui.available_width())
             .min(ui.available_width());
         let origin = ui.layout.cursor;
-        let state = ui.context.grids.remove(&id).unwrap_or_default();
+        let state = ui.context.containers.grids.remove(&id).unwrap_or_default();
         let measured: Vec<_> = self
             .columns
             .iter()
@@ -312,7 +312,7 @@ impl Grid {
         } else {
             None
         };
-        grid.ui.context.grids.insert(
+        grid.ui.context.containers.grids.insert(
             id,
             GridState {
                 last_frame: grid.ui.context.frame,

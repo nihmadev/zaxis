@@ -56,7 +56,7 @@ impl Context {
         let reduced = self.style.motion.reduced_motion;
         let viewport = self.viewport();
         let layer = Id::new("toasts");
-        self.popup_layers.push(layer);
+        self.popups.layers.push(layer);
         let mut bottom = viewport.max.y - MARGIN;
         let mut next_pass: Option<Duration> = None;
         let mut animating = false;

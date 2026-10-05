@@ -66,7 +66,12 @@ pub(super) fn asked(
         return None;
     }
     // Where the target was drawn, after layout, scrolling and transforms.
-    let shown = ui.context.previous_hits.iter().find(|hit| hit.id == anchor);
+    let shown = ui
+        .context
+        .interaction
+        .previous_hits
+        .iter()
+        .find(|hit| hit.id == anchor);
     let visible = shown
         .map(|hit| hit.rect.intersect(hit.clip))
         .filter(|rect| !rect.is_empty())

@@ -172,7 +172,7 @@ impl Context {
     /// passes never reach this list, so only widgets that really stayed empty show up.
     pub(super) fn report_empty_hits(&mut self) {
         let mut empty = Vec::new();
-        for hit in &self.hits {
+        for hit in &self.interaction.hits {
             let interactive = !matches!(
                 hit.action,
                 HitAction::Block
@@ -241,8 +241,8 @@ impl Context {
         if !self.scrolling.stack.is_empty()
             || !self.placements.stack.is_empty()
             || self.placements.outstanding > 0
-            || self.visual_depth > 0
-            || !self.visual_clips.is_empty()
+            || self.visuals.depth > 0
+            || !self.visuals.clips.is_empty()
         {
             self.report(DiagnosticKind::UnbalancedScope, None, None, || {
                 "scope left open at the end of the pass; its closure did not return".into()
@@ -250,8 +250,8 @@ impl Context {
             self.scrolling.stack.clear();
             self.placements.stack.clear();
             self.placements.outstanding = 0;
-            self.visual_depth = 0;
-            self.visual_clips.clear();
+            self.visuals.depth = 0;
+            self.visuals.clips.clear();
         }
         let diagnostics = &mut self.diagnostics;
         std::mem::swap(&mut diagnostics.published, &mut diagnostics.current);

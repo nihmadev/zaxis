@@ -211,8 +211,8 @@ impl Window {
             .filter(|(scale, opacity)| *scale != 1.0 || *opacity != 1.0);
         if visual.is_some() {
             context.begin_placement(self.id);
-            context.visual_depth += 1;
-            context.visual_clips.push((self.id, context.viewport()));
+            context.visuals.depth += 1;
+            context.visuals.clips.push((self.id, context.viewport()));
         }
         context.paint_blur(
             self.id.with("blur"),
@@ -362,8 +362,8 @@ impl Window {
         ui.context.a11y_end(scope, Some((rect, clip)));
         if let Some((scale, opacity)) = visual {
             let context = &mut *ui.context;
-            context.visual_depth -= 1;
-            context.visual_clips.pop();
+            context.visuals.depth -= 1;
+            context.visuals.clips.pop();
             let placement = context.end_placement();
             let transform = crate::Transform::around(rect.center(), scale, Vec2::ZERO);
             let viewport = context.viewport();
