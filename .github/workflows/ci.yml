@@ -21,6 +21,20 @@ jobs:
           components: clippy
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.98.0'
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - run: cargo check --target wasm32-unknown-unknown --lib --locked
+      - run: cargo clippy --target wasm32-unknown-unknown --lib --locked -- -D warnings
+      - name: Build the web example
+        run: cargo build --target wasm32-unknown-unknown --example web_landing --features bundled-icons --locked
+
   dependencies:
     runs-on: ubuntu-latest
     steps:
@@ -85,7 +99,7 @@ jobs:
           import pathlib
           import tomllib
 
-          for manifest in ["Cargo.toml", "crates/zaxis-emoji/Cargo.toml"]:
+          for manifest in ["Cargo.toml", "crates/z-emoji/Cargo.toml"]:
               with open(manifest, "rb") as source:
                   package = tomllib.load(source)["package"]
               archive = pathlib.Path("target/package") / f"{package['name']}-{package['version']}.crate"

@@ -56,7 +56,7 @@ jobs:
           import urllib.request
 
           packages = []
-          for manifest in ["crates/zaxis-emoji/Cargo.toml", "Cargo.toml"]:
+          for manifest in ["crates/z-emoji/Cargo.toml", "Cargo.toml"]:
               with open(manifest, "rb") as source:
                   package = tomllib.load(source)["package"]
               url = f"https://crates.io/api/v1/crates/{package['name']}/{package['version']}"
