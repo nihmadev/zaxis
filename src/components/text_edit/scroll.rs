@@ -2,8 +2,8 @@
 //! `ScrollArea` state; this module only decides when to move it: keeping the top visual
 //! line steady when heights or wrapping change, and scrolling while a drag selects.
 use super::{doc::Doc, *};
+use crate::time::Instant;
 use crate::{components::edit_buffer::Delta, context::Context};
-use std::time::Instant;
 
 /// The visual line at the top of the viewport, tracked by byte so that edits above it,
 /// re-wrapping and height corrections keep the same text in place.

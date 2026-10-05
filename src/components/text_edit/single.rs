@@ -99,7 +99,8 @@ impl TextEdit<'_> {
         if self.select_all {
             state.buffer.select_all(self.text);
         }
-        let events = ui.context.take_text_edit_input(id);
+        let mut events = ui.context.take_text_edit_input(id);
+        access::requests(ui.context, id, &mut events);
         let activity = !events.is_empty() || state.focused != response.has_focus;
         response.lost_focus = state.focused && !response.has_focus;
         let mut out = Outcome::default();
@@ -146,6 +147,26 @@ impl TextEdit<'_> {
             inner.center().y - text_height * 0.5,
         );
         let clip = ui.clip.intersect(inner);
+        if ui.context.a11y_on() {
+            // The layout the carets above came from: the same cached shaping.
+            let layout = ui.context.paragraph_layout(
+                &display_line(&shown),
+                size,
+                font,
+                f32::INFINITY,
+                crate::text::DEFAULT_TAB,
+            );
+            let top = ui.context.centered_line_offset(&shown, size, font);
+            let lines = access::Lines {
+                text: access::line(&mut state.access, &shown, &layout),
+                origin: position + Vec2::new(0.0, top) - rect.min,
+                selection: match composition {
+                    Some(_) => (cursor, cursor),
+                    None => (state.buffer.anchor, state.buffer.cursor),
+                },
+            };
+            self.describe(ui, id, rect, Some(lines), composition.map(|_| shown.as_str()));
+        }
         let chrome = self.paint_chrome(ui, id, rect, response, &look);
         let (color, caret) = (chrome.color, chrome.caret);
         let selection_fill = self.selection_fill(&look);

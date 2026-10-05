@@ -17,6 +17,8 @@ pub(crate) struct AreaState {
     /// page sizes refer to the geometry the user saw.
     view: Rect,
     drag: DragScroll,
+    /// The published lines and what they were built from; see [`super::access`].
+    pub access: Option<(super::access::AreaKey, crate::accessibility::text::TextRef)>,
 }
 
 impl AreaState {
@@ -25,6 +27,7 @@ impl AreaState {
             doc: Doc::new(text, env),
             view: Rect::default(),
             drag: DragScroll::new(),
+            access: None,
         }
     }
 }
@@ -122,7 +125,8 @@ impl TextEdit<'_> {
             command = Some(current);
             drag_pointer = Some(pointer);
         }
-        let events = ui.context.take_text_edit_input(id);
+        let mut events = ui.context.take_text_edit_input(id);
+        super::access::requests(ui.context, id, &mut events);
         let activity_in = !events.is_empty();
         let focused = ui.context.has_focus(id) && self.enabled;
         let mut out = Outcome::default();
@@ -235,7 +239,9 @@ impl TextEdit<'_> {
             padding,
             ..style.scroll
         })
-        .overlay_scrollbars(true);
+        .overlay_scrollbars(true)
+        // The field itself is the node; its scroll area is an implementation detail.
+        .a11y_hidden();
         if let Some(command) = command.filter(|c| c.is_finite()) {
             scroll = scroll.scroll_offset(command);
         }
@@ -244,6 +250,7 @@ impl TextEdit<'_> {
         }
         let paint = area_paint::AreaPaint {
             id,
+            rect,
             look: &look,
             chrome: &chrome,
             view,
@@ -253,9 +260,18 @@ impl TextEdit<'_> {
             composing: composing.as_ref(),
         };
         let height_before = content.y;
-        scroll.show_at(ui, rect, Some(height_before), |child| {
-            self.paint_area(child, &paint, &mut state, &mut area)
-        });
+        let lines = scroll
+            .show_at(ui, rect, Some(height_before), |child| {
+                self.paint_area(child, &paint, &mut state, &mut area)
+            })
+            .inner;
+        if lines.is_some() {
+            let shown = composing.as_ref().map(|_| {
+                let para = area.doc.para_at(cursor);
+                area.doc.shown(self.text, para).to_owned()
+            });
+            self.describe(ui, id, rect, lines, shown.as_deref());
+        }
 
         area.view = view;
         area.doc.trim();

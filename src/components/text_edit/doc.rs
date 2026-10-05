@@ -2,11 +2,11 @@
 //! unit of shaping, caching and invalidation: an edit replaces only the paragraphs it
 //! touches, shaping happens on demand for paragraphs near the viewport, and the heights of
 //! everything else are estimates until they are first measured.
-use super::text_input::hash_bytes;
+use super::{doc_rich::slice_runs, text_input::hash_bytes};
 use crate::{
     components::edit_buffer::Delta,
     context::Context,
-    text::{TextLayout, VisualLine},
+    text::{StyleRun, TextLayout, VisualLine},
 };
 use std::sync::Arc;
 
@@ -32,8 +32,10 @@ pub(crate) struct Para {
     pub width: f32,
     /// Content hash when known (zero otherwise); used to keep measurements across resets.
     hash: u64,
-    measured: bool,
-    layout: Option<Arc<TextLayout>>,
+    pub(super) measured: bool,
+    pub(super) layout: Option<Arc<TextLayout>>,
+    /// The runs of this paragraph, rebased to its start, when the document has styled runs.
+    pub(super) rich: Option<Arc<[StyleRun]>>,
     used: u64,
 }
 
@@ -55,11 +57,13 @@ struct Overlay {
 
 pub(crate) struct Doc {
     pub paras: Vec<Para>,
-    env: Env,
+    pub(super) env: Env,
     /// Paragraphs `[..tops]` have valid `top`; the rest need a prefix sum.
     tops: usize,
-    widest: Option<f32>,
+    pub(super) widest: Option<f32>,
     overlay: Option<Overlay>,
+    /// Styled runs over the whole text, sorted and covering it; static text only.
+    pub(super) runs: Option<Arc<[StyleRun]>>,
     pub frame: u64,
 }
 
@@ -78,6 +82,7 @@ impl Doc {
             tops: 0,
             widest: None,
             overlay: None,
+            runs: None,
             frame: 0,
         };
         doc.paras = doc.split(text, 0, true, true);
@@ -107,6 +112,7 @@ impl Doc {
             hash,
             measured: false,
             layout: None,
+            rich: None,
             used: 0,
         }
     }
@@ -155,6 +161,7 @@ impl Doc {
             for p in &mut self.paras {
                 p.measured = false;
                 p.layout = None;
+                p.rich = None;
             }
             self.overlay = None;
             self.widest = None;
@@ -187,6 +194,7 @@ impl Doc {
             dst.width = src.width;
             dst.measured = src.measured;
             dst.layout = src.layout.take();
+            dst.rich = src.rich.take();
             dst.used = src.used;
         }
         self.paras = fresh;
@@ -291,8 +299,17 @@ impl Doc {
             return Arc::clone(layout);
         }
         let env = self.env;
-        let layout =
-            ctx.paragraph_layout(self.text_of(text, i), env.size, env.font, env.wrap, env.tab);
+        let source = self.text_of(text, i);
+        let layout = match self.runs.as_ref() {
+            Some(runs) => {
+                let own = slice_runs(runs, self.paras[i].start, self.paras[i].len);
+                let layout =
+                    ctx.rich_paragraph_layout(source, &own, env.size, env.font, env.wrap, env.tab);
+                self.paras[i].rich = Some(own);
+                layout
+            }
+            None => ctx.paragraph_layout(source, env.size, env.font, env.wrap, env.tab),
+        };
         self.adopt(i, &layout);
         layout
     }

@@ -12,12 +12,14 @@ use text_input::Fingerprint;
 use unicode_segmentation::UnicodeSegmentation;
 use winit::keyboard::KeyCode;
 
+mod access;
 mod area;
 mod area_paint;
 mod blink;
 mod chrome;
-mod doc;
+pub(crate) mod doc;
 mod doc_layout;
+mod doc_rich;
 mod events;
 mod geometry;
 mod options;
@@ -214,9 +216,9 @@ impl<'a> TextEdit<'a> {
     }
 }
 
-pub(crate) struct TextEditState {
-    pub(crate) buffer: EditBuffer,
-    pub(crate) scroll: f32,
+pub struct TextEditState {
+    pub buffer: EditBuffer,
+    pub scroll: f32,
     fingerprint: Fingerprint,
     history: EditHistory,
     word_drag: Option<Range<usize>>,
@@ -224,8 +226,10 @@ pub(crate) struct TextEditState {
     drag_paragraphs: bool,
     focused: bool,
     blink_interval: Duration,
-    pub(crate) preedit: Option<(String, Option<(usize, usize)>)>,
+    pub preedit: Option<(String, Option<(usize, usize)>)>,
     area: Option<Box<area::AreaState>>,
+    /// The published line of a single-line field; see [`access`].
+    access: access::LineCache,
 }
 
 impl Ui<'_> {

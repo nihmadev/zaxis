@@ -168,6 +168,7 @@ impl TextEditState {
             blink_interval,
             preedit: None,
             area: None,
+            access: None,
         }
     }
 

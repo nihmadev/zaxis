@@ -10,6 +10,8 @@ use super::{
 
 pub(super) struct AreaPaint<'a> {
     pub id: Id,
+    /// The whole field, padding included.
+    pub rect: Rect,
     pub look: &'a Look,
     pub chrome: &'a Chrome,
     /// Viewport of this pass, where content is clipped.
@@ -28,7 +30,7 @@ impl TextEdit<'_> {
         p: &AreaPaint<'_>,
         state: &mut TextEditState,
         area: &mut AreaState,
-    ) {
+    ) -> Option<super::access::Lines> {
         let (style, component) = (&p.look.style, &p.look.component);
         let origin = child.layout.bounds.min;
         child.layout.used = p.content;
@@ -180,5 +182,19 @@ impl TextEdit<'_> {
             }
         }
         child.context.paint(id.with("caret"), window, clip, caret);
+        if !child.context.a11y_on() {
+            return None;
+        }
+        let composing = p.composing.map(|(shown, clause)| {
+            cursor + clause.map_or(shown.len(), |(start, _)| start.min(shown.len()))
+        });
+        Some(super::access::Lines {
+            text: self.area_lines(child.context, area, (first, last), composing.is_some()),
+            origin: origin - p.rect.min,
+            selection: match composing {
+                Some(caret) => (caret, caret),
+                None => (state.buffer.anchor, state.buffer.cursor),
+            },
+        })
     }
 }

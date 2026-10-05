@@ -1,6 +1,7 @@
 //! Position queries over a [`Doc`]: caret location, hit testing, vertical motion and
 //! selection rectangles. All of them read the cached paragraph layouts that painting uses.
 use super::doc::Doc;
+use crate::components::text_geometry::{hit, paragraph_rects};
 use crate::{
     components::edit_buffer::{Pos, Surface},
     context::Context,
@@ -53,19 +54,14 @@ impl Doc {
         let layout = self.layout(ctx, text, para);
         let rel_y = point.y - self.top(para);
         let last = layout.lines.len() - 1;
-        let line = layout
-            .lines
-            .partition_point(|l| l.top + l.height <= rel_y)
-            .min(last);
-        let l = &layout.lines[line];
-        let (byte, cell) = l.hit(point.x);
+        let h = hit(&layout, Vec2::new(point.x, rel_y));
         let start = self.paras[para].start;
         (
             Pos {
-                byte: start + byte,
-                upstream: line < last && byte == l.end,
+                byte: start + h.byte,
+                upstream: h.line < last && h.byte == layout.lines[h.line].end,
             },
-            start + cell,
+            start + h.cell,
         )
     }
 
@@ -147,26 +143,14 @@ impl Doc {
             }
             let layout = self.layout(ctx, text, i);
             let top = self.top(i);
-            let count = layout.lines.len();
-            for (k, l) in layout.lines.iter().enumerate() {
-                let last = k + 1 == count;
-                let end = if last { len } else { l.end };
-                let (a, b) = (range.start.max(start + l.start), range.end.min(start + end));
-                let at = |x0: f32, x1: f32| {
-                    Rect::from_min_size(Vec2::new(x0, top + l.top), Vec2::new(x1 - x0, l.height))
-                };
-                if a < b {
-                    rects.extend(
-                        l.spans(a - start..b - start)
-                            .into_iter()
-                            .map(|(x0, x1)| at(x0, x1)),
-                    );
-                }
-                if last && range.start <= start + len && range.end > start + len {
-                    let edge = l.clusters.last().map_or(0.0, |c| c.trailing());
-                    rects.push(at(edge, edge + slab));
-                }
-            }
+            paragraph_rects(
+                &layout,
+                range.start.saturating_sub(start)..range.end - start,
+                len,
+                slab,
+                top,
+                &mut rects,
+            );
         }
         rects
     }

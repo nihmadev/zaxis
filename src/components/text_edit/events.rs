@@ -8,7 +8,7 @@ use super::{
     *,
 };
 use crate::{
-    components::edit_buffer::{paragraph_at, word_at, Change, Delta, Surface},
+    components::edit_buffer::{paragraph_at, snap_down, word_at, Change, Delta, Surface},
     context::Context,
 };
 
@@ -116,6 +116,16 @@ impl TextEdit<'_> {
                     let shown: String = text.chars().filter(|c| !c.is_control()).collect();
                     state.preedit = (!text.is_empty()).then_some((shown, cursor));
                 }
+                TextEditInput::SetValue(text) if !self.read_only => {
+                    state.preedit = None;
+                    change = self.replace_all(state, geo, &text);
+                }
+                TextEditInput::Select(anchor, focus) if state.preedit.is_none() => {
+                    let at = |byte: usize| snap_down(self.text, byte.min(self.text.len()));
+                    (state.buffer.anchor, state.buffer.cursor) = (at(anchor), at(focus));
+                    (state.buffer.upstream, state.buffer.column) = (false, None);
+                    state.word_drag = None;
+                }
                 TextEditInput::Pointer(pointer, extend, count) => {
                     self.pointer(ui, state, geo, pointer, extend, count);
                 }
@@ -197,6 +207,23 @@ impl TextEdit<'_> {
         if value.is_empty() {
             return None;
         }
+        state.buffer.replace_selection(self.text, &value)
+    }
+
+    /// Replace the whole text, normalized and limited like typed text; one undo step.
+    fn replace_all(
+        &mut self,
+        state: &mut TextEditState,
+        geo: &Geo<'_>,
+        text: &str,
+    ) -> Option<Change> {
+        let value = if geo.doc.is_some() {
+            multi_line(text)
+        } else {
+            single_line(text)
+        };
+        let value = fit(self.text, self.text, value, self.max_chars);
+        state.buffer.select_all(self.text);
         state.buffer.replace_selection(self.text, &value)
     }
 
