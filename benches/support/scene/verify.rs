@@ -30,6 +30,10 @@ impl Scene {
             probe.verify(&self.context);
             return;
         }
+        if let Some(probe) = &self.number {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(split) = &self.split {
             split.verify(&self.context);
             return;

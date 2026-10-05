@@ -18,6 +18,8 @@ mod images;
 mod list_box;
 #[path = "support/modal.rs"]
 mod modal;
+#[path = "support/number.rs"]
+mod number;
 #[path = "support/report.rs"]
 mod report;
 #[path = "support/scene.rs"]

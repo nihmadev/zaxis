@@ -42,6 +42,10 @@ impl Scene {
             probe.input(&mut self.context, step);
             return;
         }
+        if let Some(probe) = &mut self.number {
+            probe.input(&mut self.context, step);
+            return;
+        }
         if let Some(split) = &mut self.split {
             split.input(&mut self.context, step);
             return;

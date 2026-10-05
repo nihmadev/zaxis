@@ -9,6 +9,7 @@ pub enum Case {
     Images(crate::images::ImageCase),
     Modal(crate::modal::ModalCase),
     TextArea(crate::text_area::TextAreaCase),
+    Number(crate::number::NumberCase),
     Split(split::SplitCase),
     Cold,
     Cached,
@@ -77,7 +78,7 @@ pub enum Case {
 }
 
 impl Case {
-    pub const ALL: [Self; 136] = [
+    pub const ALL: [Self; 140] = [
         Self::Access(crate::access::AccessCase::IdleOff),
         Self::Access(crate::access::AccessCase::IdleOn),
         Self::Access(crate::access::AccessCase::ChangeOne),
@@ -120,6 +121,10 @@ impl Case {
         Self::TextArea(crate::text_area::TextAreaCase::Paste),
         Self::TextArea(crate::text_area::TextAreaCase::Scroll),
         Self::TextArea(crate::text_area::TextAreaCase::Resize),
+        Self::Number(crate::number::NumberCase::Idle),
+        Self::Number(crate::number::NumberCase::Typing),
+        Self::Number(crate::number::NumberCase::Keys),
+        Self::Number(crate::number::NumberCase::Drag),
         Self::Images(crate::images::ImageCase::Empty),
         Self::Images(crate::images::ImageCase::Warm),
         Self::Images(crate::images::ImageCase::ColdPng),
@@ -225,6 +230,7 @@ impl Case {
             Self::Images(case) => case.name(),
             Self::Modal(case) => case.name(),
             Self::TextArea(case) => case.name(),
+            Self::Number(case) => case.name(),
             Self::Split(case) => case.name(),
             Self::Cold => "cold_ui",
             Self::Cached => "cached_ui",
@@ -311,6 +317,7 @@ impl Case {
             || matches!(self, Self::Carousel(c) if c.interactive())
             || matches!(self, Self::Modal(c) if c.interactive())
             || matches!(self, Self::TextArea(c) if c.interactive())
+            || matches!(self, Self::Number(c) if c.interactive())
             || self.combo()
             || matches!(
                 self,

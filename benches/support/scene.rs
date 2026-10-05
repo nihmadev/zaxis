@@ -1,4 +1,5 @@
 use std::{hint::black_box, sync::Arc, time::Duration};
+use zaxis::testing::Inspect;
 use zaxis::winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{DeviceId, ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
@@ -73,6 +74,7 @@ pub struct Scene {
     pub images: Option<crate::images::Probe>,
     modal: Option<crate::modal::Probe>,
     text_area: Option<crate::text_area::Probe>,
+    number: Option<crate::number::Probe>,
     split: Option<split::Probe>,
     disclosure: Option<crate::disclosure::Probe>,
     list_box: Option<crate::list_box::Probe>,
@@ -105,6 +107,11 @@ impl Scene {
         };
         let text_area = if let Case::TextArea(kind) = case {
             Some(crate::text_area::Probe::new(&mut context, kind, count))
+        } else {
+            None
+        };
+        let number = if let Case::Number(kind) = case {
+            Some(crate::number::Probe::new(&mut context, kind, count))
         } else {
             None
         };
@@ -155,6 +162,7 @@ impl Scene {
             images,
             modal,
             text_area,
+            number,
             dnd: if let Case::Dnd(kind) = case {
                 Some(crate::dnd::Probe::new(kind, count))
             } else {

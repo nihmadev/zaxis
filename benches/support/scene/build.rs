@@ -36,6 +36,10 @@ impl Scene {
             probe.build(&mut self.context);
             return;
         }
+        if let Some(probe) = &mut self.number {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(split) = &mut self.split {
             split.build(&mut self.context);
             return;
@@ -195,9 +199,6 @@ impl Scene {
                                 .picker_type(if case.floating_picker() { ColorPickerType::Floating } else { ColorPickerType::Internal }));
                             targets.color_picker = Some(response);
                             targets.button = Some(ui.button("React"));
-                            if !case.floating_picker() {
-                                targets.palette = Rect::from_min_size(response.rect.min + vec2(0.0, 34.0), vec2(300.0, 112.0));
-                            }
                             return;
                         }
                         *model_label = format!("Model: {clicks} / {checked} / {value:.2}");
@@ -220,29 +221,29 @@ impl Scene {
             }
         });
         if self.case.color_picker_probe() {
-            if self.case.floating_picker() {
-                // Identify the popup's content clip from public draw data, so the probe
-                // observes its actual retained position after a title-bar drag.
-                let clip = self
-                    .context
-                    .draw_data()
-                    .commands
-                    .iter()
-                    .map(|command| command.clip_rect)
-                    .find(|clip| (clip.size() - vec2(300.0, 176.0)).length() < 0.01)
-                    .expect("open color picker popup was not rendered");
-                self.targets.palette = Rect::from_min_size(clip.min, vec2(300.0, 112.0));
-                self.targets.floating = Rect::from_min_max(
-                    clip.min - vec2(12.0, self.context.style().title_height + 12.0),
-                    clip.max + Vec2::splat(12.0),
-                );
-            }
-            let origin = self.targets.palette.min;
-            self.targets.hue = Rect::from_min_size(origin + vec2(0.0, 122.0), vec2(300.0, 14.0));
-            self.targets.fields = std::array::from_fn(|field| {
-                Rect::from_min_size(origin + vec2(field as f32 * 75.0, 150.0), vec2(70.0, 26.0))
-            });
+            self.locate_color_picker();
         }
         black_box(self.context.draw_data());
+    }
+
+    /// Where the open editor's palette, hue strip and fields are, from the regions the
+    /// pass published: the probe follows the editor wherever layout or a drag put it.
+    fn locate_color_picker(&mut self) {
+        let id = self.targets.color_picker.expect("color picker probe").id;
+        let probe = self.context.probe();
+        let region = |id| {
+            probe
+                .previous_hits
+                .iter()
+                .find(|hit| hit.id == id)
+                .map(|hit| hit.rect)
+                .expect("open color picker editor was not rendered")
+        };
+        self.targets.palette = region(id.with("palette"));
+        self.targets.hue = region(id.with("hue"));
+        self.targets.fields = std::array::from_fn(|field| region(id.with(("field", field))));
+        if self.case.floating_picker() {
+            self.targets.floating = probe.windows[&id.with("floating")].rect;
+        }
     }
 }
