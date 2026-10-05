@@ -1,6 +1,7 @@
 //! Real ComboBox paths: cached/animated popup, keyboard, wheel, filters and live updates.
 use crate::scene::Case;
 use std::time::Duration;
+use zaxis::testing::Inspect;
 use zaxis::winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseScrollDelta, TouchPhase, WindowEvent},
@@ -130,10 +131,17 @@ impl Probe {
     }
     pub fn verify(&self, c: &Context, case: Case, step: usize) {
         assert_eq!(self.selected, Some(self.options.len() / 2));
+        // Rows outside the popup's clip are culled from the draw data, so its vertices
+        // look the same whether or not the list is virtualized: count the rows built.
+        let rows = self.rows_painted(c);
+        let fit = c.style().combo_box.visible_rows + 1;
         assert!(
-            c.draw_data().vertices.len() < 3000,
-            "popup must virtualize rows"
+            rows <= fit,
+            "popup must virtualize rows: {rows} built, {fit} fit"
         );
+        if step > 12 && !matches!(case, Case::ComboClosed | Case::ComboToggle) {
+            assert!(rows > 0, "the open popup shows its rows");
+        }
         if step > 12 && matches!(case, Case::ComboClosed | Case::ComboOpen) {
             assert_eq!(c.draw_data().revision, self.revision);
             assert_eq!(c.cache_stats().tessellated_elements, self.tessellations);
@@ -142,6 +150,18 @@ impl Probe {
         if step > 12 && case == Case::ComboFilter {
             assert!(self.filter_submitted);
         }
+    }
+    /// Option rows painted by the last pass, including rows the popup's clip culls: the
+    /// paint cache keeps exactly the elements a pass painted.
+    fn rows_painted(&self, c: &Context) -> usize {
+        let Some(trigger) = self.trigger else {
+            return 0;
+        };
+        let cache = c.probe().cache;
+        self.options
+            .iter()
+            .filter(|o| cache.contains_key(&trigger.id.with(("option", o.id)).with("caption")))
+            .count()
     }
 }
 fn key(c: &mut Context, key: KeyCode) {

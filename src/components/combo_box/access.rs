@@ -14,6 +14,22 @@ pub(super) fn trigger(node: &mut AccessNode, id: Id, label: &str, enabled: bool)
         .action(Kind::SetValue);
 }
 
+/// The trigger once the pass's input is applied: the chosen label or the placeholder,
+/// whether the list is open and whether the value is invalid.
+pub(super) fn trigger_state(
+    node: &mut AccessNode,
+    value: Option<&str>,
+    placeholder: &str,
+    open: bool,
+    invalid: bool,
+) {
+    match value {
+        Some(label) => node.value(label),
+        None => node.placeholder(placeholder),
+    };
+    node.expanded(open).invalid(invalid);
+}
+
 /// The node that holds focus while the list is open (the trigger, or the filter field)
 /// points at the list and at the highlighted option.
 pub(super) fn popup_owner(node: &mut AccessNode, combo: Id, list: Id, active: Option<Id>) {

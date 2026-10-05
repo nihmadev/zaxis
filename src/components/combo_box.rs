@@ -1,16 +1,20 @@
-use super::{Popup, Response, ScrollArea, ScrollStyle, TextEdit, Ui, Widget};
-use crate::{
-    context::{HitAction, HitRegion},
-    CornerRadius, Easing, Id, Padding, Rect, TweenOptions, Vec2,
-};
+use super::{Popup, Response, Ui, Widget};
+use crate::{CornerRadius, Id, Padding};
 use std::{hash::Hash, panic::Location, time::Duration};
-use winit::keyboard::KeyCode;
 
+// One pass of `ComboBox::ui` (show.rs) runs these stages in order: the trigger, the
+// requests that open or close the popup, the list in the popup (with keyboard navigation),
+// then the one path that applies a choice.
 mod access;
+mod choice;
+mod list;
+mod nav;
+mod open;
 mod options;
 mod paint;
 mod show;
 mod style;
+mod trigger;
 pub use style::ComboBoxStyle;
 
 /// An option's identity is independent of its label, value and position.
@@ -251,10 +255,7 @@ pub struct ComboBoxState {
     pub open: bool,
     pub active: Option<Id>,
     pub query: String,
-    focus_filter: bool,
-    active_row: Option<usize>,
-    list_size: Vec2,
-    options: options::OptionsState,
+    list: list::ListState,
 }
 
 impl Ui<'_> {

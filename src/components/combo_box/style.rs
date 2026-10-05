@@ -93,3 +93,45 @@ impl ComboBoxStyle {
         }
     }
 }
+
+impl<T> super::ComboBox<'_, T> {
+    /// `theme` (or the style this combo box was given) with its overrides, normalized.
+    pub(super) fn resolved_style(&self, theme: &ComboBoxStyle) -> ComboBoxStyle {
+        let mut style = self.style.as_ref().unwrap_or(theme).clone();
+        if let Some(width) = self.width {
+            style.width = width;
+        }
+        if let Some(count) = self.visible_rows {
+            style.visible_rows = count;
+        }
+        if let Some(duration) = self.duration {
+            style.animation_duration = duration;
+        }
+        if let Some(padding) = self.padding {
+            style.trigger_padding = padding;
+        }
+        if let Some(height) = self.row_height {
+            style.row_height = height;
+        }
+        if let Some(height) = self.trigger_height {
+            style.trigger_height = height;
+        }
+        if let Some(gap) = self.row_gap {
+            style.row_gap = gap;
+        }
+        if let Some(gap) = self.label_gap {
+            style.label_gap = gap;
+        }
+        if let Some(radius) = self.rounding {
+            style.rounding = radius;
+        }
+        if let Some(padding) = self.popup_padding {
+            style.popup_padding = padding;
+        }
+        if let Some(size) = self.font_size {
+            style.font_size = size;
+        }
+        style.normalize();
+        style
+    }
+}
