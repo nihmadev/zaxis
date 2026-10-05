@@ -188,6 +188,8 @@ pub struct Probe<'a> {
     pub input_transforms: &'a HashMap<Id, crate::Transform>,
     pub effect_states: &'a HashMap<Id, crate::components::effects::EffectState>,
     pub elements: &'a [Element],
+    /// Hit regions registered so far in the current pass.
+    pub hits: &'a [HitRegion],
     pub previous_hits: &'a [HitRegion],
     pub capture: &'a Option<interaction::Capture>,
     pub clicked: &'a HashSet<Id>,
@@ -247,6 +249,7 @@ impl Inspect for Context {
             input_transforms: self.visuals.published(),
             effect_states: &self.visuals.effects,
             elements: &self.paint_state.elements,
+            hits: &self.interaction.hits,
             previous_hits: &self.interaction.previous_hits,
             capture: &self.interaction.capture,
             clicked: &self.interaction.clicked,

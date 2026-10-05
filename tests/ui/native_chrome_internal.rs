@@ -1,14 +1,13 @@
 use crate::prelude::*;
 use winit::dpi::PhysicalSize;
 #[cfg(not(target_os = "macos"))]
-use winit::{dpi::PhysicalPosition, event::DeviceId};
 use winit::{
-    event::{ElementState, MouseButton, WindowEvent},
+    dpi::PhysicalPosition,
+    event::{DeviceId, ElementState, MouseButton, WindowEvent},
     window::ResizeDirection,
 };
-use zaxis::context::native_chrome::resize_direction;
 #[cfg(not(target_os = "macos"))]
-use zaxis::{vec2, Padding};
+use zaxis::{context::native_chrome::resize_direction, vec2, Padding};
 use zaxis::{Root, TitleBar};
 
 #[test]
@@ -70,12 +69,12 @@ fn system_caption_has_no_custom_controls_or_reserved_client_area() {
     assert_eq!(TitleBar::HEIGHT, 0.0);
     context.run(|context| {
         Root::new().show(context, |_| {});
-        let hits = context.hits.len();
+        let hits = context.probe().hits.len();
         let elements = context.probe().elements.len();
         let response = TitleBar::new("Test").show(context);
         assert!(!response.close && !response.minimize && !response.maximize);
         assert!(context.probe().native_chrome.is_none());
-        assert_eq!(context.hits.len(), hits);
+        assert_eq!(context.probe().hits.len(), hits);
         assert_eq!(context.probe().elements.len(), elements);
     });
 }
