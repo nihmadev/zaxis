@@ -70,6 +70,7 @@ fn local_growth_shrink_empty_and_reorder_preserve_complete_paint_stream() {
             mesh: mesh(8, i as f32),
             blur: None,
             scroll_hint: false,
+            material: None,
         })
         .collect();
     context.rebuild_geometry();
@@ -147,6 +148,7 @@ fn compaction_bounds_slack_after_large_element_disappears() {
             mesh: mesh(triangles, 0.0),
             blur: None,
             scroll_hint: false,
+            material: None,
         })
         .collect();
     context.rebuild_geometry();

@@ -1,5 +1,7 @@
 mod combo_box;
 mod image;
+mod material_backends;
+mod material_gpu;
 mod number;
 mod pipeline;
 mod probe;
