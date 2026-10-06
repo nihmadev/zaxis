@@ -16,6 +16,9 @@ mod disclosure;
 mod drag;
 mod events_internal;
 mod field;
+#[cfg(feature = "file-dialogs")]
+mod file_dialogs;
+mod file_drop;
 mod font_weight;
 mod geometry_internal;
 mod grid;
@@ -23,6 +26,7 @@ mod interact;
 mod layout_motion;
 mod lifecycle_internal;
 mod list_box;
+mod material;
 mod menu_bar;
 mod modal;
 mod monospace;
