@@ -16,6 +16,8 @@ mod dnd;
 mod images;
 #[path = "support/list_box.rs"]
 mod list_box;
+#[path = "support/material.rs"]
+mod material;
 #[path = "support/modal.rs"]
 mod modal;
 #[path = "support/number.rs"]

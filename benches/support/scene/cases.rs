@@ -7,6 +7,7 @@ pub enum Case {
     ListBox(crate::list_box::ListCase),
     Carousel(crate::carousel::CarouselCase),
     Images(crate::images::ImageCase),
+    Material(crate::material::MaterialCase),
     Modal(crate::modal::ModalCase),
     TextArea(crate::text_area::TextAreaCase),
     Number(crate::number::NumberCase),
@@ -78,7 +79,7 @@ pub enum Case {
 }
 
 impl Case {
-    pub const ALL: [Self; 140] = [
+    pub const ALL: [Self; 145] = [
         Self::Access(crate::access::AccessCase::IdleOff),
         Self::Access(crate::access::AccessCase::IdleOn),
         Self::Access(crate::access::AccessCase::ChangeOne),
@@ -112,6 +113,11 @@ impl Case {
         Self::Carousel(crate::carousel::CarouselCase::Jump),
         Self::Carousel(crate::carousel::CarouselCase::Photos),
         Self::Carousel(crate::carousel::CarouselCase::Lifecycle),
+        Self::Material(crate::material::MaterialCase::Baseline),
+        Self::Material(crate::material::MaterialCase::Same),
+        Self::Material(crate::material::MaterialCase::Many),
+        Self::Material(crate::material::MaterialCase::Animated),
+        Self::Material(crate::material::MaterialCase::Scroll),
         Self::Modal(crate::modal::ModalCase::Closed),
         Self::Modal(crate::modal::ModalCase::Toggle),
         Self::Modal(crate::modal::ModalCase::Steady),
@@ -228,6 +234,7 @@ impl Case {
             Self::ListBox(case) => case.name(),
             Self::Carousel(case) => case.name(),
             Self::Images(case) => case.name(),
+            Self::Material(case) => case.name(),
             Self::Modal(case) => case.name(),
             Self::TextArea(case) => case.name(),
             Self::Number(case) => case.name(),
@@ -315,6 +322,7 @@ impl Case {
             || matches!(self, Self::Disclosure(c) if c.interactive())
             || matches!(self, Self::ListBox(c) if c.interactive())
             || matches!(self, Self::Carousel(c) if c.interactive())
+            || matches!(self, Self::Material(c) if c.interactive())
             || matches!(self, Self::Modal(c) if c.interactive())
             || matches!(self, Self::TextArea(c) if c.interactive())
             || matches!(self, Self::Number(c) if c.interactive())

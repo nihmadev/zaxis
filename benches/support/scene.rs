@@ -72,6 +72,7 @@ pub struct Scene {
     scroll: crate::scroll::Probe,
     combo: Option<crate::combo_box::Probe>,
     pub images: Option<crate::images::Probe>,
+    material: Option<crate::material::Probe>,
     modal: Option<crate::modal::Probe>,
     text_area: Option<crate::text_area::Probe>,
     number: Option<crate::number::Probe>,
@@ -97,6 +98,11 @@ impl Scene {
         }
         let images = if let Case::Images(case) = case {
             Some(crate::images::Probe::new(&mut context, case, count))
+        } else {
+            None
+        };
+        let material = if let Case::Material(kind) = case {
+            Some(crate::material::Probe::new(&mut context, kind, count))
         } else {
             None
         };
@@ -160,6 +166,7 @@ impl Scene {
             scroll: crate::scroll::Probe::default(),
             combo: case.combo().then(|| crate::combo_box::Probe::new(count)),
             images,
+            material,
             modal,
             text_area,
             number,
@@ -249,7 +256,7 @@ impl Scene {
                 clip_rect: Rect::from_min_size(p, size),
                 texture: TextureId(9000),
                 blur: None,
-                scroll_hint: false,
+                ..Default::default()
             });
         }
         data.textures.push(TextureImage {

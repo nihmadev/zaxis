@@ -28,6 +28,10 @@ impl Scene {
             probe.build(&mut self.context);
             return;
         }
+        if let Some(probe) = &mut self.material {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(probe) = &mut self.modal {
             probe.build(&mut self.context);
             return;

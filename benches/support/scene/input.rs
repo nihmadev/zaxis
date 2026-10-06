@@ -34,6 +34,10 @@ impl Scene {
             probe.input(&mut self.context, step);
             return;
         }
+        if let Some(probe) = &mut self.material {
+            probe.input(&mut self.context, step);
+            return;
+        }
         if let Some(probe) = &mut self.modal {
             probe.input(&mut self.context, step);
             return;

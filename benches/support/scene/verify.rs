@@ -22,6 +22,10 @@ impl Scene {
             probe.verify(&self.context);
             return;
         }
+        if let Some(probe) = &self.material {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(probe) = &self.modal {
             probe.verify(&self.context);
             return;
