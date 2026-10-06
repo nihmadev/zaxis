@@ -1,6 +1,8 @@
 //! Incremental frame meshes, ordered batching, and draw-data revisions.
 
-use super::{CacheStats, Context, Id};
+mod material;
+
+use super::{CacheStats, Context, Id, MaterialUse};
 use crate::{shapes::Mesh, DrawCommand, DrawData, Rect, TextureId, Vec2, Vertex};
 use std::{collections::HashSet, ops::Range, sync::Arc};
 
@@ -11,15 +13,18 @@ pub struct Element {
     pub mesh: Arc<Mesh>,
     pub blur: Option<f32>,
     pub scroll_hint: bool,
+    /// A user material replacing the color stage of this element.
+    pub material: Option<MaterialUse>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct ElementKey {
     pub(super) id: Id,
     pub(super) layer: Id,
     pub(super) clip: Rect,
     pub(super) blur: Option<f32>,
     pub(super) scroll_hint: bool,
+    pub(super) material: Option<MaterialUse>,
 }
 
 /// Stable buffer locations. Growing an element relocates only that element;
@@ -86,6 +91,7 @@ impl FrameGeometry {
                 clip: e.clip,
                 blur: e.blur,
                 scroll_hint: e.scroll_hint,
+                material: e.material.clone(),
             })
             .collect();
         let metadata_changed = keys != self.previous;
@@ -216,29 +222,39 @@ impl FrameGeometry {
     /// Draw commands in element order, merging neighbors that share texture, clip and
     /// effect state.
     fn batch_commands(&mut self, elements: &[Element]) {
-        self.draw_data.commands.clear();
+        let data = &mut self.draw_data;
+        data.commands.clear();
+        data.materials.clear();
+        data.material_uniforms.clear();
         for (element, slot) in elements.iter().zip(&self.slots) {
+            let material = element.material.as_ref();
+            let block = material::block_of(material);
             for (range, texture) in &slot.batches {
                 let indices = (range.start + slot.indices.start as u32)
                     ..(range.end + slot.indices.start as u32);
-                if let Some(last) = self.draw_data.commands.last_mut() {
+                if let Some(last) = data.commands.last() {
                     if last.texture == *texture
                         && last.blur.is_none()
                         && element.blur.is_none()
                         && last.scroll_hint == element.scroll_hint
                         && last.clip_rect == element.clip
                         && last.indices.end == indices.start
+                        && material::same(data, &last.material, material, &block)
                     {
-                        last.indices.end = indices.end;
+                        if let Some(last) = data.commands.last_mut() {
+                            last.indices.end = indices.end;
+                        }
                         continue;
                     }
                 }
-                self.draw_data.commands.push(DrawCommand {
+                let bound = material::bind(data, material, &block);
+                data.commands.push(DrawCommand {
                     indices,
                     clip_rect: element.clip,
                     texture: *texture,
                     blur: element.blur,
                     scroll_hint: element.scroll_hint,
+                    material: bound,
                 });
             }
         }

@@ -3,6 +3,15 @@
 use crate::{text::TextFont, Color, CornerRadius, FontWeight, Rect, Shape, Vec2};
 use std::sync::Arc;
 
+/// The widget texture of a material: an image and the part of it the shape shows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MaterialImage {
+    pub handle: crate::ImageHandle,
+    pub texture: crate::TextureId,
+    /// Origin and size in 0..1 of the texture.
+    pub crop: Rect,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Paint {
     Visual {
@@ -25,6 +34,16 @@ pub enum Paint {
         rect: Rect,
         axis: usize,
         color: Color,
+    },
+    /// The mesh of a shape drawn by a user material: local UVs over `rect` and the texture of
+    /// `image` if there is one. Parameters, size and time are not part of the description;
+    /// they travel with the element so that changing them never retessellates.
+    Material {
+        rect: Rect,
+        rounding: CornerRadius,
+        color: Color,
+        opacity: f32,
+        image: Option<MaterialImage>,
     },
     Gradient {
         rect: Rect,
@@ -112,6 +131,7 @@ impl Paint {
             | Self::Paragraph { position, .. }
             | Self::Rich { position, .. } => *position,
             Self::Image { rect, .. }
+            | Self::Material { rect, .. }
             | Self::ScrollHint { rect, .. }
             | Self::Gradient { rect, .. } => rect.min,
             Self::Shape(shape) => match shape {
@@ -138,6 +158,7 @@ impl Paint {
             | Self::Paragraph { position, .. }
             | Self::Rich { position, .. } => *position += delta,
             Self::Image { rect, .. }
+            | Self::Material { rect, .. }
             | Self::ScrollHint { rect, .. }
             | Self::Gradient { rect, .. } => *rect = rect.translate(delta),
             Self::Shape(shape) => match shape {

@@ -43,6 +43,7 @@ impl Context {
             self.next_repaint = None;
         }
         self.sync_appearance();
+        self.file_notify.acknowledge();
         self.poll_clipboard();
         // Clear before the callback so repaint requests made by widgets survive it.
         self.dirty = false;
@@ -61,6 +62,7 @@ impl Context {
         self.modals.begin_pass();
         self.tick_auto_scroll();
         self.drag_begin_frame();
+        self.file_drop_begin();
         self.tick_selection_autoscroll();
         self.scrolling.begin_frame();
         self.carousel_wheel.begin_frame();
@@ -83,12 +85,14 @@ impl Context {
         self.scrolling.finish_frame(self.frame);
         self.finish_auto_scroll();
         self.finish_images();
+        self.finish_materials();
         self.rebuild_geometry();
         self.images_epoch = self.images.lock().epoch();
         self.text.end_frame();
         self.animations.finish_pass(self.frame);
         self.publish_routing();
         self.drag_finish_state();
+        self.file_drop_finish();
         self.paint_state.retire(self.frame);
         self.settle_focus();
         self.finish_selection();

@@ -142,6 +142,7 @@ impl PaintState {
             mesh: Arc::clone(&cached.mesh),
             blur: None,
             scroll_hint: super::data::is_scroll_hint(&cached.paint),
+            material: None,
         });
     }
 }

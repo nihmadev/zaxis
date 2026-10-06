@@ -106,6 +106,7 @@ pub struct PendingPaint {
     pub clip: Rect,
     pub paint: Vec<Paint>,
     pub blur: Option<f32>,
+    pub material: Option<super::MaterialUse>,
     pub scope: usize,
 }
 impl PendingPaint {
@@ -206,6 +207,7 @@ impl Context {
             clip,
             paint,
             blur: None,
+            material: None,
             scope,
         });
         Ok(())
@@ -241,6 +243,7 @@ impl Context {
             self.paint(pending.id, pending.layer, clip, pending.paint);
             if let Some(element) = self.paint_state.last_element_mut(pending.id) {
                 element.blur = pending.blur;
+                element.material = pending.material;
             }
         }
         for (mut hit, scope) in std::mem::take(&mut self.scrolling.hits) {

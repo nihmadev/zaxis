@@ -7,9 +7,13 @@ mod containers;
 mod cursor;
 mod debug_overlay;
 mod diagnostics;
+#[cfg(feature = "file-dialogs")]
+mod dialogs;
 pub mod drag;
 #[doc(hidden)]
 pub mod events;
+pub(crate) mod file_drop;
+mod file_io;
 mod frame;
 #[doc(hidden)]
 pub mod geometry;
@@ -21,6 +25,7 @@ mod init;
 mod input;
 mod interaction;
 mod keyboard;
+mod materials;
 mod menus;
 pub(crate) mod modal;
 #[doc(hidden)]
@@ -62,7 +67,8 @@ pub use diagnostics::{DebugOverlay, Diagnostic, DiagnosticKind};
 pub use id::Id;
 pub use input::{EventResponse, InputState};
 pub(crate) use interaction::{HitAction, HitRegion};
-pub(crate) use paint::Paint;
+pub use materials::MaterialUse;
+pub(crate) use paint::{MaterialImage, Paint};
 pub use shared::SharedResources;
 pub(crate) use text_input::TextEditInput;
 pub(crate) use values::{NumberInputEvent, SliderInput};
@@ -131,6 +137,8 @@ pub struct Context {
     pub(crate) visuals: visual::Visuals,
     pub(crate) placements: placement::Placements,
     pub(crate) scrolling: scroll::Scrolling,
+    /// The clock of animated materials.
+    pub(crate) materials: materials::MaterialState,
 
     // Who receives input: regions, capture, focus, gestures, layers and overlays.
     /// Hit regions, capture, focus and activations.
@@ -144,6 +152,11 @@ pub struct Context {
     pub(crate) tooltips: tooltip::Tooltips,
     pub(crate) toasts: toast::Toasts,
     pub(crate) drag: drag::DragRuntime,
+    /// Files dragged in from the system, and the notice background file work raises.
+    pub(crate) files: file_drop::FileDrop,
+    pub(crate) file_notify: crate::files::Notify,
+    #[cfg(feature = "file-dialogs")]
+    pub(crate) dialogs: dialogs::Dialogs,
     pub(crate) ime_area: Option<crate::Rect>,
     ime_target: Option<Id>,
 

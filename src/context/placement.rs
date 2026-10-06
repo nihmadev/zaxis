@@ -27,6 +27,7 @@ pub struct PlacedPaint {
     pub clip: Rect,
     pub paint: Vec<Paint>,
     pub blur: Option<f32>,
+    pub material: Option<super::MaterialUse>,
     scope: Option<usize>,
 }
 
@@ -148,6 +149,7 @@ impl Context {
             clip,
             paint,
             blur: None,
+            material: None,
             scope,
         });
         Ok(())

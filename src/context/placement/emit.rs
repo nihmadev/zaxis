@@ -146,11 +146,14 @@ impl Context {
                 clip: paint.clip,
                 paint: paint.paint,
                 blur: paint.blur,
+                material: paint.material,
                 scope,
             });
         } else {
             self.paint(paint.id, paint.layer, paint.clip, paint.paint);
-            if let Some(radius) = paint.blur {
+            if let Some(material) = paint.material {
+                self.mark_material(paint.id, material, paint.blur);
+            } else if let Some(radius) = paint.blur {
                 self.mark_blur(paint.id, radius);
             }
         }

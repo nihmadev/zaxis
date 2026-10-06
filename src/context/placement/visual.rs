@@ -4,7 +4,7 @@
 
 use super::Placement;
 use crate::{
-    context::{Context, HitAction, HitRegion, Paint},
+    context::{Context, HitAction, HitRegion, MaterialUse, Paint},
     Rect, Transform, Vec2,
 };
 
@@ -23,26 +23,30 @@ impl Context {
         }
         let viewport = self.viewport();
         self.transform_portal(&p, transform);
-        let wrap = |paint: &mut Vec<Paint>, blur: &mut Option<f32>| {
-            *paint = vec![Paint::Visual {
-                paint: std::mem::take(paint),
-                transform,
-                opacity,
-            }];
-            if let Some(radius) = blur {
-                *radius *= transform.scale;
-            }
-        };
+        let wrap =
+            |paint: &mut Vec<Paint>, blur: &mut Option<f32>, material: &mut Option<MaterialUse>| {
+                *paint = vec![Paint::Visual {
+                    paint: std::mem::take(paint),
+                    transform,
+                    opacity,
+                }];
+                if let Some(radius) = blur {
+                    *radius *= transform.scale;
+                }
+                if let Some(material) = material {
+                    material.scale(transform.scale);
+                }
+            };
         let outer = p.outer_clip(clip, viewport);
         for paint in &mut p.paints {
-            wrap(&mut paint.paint, &mut paint.blur);
+            wrap(&mut paint.paint, &mut paint.blur, &mut paint.material);
             paint.clip = transform.rect(paint.clip).intersect(outer(paint.layer));
         }
         for paint in &mut self.scrolling.pending[p.paints_range.clone()] {
             if paint.layer != p.window {
                 continue;
             }
-            wrap(&mut paint.paint, &mut paint.blur);
+            wrap(&mut paint.paint, &mut paint.blur, &mut paint.material);
             paint.clip = transform.rect(paint.clip).intersect(clip);
         }
         let mut map_hit = |hit: &mut HitRegion| {

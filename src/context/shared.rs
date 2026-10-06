@@ -3,6 +3,7 @@
 use super::Context;
 use crate::{
     images::{ImageMetrics, SharedImages, TextureIds},
+    material::MaterialRegistry,
     text::GlyphStore,
     FontFamily, ImageDecoder, ImageLimits, Style, Theme,
 };
@@ -50,6 +51,7 @@ struct Inner {
     images: SharedImages,
     appearance: Mutex<Appearance>,
     appearance_revision: AtomicU64,
+    materials: Mutex<MaterialRegistry>,
 }
 
 #[derive(Default)]
@@ -101,6 +103,7 @@ impl SharedResources {
                 images: SharedImages::new(ids),
                 appearance: Mutex::default(),
                 appearance_revision: AtomicU64::new(0),
+                materials: Mutex::default(),
             }),
         }
     }
@@ -185,6 +188,14 @@ impl SharedResources {
 
     pub(crate) fn appearance_revision(&self) -> u64 {
         self.inner.appearance_revision.load(Ordering::Acquire)
+    }
+
+    /// The registry of materials; see `material::registry`.
+    pub(crate) fn materials(&self) -> std::sync::MutexGuard<'_, MaterialRegistry> {
+        self.inner
+            .materials
+            .lock()
+            .expect("material registry mutex")
     }
 
     fn lock_appearance(&self) -> std::sync::MutexGuard<'_, Appearance> {

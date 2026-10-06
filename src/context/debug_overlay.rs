@@ -39,6 +39,7 @@ fn action_name(action: HitAction) -> &'static str {
         HitAction::ColumnResize { .. } => "column resize",
         HitAction::DragSource { .. } => "drag source",
         HitAction::DropTarget { .. } => "drop target",
+        HitAction::FileDrop { .. } => "file drop target",
         HitAction::Semantic => "semantic",
     }
 }

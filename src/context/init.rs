@@ -38,6 +38,7 @@ impl Context {
     }
 
     pub(super) fn build(shared: SharedResources) -> Self {
+        let file_notify = crate::files::Notify::new(shared.images().clone());
         Self {
             native_chrome: None,
             input: InputState {
@@ -78,6 +79,7 @@ impl Context {
             visuals: Default::default(),
             placements: Default::default(),
             scrolling: Default::default(),
+            materials: Default::default(),
             interaction: Default::default(),
             gestures: Default::default(),
             windows: HashMap::new(),
@@ -88,6 +90,10 @@ impl Context {
             tooltips: Default::default(),
             toasts: Default::default(),
             drag: Default::default(),
+            files: Default::default(),
+            #[cfg(feature = "file-dialogs")]
+            dialogs: super::dialogs::Dialogs::new(file_notify.clone()),
+            file_notify,
             ime_area: None,
             ime_target: None,
             text_fields: Default::default(),

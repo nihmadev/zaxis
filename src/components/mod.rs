@@ -30,6 +30,7 @@ pub mod image;
 pub mod key_box;
 pub mod list_box;
 pub mod loader;
+pub mod material;
 pub mod menu_bar;
 pub mod modal;
 pub(crate) mod motion;
@@ -108,6 +109,7 @@ pub use list_box::{
     ListOutput, ListRow,
 };
 pub use loader::Loader;
+pub use material::MaterialPaint;
 pub use menu_bar::{MenuBar, MenuBarOutput, MenuItem};
 pub use modal::{
     CloseReason, Confirm, Confirmation, Dialog, DialogAction, DialogOutput, Modal, ModalAnchor,

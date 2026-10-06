@@ -27,6 +27,23 @@ pub(super) fn mesh(text: &mut TextSystem, paint: &[Paint], scale: f32, image_sca
                 }
             }
             Paint::Shape(shape) => mesh.shape(shape, scale),
+            Paint::Material {
+                rect,
+                rounding,
+                color,
+                opacity,
+                image,
+            } => mesh.image(
+                *rect,
+                Rect::from_min_size(Vec2::ZERO, Vec2::ONE),
+                *rounding,
+                *color,
+                *opacity,
+                image
+                    .as_ref()
+                    .map_or(crate::TextureId::WHITE, |i| i.texture),
+                image_scale,
+            ),
             Paint::Image {
                 rect,
                 uv,

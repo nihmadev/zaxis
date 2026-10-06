@@ -55,6 +55,7 @@ impl Context {
     /// Check a deterministic host clock, matching `run_at`.
     pub fn needs_repaint_at(&self, now: Instant) -> bool {
         self.dirty
+            || self.file_notify.pending()
             || self.shared_state_changed()
             || self.next_repaint().is_some_and(|time| time <= now)
     }
@@ -66,5 +67,6 @@ impl Context {
         self.animations.wants_frame()
             || self.scrolling.auto_deadline.is_some()
             || self.drag.scrolling
+            || self.materials.animating
     }
 }

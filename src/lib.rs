@@ -18,8 +18,10 @@ pub mod animation;
 pub mod app;
 pub mod components;
 pub mod context;
+pub mod files;
 pub mod images;
 pub mod layout;
+pub mod material;
 pub mod protocol;
 pub mod renderer;
 pub mod shapes;
@@ -56,17 +58,17 @@ pub use components::{
     ContextMenuStyle, ContextMenuWidget, DragValue, Field, Grid, GridOutput, GridRow, GridStyle,
     GridUi, Hover, HoverFill, HoverStyle, IconTabs, Image, ImageFit, ImageOutput,
     IndicatorPosition, KeyBinding, KeyBox, ListBox, ListBoxStyle, ListDensity, ListEntry,
-    ListEntryKind, ListEvent, ListMode, ListModel, ListOutput, ListRow, Loader, MenuBar,
-    MenuBarOutput, MenuItem, MouseBinding, NumberInput, NumberStyle, Numeric, Popup, PopupOutput,
-    Presence, Progress, ProgressState, RadioGroup, RadioLayout, RadioOption, RadioSize, Reorder,
-    ReorderUi, Response, Root, RowPresence, ScrollArea, ScrollAreaOutput, ScrollStyle,
-    SegmentOption, SegmentWidth, SegmentedControl, SegmentedOrientation, SegmentedSize,
-    SegmentedVariant, SelectionIndicator, Sense, Separator, Skeleton, Slider, SliderStatus,
-    SortDirection, SortRequest, SplitBoundaryOutput, SplitHandle, SplitHandleStyle, SplitOutput,
-    SplitPane, SplitPanel, SplitPanelOutput, SplitSize, SplitStyle, SplitSurface, SplitUi,
-    StackDirection, Style, Switch, Table, TableBody, TableOutput, TableStyle, Text, TextEdit,
-    TitleBar, TitleBarResponse, Toast, Tooltip, TooltipStyle, TooltipWidget, Ui, Validation,
-    Widget, WidgetState, Window,
+    ListEntryKind, ListEvent, ListMode, ListModel, ListOutput, ListRow, Loader, MaterialPaint,
+    MenuBar, MenuBarOutput, MenuItem, MouseBinding, NumberInput, NumberStyle, Numeric, Popup,
+    PopupOutput, Presence, Progress, ProgressState, RadioGroup, RadioLayout, RadioOption,
+    RadioSize, Reorder, ReorderUi, Response, Root, RowPresence, ScrollArea, ScrollAreaOutput,
+    ScrollStyle, SegmentOption, SegmentWidth, SegmentedControl, SegmentedOrientation,
+    SegmentedSize, SegmentedVariant, SelectionIndicator, Sense, Separator, Skeleton, Slider,
+    SliderStatus, SortDirection, SortRequest, SplitBoundaryOutput, SplitHandle, SplitHandleStyle,
+    SplitOutput, SplitPane, SplitPanel, SplitPanelOutput, SplitSize, SplitStyle, SplitSurface,
+    SplitUi, StackDirection, Style, Switch, Table, TableBody, TableOutput, TableStyle, Text,
+    TextEdit, TitleBar, TitleBarResponse, Toast, Tooltip, TooltipStyle, TooltipWidget, Ui,
+    Validation, Widget, WidgetState, Window,
 };
 pub use components::{
     CloseReason, Confirm, Confirmation, Dialog, DialogAction, DialogOutput, Modal, ModalAnchor,
@@ -86,15 +88,25 @@ pub use context::{
     CacheStats, ClipboardBackend, ClipboardError, Context, DebugOverlay, Diagnostic,
     DiagnosticKind, EventResponse, Id, InputState, SharedResources,
 };
+#[cfg(feature = "file-dialogs")]
+pub use files::{
+    DialogBackend, DialogLaunch, DialogReply, DialogRequest, DialogResult, FileDialog,
+    FileDialogKind, MemoryDialogs, SystemDialogs,
+};
+pub use files::{FileError, FileFilter, FileTask, PickedFile};
 pub use glam::{vec2, Vec2};
 pub use images::{
     DecodedImage, ImageDecoder, ImageError, ImageHandle, ImageLimits, ImageMetrics, ImageSource,
     ImageStage, ImageState, ImageTiming,
 };
 pub use layout::{Layout, Padding};
+pub use material::{
+    Material, MaterialError, MaterialErrorKind, ParamKind, ParamLayout, ParamValue, Params,
+    FRAME_BYTES, MAX_MATERIALS, MAX_PARAM_BYTES, MAX_UNIFORM_BYTES,
+};
 pub use protocol::{
-    DrawCommand, DrawData, GeometryUpdate, TextureFilter, TextureId, TextureImage, TextureOptions,
-    Vertex,
+    DrawCommand, DrawData, GeometryUpdate, MaterialDraw, MaterialId, MaterialSource, TextureFilter,
+    TextureId, TextureImage, TextureOptions, Vertex,
 };
 pub use renderer::{PresentationMode, RenderError, RenderStatus, Renderer, RendererStats};
 pub use shapes::{

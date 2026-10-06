@@ -16,7 +16,7 @@ use super::{Context, Id};
 use crate::Rect;
 use cache::Reuse;
 
-pub use data::Paint;
+pub use data::{MaterialImage, Paint};
 pub use state::CachedElement;
 pub(crate) use state::PaintState;
 pub use visual::VisualMesh;

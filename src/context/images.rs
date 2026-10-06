@@ -91,6 +91,23 @@ impl Context {
     pub(super) fn request_painted_images(&mut self, paint: &[Paint], clip: Rect) -> f32 {
         let mut images = false;
         for primitive in paint {
+            if let Paint::Material {
+                rect,
+                image: Some(image),
+                ..
+            } = primitive
+            {
+                images = true;
+                if !rect.intersect(clip).is_empty() {
+                    self.images.lock().request(
+                        image.handle,
+                        rect.size() / image.crop.size().max(Vec2::splat(0.001))
+                            * self.scale
+                            * self.paint_state.image_visual_scale(),
+                        image.texture,
+                    );
+                }
+            }
             if let Paint::Image {
                 rect,
                 uv,

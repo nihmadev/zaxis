@@ -37,6 +37,9 @@ pub enum DiagnosticKind {
     /// A control that a screen reader announces by name has none. Found while the
     /// accessibility tree is collected; see `Context::set_accessibility_active`.
     MissingAccessibleName,
+    /// A material was rejected: invalid WGSL, a parameter schema that does not fit, or too
+    /// many materials. Draws with it use their fallback.
+    InvalidShader,
     /// A system resource failed and the app would otherwise never know: the
     /// clipboard, a native window drag or resize, an image that could not be decoded.
     External,
