@@ -31,6 +31,8 @@ pub fn create_with_fragment(
         label: Some("zaxis shader"),
         source: wgpu::ShaderSource::Wgsl(
             concat!(
+                include_str!("../shaders/common.wgsl"),
+                "\n",
                 include_str!("../shaders/ui.wgsl"),
                 "\n",
                 include_str!("../shaders/scroll_hint.wgsl")

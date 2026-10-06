@@ -1,6 +1,6 @@
 //! Frame data and producer identity allocation.
 
-use super::{DrawCommand, TextureId, TextureImage, TextureOptions, Vertex};
+use super::{DrawCommand, MaterialSource, TextureId, TextureImage, TextureOptions, Vertex};
 use crate::Vec2;
 use std::{
     ops::Range,
@@ -60,6 +60,13 @@ pub struct DrawData {
     /// Dirty buffer ranges for exactly `from_revision -> to_revision`. None means
     /// a full upload. Clear stale hints when manually editing geometry/revision.
     pub geometry_update: Option<GeometryUpdate>,
+    /// The materials commands refer to, each once, with the source to compile. Independent of
+    /// geometry revision like textures: a backend that lost its device builds its pipelines
+    /// again from the next frame alone.
+    pub materials: Vec<MaterialSource>,
+    /// Packed per-draw blocks of material commands, addressed by [`MaterialDraw::uniforms`](super::MaterialDraw::uniforms).
+    /// Rewritten with `commands`; a backend uploads it again when `revision` changes.
+    pub material_uniforms: Vec<u8>,
 }
 
 impl DrawData {
@@ -90,6 +97,8 @@ impl Default for DrawData {
             texture_budget_bytes: 256 << 20,
             texture_binding_budget: 1024,
             geometry_update: None,
+            materials: Vec::new(),
+            material_uniforms: Vec::new(),
         }
     }
 }

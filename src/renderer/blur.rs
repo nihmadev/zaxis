@@ -1,8 +1,16 @@
 //! Ordered backdrop effects. Offscreen attachments are allocated only for blur frames.
-use super::{textures::TextureStore, viewport::scissor, Renderer};
+use super::{
+    materials::{Draw, MaterialFrame},
+    textures::TextureStore,
+    viewport::scissor,
+    Renderer,
+};
 use crate::{Color, DrawData, Rect, Vec2};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
+
+mod material;
+mod pipelines;
 
 struct Target {
     view: wgpu::TextureView,
@@ -24,70 +32,11 @@ pub(super) struct BlurRenderer {
     low: Target,
     scratch: Target,
     blurred: Target,
+    /// Sharp and blurred backdrop for materials that read them (bind group 2).
+    material_group: wgpu::BindGroup,
     pipelines: Arc<BlurPipelines>,
     parameters: Vec<(f32, [wgpu::BindGroup; 2])>,
     downsample: u32,
-}
-
-impl BlurPipelines {
-    fn new(renderer: &Renderer) -> Self {
-        let device = &renderer.device;
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("zaxis blur parameters"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(16),
-                },
-                count: None,
-            }],
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("zaxis Gaussian blur"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/blur.wgsl").into()),
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("zaxis blur pipeline layout"),
-            bind_group_layouts: &[Some(&renderer.texture_layout), Some(&layout)],
-            immediate_size: 0,
-        });
-        let pipeline = |entry| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("zaxis blur fullscreen pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: renderer.attachment_format,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                multiview_mask: None,
-                cache: None,
-            })
-        };
-        Self {
-            layout,
-            gaussian: pipeline("fs_blur"),
-            down: pipeline("fs_down"),
-            copy: pipeline("fs_copy"),
-        }
-    }
 }
 
 impl BlurRenderer {
@@ -98,12 +47,14 @@ impl BlurRenderer {
                 .get_or_init(|| Arc::new(BlurPipelines::new(renderer))),
         );
         let target = || Self::target(renderer, 1);
+        let (backdrop, blurred) = (target(), target());
         Self {
             canvas: target(),
-            backdrop: target(),
+            material_group: material::backdrop_group(renderer, &backdrop, &blurred),
+            backdrop,
             low: target(),
             scratch: target(),
-            blurred: target(),
+            blurred,
             pipelines,
             parameters: Vec::new(),
             downsample: 1,
@@ -165,6 +116,7 @@ impl BlurRenderer {
             self.low = Self::target(renderer, downsample);
             self.scratch = Self::target(renderer, downsample);
             self.blurred = Self::target(renderer, downsample);
+            self.material_group = material::backdrop_group(renderer, &self.backdrop, &self.blurred);
             self.downsample = downsample;
         }
         if self
@@ -267,6 +219,7 @@ impl BlurRenderer {
         data: &DrawData,
         range: std::ops::Range<usize>,
         clear: Option<Color>,
+        materials: &MaterialFrame,
     ) {
         let load = match clear {
             Some(color) => {
@@ -299,7 +252,13 @@ impl BlurRenderer {
         pass.set_bind_group(0, &renderer.viewport_group, &[]);
         pass.set_vertex_buffer(0, renderer.vertices.slice(..));
         pass.set_index_buffer(renderer.indices.slice(..), wgpu::IndexFormat::Uint32);
-        for command in &data.commands[range] {
+        for (index, command) in data
+            .commands
+            .iter()
+            .enumerate()
+            .skip(range.start)
+            .take(range.len())
+        {
             if command.indices.is_empty() {
                 continue;
             }
@@ -309,7 +268,14 @@ impl BlurRenderer {
                 continue;
             };
             pass.set_scissor_rect(x, y, w, h);
-            if command.blur.is_some() {
+            if let Draw::Material { pipeline, offset } = materials.draw(index) {
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(1, &store.textures[&command.texture].bind_group, &[]);
+                let backdrop = command.blur.is_some().then_some(&self.material_group);
+                materials.bind(&mut pass, *offset, backdrop);
+            } else if matches!(materials.draw(index), Draw::Skip) {
+                continue;
+            } else if command.blur.is_some() {
                 pass.set_pipeline(&renderer.backdrop_pipeline);
                 pass.set_bind_group(1, &self.blurred.group, &[]);
                 pass.set_bind_group(2, &self.backdrop.group, &[]);
@@ -330,6 +296,7 @@ impl Renderer {
         clear: Color,
         output: &wgpu::TextureView,
         store: &TextureStore,
+        materials: &MaterialFrame,
     ) {
         let mut blur = self.blur.take().unwrap_or_else(|| BlurRenderer::new(self));
         blur.prepare(self, data);
@@ -339,7 +306,15 @@ impl Renderer {
             .enumerate()
             .filter_map(|(i, c)| c.blur.map(|_| i))
             .collect();
-        blur.segment(self, store, encoder, data, 0..effects[0], Some(clear));
+        blur.segment(
+            self,
+            store,
+            encoder,
+            data,
+            0..effects[0],
+            Some(clear),
+            materials,
+        );
         for (n, &index) in effects.iter().enumerate() {
             let parameters = &blur.parameters[n].1;
             let command = &data.commands[index];
@@ -410,7 +385,7 @@ impl Renderer {
                 );
             }
             let end = effects.get(n + 1).copied().unwrap_or(data.commands.len());
-            blur.segment(self, store, encoder, data, index..end, None);
+            blur.segment(self, store, encoder, data, index..end, None, materials);
         }
         blur.fullscreen(
             encoder,

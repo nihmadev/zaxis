@@ -3,6 +3,7 @@
 use super::{
     adapter,
     geometry::create_buffer,
+    materials::{MaterialPipelines, MaterialUniforms},
     pipeline,
     textures::{self, create_texture, TextureStore},
     viewport, PresentationMode, RenderError, Renderer, RendererStats,
@@ -94,6 +95,8 @@ impl Renderer {
             "fs_scroll_hint",
         );
         let indices = create_buffer(&device, 256, wgpu::BufferUsages::INDEX, "zaxis indices");
+        let materials = MaterialPipelines::new(&device, &queue, &viewport_layout, &texture_layout);
+        let material_uniforms = MaterialUniforms::new(&device, &materials.params_layout);
         let white = create_texture(
             &device,
             &queue,
@@ -120,6 +123,9 @@ impl Renderer {
             scroll_hint_pipeline,
             blur: None,
             blur_pipelines: Arc::new(OnceLock::new()),
+            materials: Arc::new(Mutex::new(materials)),
+            material_uniforms,
+            material_errors: Vec::new(),
             uniform,
             viewport_layout,
             viewport_group,
@@ -194,6 +200,16 @@ impl Renderer {
             scroll_hint_pipeline: self.scroll_hint_pipeline.clone(),
             blur: None,
             blur_pipelines: Arc::clone(&self.blur_pipelines),
+            materials: Arc::clone(&self.materials),
+            material_uniforms: MaterialUniforms::new(
+                &self.device,
+                &self
+                    .materials
+                    .lock()
+                    .expect("material pipelines mutex")
+                    .params_layout,
+            ),
+            material_errors: Vec::new(),
             uniform,
             viewport_layout: self.viewport_layout.clone(),
             viewport_group,

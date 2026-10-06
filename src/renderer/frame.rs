@@ -1,6 +1,7 @@
 //! Frame acquisition, surface recovery, draw submission, and presentation.
 
 use super::{
+    materials::Draw,
     viewport::{self, scissor},
     RenderError, RenderStatus, Renderer,
 };
@@ -61,6 +62,7 @@ impl Renderer {
         self.prepare_textures(&mut store, data)?;
         self.prepare_geometry(data, &store)?;
         self.prepare_viewport(data);
+        let materials = self.prepare_materials(data)?;
         let encoding = self.diagnostics.start();
         self.diagnostics.render_pending = false;
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
@@ -73,7 +75,7 @@ impl Renderer {
                 label: Some("zaxis frame"),
             });
         if data.commands.iter().any(|c| c.blur.is_some()) {
-            self.render_blur(&mut encoder, data, clear, &view, &store);
+            self.render_blur(&mut encoder, data, clear, &view, &store, &materials);
         } else {
             let clear = clear.linear();
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -106,7 +108,7 @@ impl Renderer {
                 pass.set_bind_group(0, &self.viewport_group, &[]);
                 pass.set_vertex_buffer(0, self.vertices.slice(..));
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-                for command in &data.commands {
+                for (index, command) in data.commands.iter().enumerate() {
                     if command.indices.is_empty() {
                         continue;
                     }
@@ -116,7 +118,14 @@ impl Renderer {
                         continue;
                     };
                     pass.set_scissor_rect(x, y, width, height);
-                    pass.set_pipeline(self.pipeline_for(command, data));
+                    match materials.draw(index) {
+                        Draw::Skip => continue,
+                        Draw::Material { pipeline, offset } => {
+                            pass.set_pipeline(pipeline);
+                            materials.bind(&mut pass, *offset, None);
+                        }
+                        Draw::Plain => pass.set_pipeline(self.pipeline_for(command, data)),
+                    }
                     pass.set_bind_group(1, &store.textures[&command.texture].bind_group, &[]);
                     pass.draw_indexed(command.indices.clone(), 0, 0..1);
                 }

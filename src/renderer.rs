@@ -8,6 +8,8 @@ mod frame;
 mod geometry;
 mod init;
 #[doc(hidden)]
+pub mod materials;
+#[doc(hidden)]
 pub mod pipeline;
 mod surface;
 #[doc(hidden)]
@@ -64,6 +66,13 @@ pub struct RendererStats {
     pub draw_calls: u64,
     /// Estimate from dimensions and RGBA8 format, not measured VRAM.
     pub image_resident_bytes_estimate: u64,
+    /// Draws with a user material, summed over presented frames.
+    pub material_draws: u64,
+    /// Material pipelines built and builds the device rejected, over the device's lifetime.
+    pub material_pipeline_builds: u64,
+    pub material_pipeline_failures: u64,
+    /// Bytes of material uniform blocks written to the GPU by this renderer.
+    pub material_uniform_bytes: u64,
 }
 
 /// A renderer bound to one winit window. Owning an `Arc<Window>` makes surface
@@ -89,6 +98,9 @@ pub struct Renderer {
     backdrop_pipeline: wgpu::RenderPipeline,
     blur: Option<blur::BlurRenderer>,
     blur_pipelines: Arc<OnceLock<Arc<blur::BlurPipelines>>>,
+    materials: Arc<Mutex<materials::MaterialPipelines>>,
+    material_uniforms: materials::MaterialUniforms,
+    material_errors: Vec<String>,
     uniform: wgpu::Buffer,
     viewport_layout: wgpu::BindGroupLayout,
     viewport_group: wgpu::BindGroup,

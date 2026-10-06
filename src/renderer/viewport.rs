@@ -83,7 +83,12 @@ pub(super) fn validate(data: &DrawData) -> Result<(), RenderError> {
 
 impl Renderer {
     pub(super) fn prepare_viewport(&mut self, data: &DrawData) {
-        let viewport = [data.logical_size.x, data.logical_size.y, 0.0, 0.0];
+        let viewport = [
+            data.logical_size.x,
+            data.logical_size.y,
+            data.scale_factor,
+            0.0,
+        ];
         if self.viewport_value != viewport {
             self.queue
                 .write_buffer(&self.uniform, 0, bytemuck::cast_slice(&viewport));

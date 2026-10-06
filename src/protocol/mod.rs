@@ -25,11 +25,10 @@
 //!     .to_vec();
 //! frame.indices = vec![0, 1, 2];
 //! frame.commands.push(DrawCommand {
-//!     blur: None,
-//!     scroll_hint: false,
 //!     indices: 0..3,
 //!     clip_rect: Rect::from_min_size(vec2(0.0, 0.0), frame.logical_size),
 //!     texture,
+//!     ..Default::default()
 //! });
 //! frame.revision += 1;
 //!
@@ -43,11 +42,13 @@
 
 mod draw_command;
 mod draw_data;
+mod material;
 mod texture;
 mod vertex;
 
 pub use draw_command::DrawCommand;
 pub(crate) use draw_data::next_source;
 pub use draw_data::{DrawData, GeometryUpdate};
+pub use material::{MaterialDraw, MaterialId, MaterialSource};
 pub use texture::{TextureFilter, TextureId, TextureImage, TextureOptions};
 pub use vertex::Vertex;
