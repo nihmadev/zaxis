@@ -5,6 +5,8 @@
 //! (blocking GPU setup, several windows, native chrome) or `web` (one canvas, asynchronous
 //! GPU setup, no blocking and no threads).
 
+#[cfg(feature = "file-dialogs")]
+mod dialogs;
 mod events;
 mod lifecycle;
 #[cfg(not(target_arch = "wasm32"))]
@@ -45,6 +47,9 @@ pub(super) enum UserEvent {
     /// inbox because a renderer cannot cross threads, and so could not ride in this event.
     #[cfg(target_arch = "wasm32")]
     Renderer,
+    /// Files were dragged over or dropped on the canvas; the page's listeners queued them.
+    #[cfg(target_arch = "wasm32")]
+    Files,
     /// Assistive technology asked a window for its tree, requested an action, or went
     /// away. Platform adapters report from their own threads, hence through the proxy.
     #[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
@@ -81,6 +86,8 @@ pub(super) struct Runner<A> {
     pub(super) device_loss: Option<String>,
     pub(super) started: bool,
     pub(super) platform: platform::State,
+    #[cfg(feature = "file-dialogs")]
+    pub(super) dialogs: crate::app::dialogs::DialogHost,
 }
 
 /// The resources every window shares, with the fonts the options ask for.
@@ -113,6 +120,8 @@ impl<A: App> Runner<A> {
             device_loss: None,
             started: false,
             platform,
+            #[cfg(feature = "file-dialogs")]
+            dialogs: crate::app::dialogs::DialogHost::system(),
         }
     }
 
@@ -129,6 +138,8 @@ impl<A: App> ApplicationHandler<UserEvent> for Runner<A> {
             UserEvent::Wake => {}
             #[cfg(target_arch = "wasm32")]
             UserEvent::Renderer => self.renderers_ready(event_loop),
+            #[cfg(target_arch = "wasm32")]
+            UserEvent::Files => self.web_files(),
             #[cfg(all(feature = "accesskit", not(target_arch = "wasm32")))]
             UserEvent::Access(event) => self.accessibility_event(event),
         }

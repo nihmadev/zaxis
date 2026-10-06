@@ -6,6 +6,9 @@ pub mod browser;
 mod callbacks;
 #[doc(hidden)]
 pub mod commands;
+#[cfg(feature = "file-dialogs")]
+#[doc(hidden)]
+pub mod dialogs;
 mod frame;
 #[doc(hidden)]
 pub mod hub;

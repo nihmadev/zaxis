@@ -8,6 +8,7 @@
 //! context and its first frame.
 
 mod canvas;
+mod drag;
 
 use super::{
     shared_resources,
@@ -140,6 +141,7 @@ impl<A: App> Runner<A> {
                 .map_err(RunError::Window)?,
         );
         canvas::install(&page);
+        drag::install(&page.canvas, self.platform.proxy.clone());
         let mode = self.options.presentation_mode;
         self.platform.pending = Some(Pending { key, options });
         self.start_renderer(window, mode, Purpose::Open);

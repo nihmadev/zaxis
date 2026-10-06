@@ -88,6 +88,9 @@ impl Workers {
             wake(&self.shared);
         }
     }
+    pub fn waker(&self) -> Option<Arc<dyn Fn() + Send + Sync>> {
+        self.shared.waker.lock().unwrap().clone()
+    }
     /// Finished work is waiting, or queued work still needs a frame to run in.
     pub fn has_results(&self) -> bool {
         self.shared.ready.load(Ordering::Acquire)

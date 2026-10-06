@@ -325,6 +325,9 @@ impl ImageCache {
     pub fn set_waker(&mut self, waker: Option<Arc<dyn Fn() + Send + Sync>>) {
         self.workers.set_waker(waker);
     }
+    pub fn waker(&self) -> Option<Arc<dyn Fn() + Send + Sync>> {
+        self.workers.waker()
+    }
     pub fn has_results(&self) -> bool {
         self.workers.has_results()
     }

@@ -184,6 +184,8 @@ impl<A: App> Runner<A> {
             device_loss: device_loss.as_deref(),
         };
         context.run(|context| app.update(context, &mut frame));
+        #[cfg(feature = "file-dialogs")]
+        let launches = context.take_dialog_launches();
         native.publish_accessibility(context);
         context.sync_ime(&native.window);
         let status = native
@@ -211,6 +213,8 @@ impl<A: App> Runner<A> {
                 native.cursor = cursor;
             }
         }
+        #[cfg(feature = "file-dialogs")]
+        self.launch_dialogs(key, launches);
         Ok(true)
     }
 }

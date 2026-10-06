@@ -81,6 +81,8 @@ impl<A: App> Runner<A> {
     /// Drop the closed windows. Their surfaces, uniforms, blur targets and contexts (with all
     /// retained widget state) are released here; a reopened key starts from scratch.
     pub(super) fn finish_close(&mut self, event_loop: &ActiveEventLoop, closed: Closed) {
+        #[cfg(feature = "file-dialogs")]
+        self.dialogs.window_closed(&closed.keys);
         for key in &closed.keys {
             if let Some(Slot {
                 native: Some(native),
