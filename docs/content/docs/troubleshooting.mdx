@@ -117,3 +117,11 @@ font covering the script, restart the application so the shared font database is
 rebuilt, or pass a primary family with `RunOptions::with_font_family` (or
 `Context::with_fonts` in a custom host).
 See [Text and fonts](./components/text.mdx#replace-the-font).
+
+## Files dragged from Explorer are refused
+
+Windows blocks drag and drop from a lower integrity level into a higher one (UIPI): if the
+application runs as administrator and Explorer does not, the cursor shows "not allowed" and no
+event arrives. Run both at the same level. On Wayland the position of a drag is not reported, so a
+drop reaches a target only when it is the single one that accepts the files; a missing
+`xdg-desktop-portal` makes file dialogs return `Cancelled`.

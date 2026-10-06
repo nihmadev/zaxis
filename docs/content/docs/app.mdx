@@ -186,3 +186,9 @@ Repaint deadlines are `zaxis::Instant` values: `std::time::Instant` on native ta
 
 Return this error from `main`, or handle it in your application launcher. Renderer
 error variants are described in [Renderer](./renderer.mdx#errors).
+
+## File dialogs
+
+With the `file-dialogs` feature the runner shows the dialogs a frame opens with
+`Context::open_dialog`, modal for their window only, and answers `Cancelled` when that window
+closes. See [File dialogs and file drop](./file-dialogs-and-drop.mdx).

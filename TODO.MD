@@ -98,8 +98,8 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 
 ## Windows and platform
 
-- [ ] OS file drag-in (`DroppedFile` / `HoveredFile`) wired to `DropTarget`
-- [ ] Native file dialogs (open, save, pick folder) as an optional feature
+- [x] OS file drag-in (`DroppedFile` / `HoveredFile`) wired to `DropTarget`
+- [x] Native file dialogs (open, save, pick folder) as an optional feature
 - [ ] Clipboard images and rich clipboard formats
 - [ ] Cross-window drag and drop
 - [ ] Window state API: reset, forced reposition and resize, save and restore geometry
@@ -146,11 +146,11 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 - [ ] Public dirty-region texture upload API
 - [ ] Glyph atlas eviction and GPU buffer shrinking
 - [ ] Shader-based rounded clipping for arbitrary content
-- [ ] Custom shaders and materials for widgets
+- [x] Custom shaders and materials for widgets
 - [ ] 3D viewport embedding helper
 - [ ] Frame pacing diagnostics and a built-in profiler overlay
 - [ ] Software renderer fallback when no GPU adapter is available
-- [ ] WebAssembly target for the library (browser runner)
+- [x] WebAssembly target for the library (browser runner)
 - [ ] Android and iOS exploration
 
 ## Images and media

@@ -145,11 +145,19 @@ uses `error`, the card uses `window_fill` and `border`, timing uses
 - Built-in payloads `TreeNodeDrag` and `RowDrag` can be accepted by your own targets,
   for example to drop a tree node into a list.
 
+## Files from the system
+
+`DropTarget::files(id)` or `.accepts_files(filter)` on any target takes files dragged in from the
+file manager with the same highlight, priority and modal rules. See
+[File dialogs and file drop](../file-dialogs-and-drop.mdx).
+
 ## Limitations
 
 Drag and drop works only inside one native window of one `Context`; with several native
-windows each has its own `Context`, so a payload cannot move between them. There is no
-operating-system file drag, clipboard drag, cross-process transfer or OLE;
+windows each has its own `Context`, so a payload cannot move between them. Files dragged in from the
+system are a separate path (`DropTarget::accepts_files`, see
+[File dialogs and file drop](../file-dialogs-and-drop.mdx)); there is no clipboard drag,
+cross-process transfer or OLE;
 payloads are in-process values. Text selections
 cannot be dragged and `TextEdit` is unchanged. Variable-height virtualization has no
 model-wide target lookup, and spring-loaded expansion of collapsed branches is not

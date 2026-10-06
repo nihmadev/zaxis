@@ -60,6 +60,8 @@ a new source identity and prevents cache reuse.
 | `texture_options: HashMap<TextureId, TextureOptions>` | Optional per-texture filter and managed image lifetime; omitted entries keep the legacy contract |
 | `texture_budget_bytes: u64` | Managed GPU texel residency budget; text/unmanaged payloads are excluded |
 | `texture_binding_budget: usize` | Managed bindings budget, including aliases sharing a texel allocation |
+| `materials: Vec<MaterialSource>` | The user materials commands use, once each, with their validated WGSL; empty without materials |
+| `material_uniforms: Vec<u8>` | Packed uniform blocks addressed by `MaterialDraw::uniforms`; rewritten with `commands` |
 
 `DrawData::new(logical_size, scale_factor)` allocates a unique source. `default()`
 also allocates a unique source but starts with zero viewport and scale; set them
@@ -114,8 +116,13 @@ DrawCommand {
     texture: TextureId::WHITE,
     blur: None,
     scroll_hint: false,
+    material: None,
 }
 ```
+
+Hand-built commands should end with `..Default::default()` (an empty range and clip, the white
+texture, no effect), so a field added later keeps its neutral value. `material` was added with
+user materials: a literal that lists every field must now name it.
 
 `indices: Range<u32>` selects entries in `DrawData::indices`, not vertex numbers.
 Values inside that range are global vertex indices. There is no per-command base
@@ -139,6 +146,23 @@ premultiplied vertex color by `t^3 * (t * (6*t - 15) + 10)`, with `t = clamp(UV.
 Ordinary commands set `scroll_hint: false`. A command cannot combine this with
 backdrop blur. Effects participate in batching and revision comparisons, so a
 backend must preserve them even when geometry ranges are unchanged.
+
+## Materials
+
+`material: Some(MaterialDraw { id, uniforms })` replaces the fragment color stage of the command
+with a user shader; mesh, UVs, clip, vertex color and premultiplied-alpha blending are those of
+any command. `uniforms` is a byte range of `DrawData::material_uniforms`: a 32-byte block
+(`size: vec2`, `time`, `delta`, `texture_rect: vec4`, all `f32`) followed by the packed parameters,
+a multiple of 16 bytes long, 32 to `MAX_UNIFORM_BYTES` (1024), starting at a multiple of 16.
+A backend copies each distinct block to an offset it can bind (the built-in renderer aligns to
+`min_uniform_buffer_offset_alignment`) and binds it with a dynamic offset.
+
+`DrawData::materials` holds a `MaterialSource { id, label, wgsl }` for every id a command uses.
+The module has the entry points `vs_main` and `fs_material` and the binding groups described in
+[Materials](./materials.mdx). A backend caches pipelines by `id`, replaces one whose `wgsl`
+changed, and builds them again from the next frame after a device loss. A command with a material
+must not set `scroll_hint`. With `blur: Some(sigma)` the material also reads the sharp and the
+blurred backdrop, and the command never merges with another.
 
 ## TextureImage
 

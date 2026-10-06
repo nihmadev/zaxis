@@ -1,0 +1,184 @@
+---
+title: Materials
+icon: Sparkles
+description: Custom WGSL fragment shaders for widget shapes, their parameters, inputs and limits.
+---
+
+A `Material` is the color stage of a shape written in WGSL. The library supplies everything
+else: the vertex stage and vertex layout, clipping, scrolling, visual transforms, opacity,
+layer order, blending and the inputs below. Geometry is the ordinary cached mesh of a
+rounded rectangle, so a material costs no extra tessellation, and changing its parameters
+rewrites a small uniform block, not the mesh.
+
+```rust
+use zaxis::{vec2, Color, Context, Material, ParamKind, Params, Rect};
+
+let glow = context.register_material(
+    &Material::new("glow", r#"
+        fn material(in: MaterialInput, p: Params) -> vec4<f32> {
+            let d = distance(in.uv, p.center);
+            return premultiply(vec4<f32>(p.color.rgb, 1.0) * smoothstep(0.7, 0.0, d));
+        }
+    "#)
+    .param("center", ParamKind::Vec2)
+    .param("color", ParamKind::Color),
+);
+
+// every frame, anywhere a shape can be painted
+let rect = ui.allocate_space(vec2(160.0, 100.0));
+ui.material(rect, glow)
+    .params(Params::new().vec2("center", vec2(0.5, 0.4)).color("color", Color::rgb(90, 170, 255)))
+    .corner_radius(14.0)
+    .show(ui);
+```
+
+Interaction stays with the caller: allocate the rectangle and use
+[`Ui::interact`](./custom-widgets.mdx#uiinteractrect-id_source-sense---response). A material has
+no shape hit testing.
+
+## Registration
+
+| Call | Behaviour |
+| --- | --- |
+| `Context::register_material(&Material) -> MaterialId` | Never fails. A rejected description still gets an id, draws with it use their fallback, and the error is reported once as `DiagnosticKind::InvalidShader` |
+| `Context::try_register_material(&Material) -> Result<MaterialId, MaterialError>` | The error instead of a report |
+| `Context::material_error(MaterialId) -> Option<MaterialError>` | Why an id cannot be drawn |
+| `SharedResources::{register_material, try_register_material, material_error, material_count, remove_material}` | The same, for every window of an application |
+
+Registration is keyed by content: the WGSL source, the parameter schema and the flags (not the
+label). The same description always answers with the same `MaterialId` and compiles nothing a
+second time, so registering every frame is cheap and grows nothing. Windows built from one
+`SharedResources` share one registry, hence one id and one pipeline. At most `MAX_MATERIALS`
+(256) descriptions are accepted, valid or not; past that `MaterialErrorKind::Limit` is returned
+(`MaterialId::NONE` from `register_material`). Do not build WGSL from per-frame values: pass
+them as parameters.
+
+The source is parsed and validated by naga on registration, before any device sees it. A
+`MaterialError` carries a kind (`Schema`, `Syntax`, `Validation`, `Forbidden`, `Limit`), the
+material's label and, when the front end knows it, `line()` and `column()` counted in the
+source you passed. A failure is remembered, so a broken material costs one compilation, not
+one per frame.
+
+## The shader
+
+The library assembles one module from the shared vertex stage, a prelude, a generated `Params`
+struct and your source. You write helper functions, constants and exactly one function:
+
+```wgsl
+fn material(in: MaterialInput, p: Params) -> vec4<f32>
+```
+
+### Inputs: `MaterialInput`
+
+| Field | Meaning |
+| --- | --- |
+| `uv: vec2<f32>` | Position inside the shape, (0, 0) top-left to (1, 1) bottom-right, whatever the DPI. Antialiased contour vertices just outside the shape clamp to the edge |
+| `size`, `size_px: vec2<f32>` | Shape size in logical and in physical pixels, after the scale of enclosing visuals |
+| `scale: f32` | Physical pixels per logical pixel of this window |
+| `position: vec2<f32>` | Center of the fragment in the window, physical pixels, origin top-left |
+| `origin: vec2<f32>` | Top-left corner of the shape in physical window pixels (`position - uv * size_px`; exact inside the shape). `round` it to snap a pattern to the pixel grid |
+| `screen_uv: vec2<f32>` | The fragment as a fraction of the window |
+| `color: vec4<f32>` | Vertex color as `vs_main` interpolates it: **premultiplied**, including coverage and opacity |
+| `tint: vec3<f32>` | The straight color given with `.tint(...)` (white by default) |
+| `time`, `delta: f32` | Seconds on the pass clock and since the previous pass. Zero unless the material is declared `.animated()` and the draw does not opt out; zero under reduced motion. `time` wraps at 3600 s |
+| `texture_rect: vec4<f32>` | Displayed part of the widget texture: origin (xy) and size (zw) |
+
+### Helpers
+
+| Function | Result |
+| --- | --- |
+| `widget_color(uv)` | Premultiplied color of the widget texture at `uv` (0..1 over the texture), through the sampler the texture was bound with (`.filter(...)`). Level-0 sampling: safe in any control flow |
+| `widget_uv(in)` | Texture coordinate of this fragment inside the displayed crop |
+| `widget_texel(p: vec2<i32>)`, `widget_size()` | Exact premultiplied texel, clamped; texture size |
+| `backdrop_sharp(in)`, `backdrop_blurred(in)` | Premultiplied backdrop (what is drawn behind the shape), sharp and blurred. Only for materials declared `.reads_backdrop()`; others see transparent black |
+| `premultiply(c)` | `vec4(c.rgb * c.a, c.a)` |
+
+Names starting with `z_`, the names above and `Params`, `MaterialInput`, `MaterialFrame`,
+`MaterialBlock`, `fs_material` and `vs_main` are reserved. `viewport` and `image` are visible
+but belong to the library.
+
+### Output and alpha convention
+
+`material` returns the **premultiplied** color of a fully covered pixel. The library multiplies
+it once by the coverage `in.color.a` (contour antialiasing, rounded corners, `.opacity(...)`,
+the alpha of the tint) and blends with premultiplied alpha, so nothing counts alpha twice:
+
+```wgsl
+return vec4<f32>(0.5, 0.0, 0.0, 0.5);                       // 50% red over the background
+return premultiply(vec4<f32>(0.2, 0.6, 1.0, 1.0));           // opaque from a straight color
+```
+
+A reading from the backdrop that returns `alpha = 1` replaces what is behind the shape, as
+frosted glass does. Output is linear color; the attachment is sRGB.
+
+### Fixed resources
+
+A material cannot declare resources, `override` constants or entry points: the binding set is
+fixed (group 0 viewport, group 1 widget texture and sampler, group 2 backdrop, group 3 the draw's
+uniform block), and a module that declares others is rejected with `MaterialErrorKind::Forbidden`.
+A shader cannot reach any resource of another widget. There are no user vertex shaders.
+
+## Parameters
+
+`Material::param(name, kind)` declares the schema; `Params` supplies values by name for one
+draw. Values are packed by the CPU following the WGSL uniform rules (std140 for these types, with
+`mat2x2` 8-aligned), and registration verifies that the layout naga computed equals the packed one.
+
+| `ParamKind` | WGSL | Size / alignment | Setter |
+| --- | --- | --- | --- |
+| `F32`, `I32`, `U32` | `f32`, `i32`, `u32` | 4 / 4 | `f32`, `i32`, `u32` |
+| `Vec2` | `vec2<f32>` | 8 / 8 | `vec2(name, Vec2)` |
+| `Vec3` | `vec3<f32>` | 12 / 16 (a scalar may follow in the tail) | `vec3` |
+| `Vec4` | `vec4<f32>` | 16 / 16 | `vec4` |
+| `Color` | `vec4<f32>` | 16 / 16, linear straight alpha | `color(name, Color)` |
+| `Mat2`, `Mat3`, `Mat4` | `mat2x2`, `mat3x3`, `mat4x4` | 16 / 8, 48 / 16, 64 / 16 (columns) | `mat2`, `mat3`, `mat4` |
+| `Vec4Array(n)` | `array<vec4<f32>, n>` | 16·n / 16 | `array(name, &[[f32; 4]])` |
+
+Unset parameters are zero, non-finite floats become zero, and an unknown name or a value of
+another type fails the draw (diagnostic and fallback). The uniform block of a draw is 32 bytes
+of library data plus the parameters, at most `MAX_UNIFORM_BYTES` = 1024, so a material has
+`MAX_PARAM_BYTES` = 992; exceeding it is a `Schema` error.
+
+## Drawing
+
+`Ui::material(rect, id)` returns a `MaterialPaint`:
+
+| Method | Effect |
+| --- | --- |
+| `.params(Params)` | Values for this draw |
+| `.corner_radius(r)`, `.tint(Color)`, `.opacity(f32)` | Shape coverage and `in.tint` |
+| `.image(source)`, `.fit(ImageFit)`, `.filter(TextureFilter)` | Widget texture (material must declare `.reads_texture()`); `Cover`/`Contain` pick the crop |
+| `.backdrop_blur(sigma)` | Sigma of `backdrop_blurred`, logical pixels, default 4, at most 64 |
+| `.animated(bool)` | Whether this draw reads the clock; see below |
+| `.fallback(Color)` | Painted when the material cannot be used; transparent by default |
+| `.id_source(key)` | Stable identity when widgets before it come and go |
+| `.show(ui) -> bool` | Paints; `true` when the material drew it |
+
+An unusable material (not registered, rejected, parameters that do not fit) paints the fallback
+as an ordinary rectangle and reports the reason once through `Context::diagnostics()`. It never
+panics and never logs per frame.
+
+## Repaint
+
+A static material asks for no frames. A material declared `.animated()` asks for the next frame
+only while a draw that reads the clock is on screen: not clipped away entirely, in a window that
+is drawn. Hidden, scrolled out, removed, `.animated(false)` and reduced-motion draws ask for
+nothing, so a still window stays still. `time` comes from the pass clock (`web_time` in a
+browser), not the system clock. Drive a draw with state that settles instead (a spring on a
+hover, as in the `pixel_cards` example) and no frame is requested after it rests.
+
+## Batching and the protocol
+
+Draws with the same material and byte-equal uniform blocks merge into one command; any other
+material, parameter or size starts a new one. Backdrop draws never merge. A command carries
+`DrawCommand::material: Option<MaterialDraw>` (`id` and the byte range of its block in
+`DrawData::material_uniforms`); the WGSL travels in `DrawData::materials`. See
+[Protocol](./protocol.mdx#materials) and [Renderer](./renderer.mdx#materials).
+
+## Examples
+
+`cargo run --example materials` shows a static and an animated material, a rounded card, an image,
+frosted glass over stripes (backdrop), slider-driven parameters, a ScrollArea, a scaled group, a
+second window and a shader that does not compile. `cargo run --example pixel_cards` is the
+acceptance example: a grid of ordinary `Card`s, one material, hover parallax in three layers of
+pixel blocks; `--smoke-test` checks hover, idle (no frames), scroll and resize on the real runner.

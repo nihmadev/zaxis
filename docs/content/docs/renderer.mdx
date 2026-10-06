@@ -112,6 +112,23 @@ parent revision, unchanged vertex/index ranges reuse that validation and upload.
 Dirty ranges and all draw commands are checked. A missing parent, shrinking buffers,
 or no hint selects complete validation; a newly allocated buffer is fully uploaded.
 
+## Materials
+
+Commands with a [material](./materials.mdx) draw with a pipeline built on first use from the WGSL in
+`DrawData::materials`, cached per `(MaterialId, attachment format, sample count)` and shared by
+the windows of one device. At most 64 pipelines stay between frames (least recently used first);
+the pipelines a frame draws with are never evicted. Pipelines are never rebuilt for changed
+parameters. Uniform blocks of a frame are written once per revision into one buffer, aligned to
+`min_uniform_buffer_offset_alignment`, and bound with a dynamic offset of a fixed 1 KiB binding,
+within the WebGL2 limit of 16 KiB per block. A material that reads the backdrop uses the blur path
+of `blur` commands (offscreen canvas, copy and Gaussian blur of the area), not a second mechanism.
+
+Sources are validated with naga before they reach the renderer, so a build error here means a
+device or driver limit: the material draws nothing, `RendererStats::material_pipeline_failures`
+counts it and `Renderer::take_material_errors()` returns the text. A new renderer after a lost
+device recompiles everything it needs from the next `DrawData`. `RendererStats` adds
+`material_draws`, `material_pipeline_builds` and `material_uniform_bytes`.
+
 ## Errors
 
 `RenderError` implements `Display` and `std::error::Error`:

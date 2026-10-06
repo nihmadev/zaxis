@@ -1,0 +1,139 @@
+---
+title: File dialogs and file drop
+icon: FolderOpen
+description: Native open, save and folder dialogs, files dragged in from the file manager, and the one file type both produce.
+---
+
+Two ways for files to reach the application from outside: the user drags them onto a window,
+or chooses them in a native dialog. Both produce `PickedFile`, so code that reads a file is
+the same for either, on the desktop and in a browser. Nothing here blocks the frame.
+
+## PickedFile
+
+| Member | Meaning |
+|---|---|
+| `name()` | Last path component, invalid UTF-8 replaced. Empty for a file known only while it is dragged in a browser. |
+| `path()` | `Some` on the desktop, `None` in a browser and for in-memory files. |
+| `size()`, `is_dir()`, `extension()`, `mime()` | Size when known, directory flag, extension, media type (the browser's own, or a guess from the extension). |
+| `read_blocking()` | Reads on the calling thread. Desktop only; for small files. |
+| `Context::read_file(&file)` | Reads in the background: a thread on the desktop, a promise in a browser. Returns a `FileTask` to poll with `take()`. |
+| `Context::write_file(&file, bytes)` | Writes in the background; in a browser it starts a download. |
+
+`FileTask::take()` returns the result once. When background work finishes the event loop
+wakes and exactly one frame is drawn; there is no polling timer.
+
+Paths come from the system and are not trusted. Nothing assumes UTF-8 or that a file exists.
+Directories are reported with `is_dir()` and never walked. Failures are `FileError`
+values, not panics.
+
+## Files dragged in
+
+`DropTarget` takes files from the system with `accepts_files`:
+
+```rust
+let out = DropTarget::files(Id::new("zone"))
+    .accepts_files(FileFilter::new("Images", &["png", "jpg"]))
+    .max_files(5)
+    .show(ui, |ui| ui.label("Drop images here"));
+if out.files_hovering { /* highlight */ }
+for file in out.dropped_files { /* once */ }
+```
+
+The target highlights while files hover, with the same style as an in-window drag
+(`DragStyle`). `DropOutput` has `files_hovering`, `files_acceptable` and `dropped_files`;
+`Response::files_hovering()` and `files_dropped()` report the same for a custom layout. The
+same target can also accept in-window payloads (`DropTarget::new(..).accepts_files(..)`).
+
+Without a target: `ctx.hovered_files()`, `ctx.hovered_files_position()`,
+`ctx.take_dropped_files()` (once), `ctx.dropped_files()` (peek) and
+`ctx.dropped_files_position()`. Files nobody takes are gone after the pass in which they
+arrive; they never accumulate between frames.
+
+### Rules
+
+- Exactly one target takes a drop: the topmost window or popup under the position, then the
+  most deeply nested target, then the later one. A target that turns every file down blocks
+  its parent unless `passthrough_rejected(true)`.
+- A modal blocks the drop under it, and the application's own `take_dropped_files` while it
+  is open, like other input.
+- Files that land on a target belong to it and are not also returned by
+  `take_dropped_files`. A target takes the files its filter passes, up to its limit.
+- Each window has its own state: a drop on one window is invisible to the others.
+- A hover that repeats the same files or stays in the same target asks for no frame. A drop
+  wakes the loop once.
+
+### Position
+
+| Platform | Position |
+|---|---|
+| Browser | Exact, from `dragover` and `drop` on the canvas. |
+| Windows, macOS, Wayland | winit reports none; the last known pointer is used, and it is `None` when the drag came from outside and the pointer never moved over the window. |
+| X11 | winit moves the pointer during the drag where the toolkit reports it. |
+
+With no position a lone accepting target takes the files; with several there is no guess and
+the files stay with the application (`take_dropped_files`).
+
+If the platform announces no hover (some Linux compositors), `hovered_files()` stays empty
+and the drop still works. A browser lists hovered files by type only, without names.
+
+## Dialogs
+
+Enable the feature; it is off by default because it adds `rfd` and, on Linux, a D-Bus portal
+client that applications without dialogs do not need:
+
+```toml
+zaxis = { version = "0.0.4", features = ["file-dialogs"] }
+```
+
+Without it none of the dialog types exist.
+
+```rust
+if ui.button("Open…").clicked() {
+    request = Some(ctx.open_dialog("open", FileDialog::open_files()
+        .title("Add images")
+        .filter(FileFilter::new("Images", &["png", "jpg"]))));
+}
+if let Some(request) = &request {
+    match ctx.take_dialog_result(request) {
+        Some(DialogResult::Picked(files)) => { /* … */ }
+        Some(DialogResult::Cancelled | DialogResult::Failed(_)) => {}
+        None => {}
+    }
+}
+```
+
+`FileDialog::open_file()`, `open_files()`, `save_file()`, `pick_folder()`, `pick_folders()`
+with `title`, `directory`, `file_name`, `filter` and `parent(WindowKey)`.
+
+- `open_dialog(key, dialog)` returns a `DialogRequest`. A key that is still open (or whose
+  answer is not taken yet) returns the same handle, so a double click opens one dialog.
+- `take_dialog_result(&request)` returns the `DialogResult` once. `dialog_pending` tells if
+  it is still open.
+- The dialog is modal for its parent window only (the opener unless `parent` names another
+  open window). Other windows keep running. Closing the parent answers `Cancelled`.
+- The answer wakes the loop and draws one frame.
+
+### Platforms
+
+| Platform | Backend |
+|---|---|
+| Windows | Win32 common dialogs, on a thread of their own. |
+| macOS | `NSOpenPanel` / `NSSavePanel`, shown by `rfd` on the main queue. Unverified here. |
+| Linux | xdg-desktop-portal (X11 and Wayland); no GTK. Without a portal the dialog may come back as `Cancelled`. Unverified here. |
+| Browser | `<input type=file>` for open (needs a user gesture); a save answers at once with the name and `write_file` downloads the bytes; folder dialogs fail with `FileError::Unsupported`. |
+
+### Testing and custom hosts
+
+`DialogBackend` shows dialogs; `SystemDialogs` is the runner's, `MemoryDialogs` records them
+for tests. A custom host calls `ctx.take_dialog_launches()` after each frame and hands them to
+a backend. `zaxis::testing::FileInput` has `simulate_hover_files`, `simulate_drop_files`,
+`simulate_hover_cancel` and `simulate_dialog_result`, plus `_at` variants with an exact
+position. No test opens a real dialog.
+
+## Limits
+
+- A drop onto a window of an elevated application from a non-elevated Explorer is blocked by
+  Windows (UIPI); see [Troubleshooting](./troubleshooting.mdx).
+- A browser cannot give paths, list folders or choose folders, and hands dropped directories
+  over as plain files.
+- No clipboard file paste and no dragging files out of the application.

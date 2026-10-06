@@ -54,6 +54,11 @@ deadline already recorded in the context is not postponed by a later request.
 `Duration::ZERO` requests an immediate repaint. A delay that cannot be added to
 `Instant::now()` is ignored.
 
+An animated [material](./materials.mdx) schedules itself: while a draw that reads the clock is
+on screen the context reports `wants_animation_frame()` and sets a deadline one
+`MotionStyle::frame_interval` ahead. When nothing animated is visible (scrolled out, hidden,
+`.animated(false)`, reduced motion) it asks for nothing.
+
 ## Changes after an earlier control
 
 ```rust

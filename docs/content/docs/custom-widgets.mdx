@@ -84,6 +84,11 @@ costs nothing while idle and tessellates again only when the value or a state ch
 Keep per-frame data out of the shape (no animation clocks, no counters) and the cache
 does the rest. Text inside a custom widget is a `Text` widget or a `ui.label`.
 
+For a shader of your own on the shape of a widget (animated gradient, procedural noise, a
+glow, a frosted pane) use a [material](./materials.mdx) instead of painting many shapes: it costs
+one cached mesh and one uniform block per draw. Its hit region is still the rectangle you give
+`Ui::interact`.
+
 ## Accessibility
 
 A custom widget that describes nothing is not in the accessibility tree. Describe it

@@ -89,6 +89,7 @@ layout, input, repaint scheduling, custom hosts, renderer, and drawing protocol.
 | Add the library | [Installation](https://nihmadev.github.io/zaxis/installation/) |
 | Create an application | [First application](https://nihmadev.github.io/zaxis/quickstart/) |
 | Edit or drag typed numbers | [NumberInput / DragValue](https://nihmadev.github.io/zaxis/components/number-input/) |
+| Open, save and drop files | [File dialogs and file drop](https://nihmadev.github.io/zaxis/file-dialogs-and-drop/) |
 | Use controls | [Components](https://nihmadev.github.io/zaxis/components/) |
 | Scroll long content and virtual lists | [ScrollArea](https://nihmadev.github.io/zaxis/components/scroll-area/) |
 | Compose forms and data tables | [Grid](https://nihmadev.github.io/zaxis/components/grid/), [Table](https://nihmadev.github.io/zaxis/components/table/) |

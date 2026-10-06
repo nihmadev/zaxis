@@ -55,6 +55,11 @@ ColorPicker reports row activation through `clicked()` and color edits through
 `changed()`. Its RGB/HEX fields accept committed text from native events or
 `Context::on_text_event`. See [ColorPicker](./components/color-picker.mdx) for editing keys.
 
+## Files from the system
+
+`Context::hovered_files`, `take_dropped_files` and `DropTarget::accepts_files` carry files dragged in
+from the file manager; see [File dialogs and file drop](./file-dialogs-and-drop.mdx).
+
 ## Pointer
 
 Primary-button press captures the hit region from the preceding UI pass. Releasing

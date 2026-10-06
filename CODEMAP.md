@@ -14,6 +14,8 @@ host redraw ─► Context::run(|ctx| ...)           src/context/frame.rs  (run_
                  │              + Paint descriptions (paint.rs → paint/) + retained state
                  │                (Id-keyed, in the owner of its family; see below)
                  │              + deferred cell content (placement.rs → placement/)
+                 │              + material draw: Ui::material → Paint::Material (cached mesh) and
+                 │                MaterialUse (params, size, time: per frame, outside the cache key)
                  │              + accessibility node, only while collection is on
                  │                (src/accessibility/collect.rs)
                  └─ finish_frame: overlays (popup, modals, tooltips, toasts, drag preview),
@@ -47,14 +49,16 @@ accessibility in:  adapter ─► UserEvent::Access ─► Context::on_accessibi
 | Layout primitives | `src/layout.rs` | Logical pixels. |
 | Shapes/tessellation | `src/shapes/`, `shapes/mesh/` | Rect, Color, Gradient, Shadow, Transform → meshes. |
 | Text | `src/text/` | cosmic-text shaping (`shape.rs`), glyph atlas, fonts, rich runs, weights. Measurement API for components: `src/context/text_api.rs`. |
-| Draw protocol | `src/protocol/` | `DrawData`, `DrawCommand`, `Vertex`, textures. Renderer-agnostic. |
+| Draw protocol | `src/protocol/` | `DrawData`, `DrawCommand`, `Vertex`, textures, `material.rs` (`MaterialId`, `MaterialDraw`, `MaterialSource`). Renderer-agnostic. |
+| Materials | `src/material.rs`, `src/material/` | User WGSL fragment shaders: `description` (`Material`), `layout` (`ParamKind`, offsets, limits), `values` (`Params` packing), `assemble` + `compile` (prelude + naga validation), `registry` (content-keyed, shared through `SharedResources`), `error`. Prelude WGSL: `src/shaders/{common,material}.wgsl`. Context glue: `src/context/materials.rs` (`MaterialUse`, clock, repaint) and `src/context/geometry/material.rs` (batching, uniform blocks); drawing API: `src/components/material.rs` (`Ui::material`). |
 | Clock | `src/time.rs` | `Instant`: std on native, `web_time` on wasm32. Re-exported as `zaxis::Instant`. |
-| Renderer | `src/renderer/` | `init` (renderer assembly), `adapter` (+ `adapter/{native,web}.rs`: instance/adapter choice, WebGPU then WebGL2 in a page), `frame` (submit/present), `geometry` (buffers), `textures` (LRU uploads), `blur` (backdrop effects), `viewport`. WGSL in `src/shaders/`. |
+| Renderer | `src/renderer/` | `init` (renderer assembly), `adapter` (+ `adapter/{native,web}.rs`: instance/adapter choice, WebGPU then WebGL2 in a page), `frame` (submit/present), `geometry` (buffers), `textures` (LRU uploads), `blur` (backdrop effects; `blur/{material,pipelines}.rs`), `materials` (`materials/{pipelines,uniforms}.rs`: pipeline cache per material, the frame's dynamic-offset uniform buffer), `viewport`. WGSL in `src/shaders/`. |
 | Animation engine | `src/animation/` | tween/spring/decay/keyframes/timeline/path; retained tracks in `state/`; Context glue in `src/context/animation.rs`; component glue in `components/motion.rs`, `moving.rs`, `effects.rs`. |
 | Images | `src/images/` | decode (raster+SVG), `worker.rs` (job execution: threads via `worker/threads.rs`, or inline per-frame slices on wasm32), `file.rs` (path loading; an error in a page), cache/lifecycle, resize. Context glue: `src/context/images.rs`; component: `components/image.rs`. |
 | App runner | `src/app/` | `App` trait, `Windows` (multi-window), hub/registry (no winit/GPU, testable), runner (winit, split into platform-independent code and `native`/`web` platform modules), schedule (repaint deadlines), commands (window requests), `browser.rs` (`WebOptions`, browser key policy; plain data, all targets). |
 | Theme/Style | `src/components/{style,appearance}.rs`, `components/theme/` | `Style` is what widgets consume; typed `Theme` resolves into it (`resolve.rs`, `palette.rs`, `tokens.rs`, per-control `controls.rs`, `overrides.rs`). |
 | Accessibility | `src/accessibility/` | `node` (`AccessNode`), `role` (roles, actions, state enums), `collect` (nodes while the UI is built, `Ui::accessible`), `widget` (`Accessible` wrapper), `text` (text runs), `tree` (tree + diff, coordinated in `tree.rs`; stages `tree/{select,bounds,identity,outline,diff}.rs`, motion hold `tree/policy.rs`), `convert` (to AccessKit nodes), `ids`, `actions` (updates out, requests in), `adapter` (accesskit_winit, native only), `audit` (missing names), `testing` (`AccessTree`, doc-hidden). Features `accesskit` (default), `accesskit_unix`. Complex components keep their description in a per-component `access.rs`. |
+| Files, dialogs | `src/files.rs`, `src/files/` | `PickedFile` (`picked`), `FileFilter`, `FileTask` + `Notify` (`task`), background read/write (`io/{native,web}.rs`); feature `file-dialogs`: `dialog/` (`FileDialog` spec, `DialogBackend`, `MemoryDialogs`, `system/{native,web}.rs` over `rfd`). Context glue: `src/context/file_drop.rs` (+ `file_drop/{events,resolve}.rs`: hover/drop state, target choice), `file_io.rs`, `dialogs.rs`. Runner: `src/app/dialogs.rs` (`DialogHost`), `app/runner/dialogs.rs`, browser drag events `runner/web/drag.rs`. UI: `DropTarget::accepts_files`. |
 | Icons / emoji | `crates/z-icons` (feature `bundled-icons`), `crates/z-emoji` (crate `z-emoji`, feature `bundled-emoji`) | Separate workspace crates; `generated.rs` is exempt from the size limit. |
 
 ## Context concerns (`src/context/`)
@@ -76,6 +80,7 @@ accessibility in:  adapter ─► UserEvent::Access ─► Context::on_accessibi
 | `containers.rs` | `Containers`: grids, cards, flows, tab pages, carousels, list boxes, collapsing headers. |
 | `paint.rs`, `paint/` | `PaintState`; stages `route` (deferral, order, blur), `visual` (materialized transforms), `cache` (reuse/translation), `tessellate`, `data` (`Paint`). |
 | `geometry.rs` | `FrameGeometry`: elements → incremental frame meshes + draw-data revisions. |
+| `materials.rs` | `MaterialState` (clock of animated materials, repaint while one is visible), `MaterialUse`, `mark_material` (routed like `mark_blur`). |
 | `visual.rs` | `Visuals`: composed/published transforms, effects being built, retained effect state. |
 | `placement.rs`, `placement/` | Deferred/measured cell content: record (`placement.rs`), `visual` transform, `emit` (translate/clip/hand on), popup `portal`. |
 | `scroll.rs`, `scroll_input.rs` | Scroll routing, deferred scroll content, middle-button autoscroll. |
