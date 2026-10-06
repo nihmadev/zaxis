@@ -136,6 +136,68 @@ impl Driver for Context {
     }
 }
 
+/// Files dragged in and dialogs answered without a window, a system or a GPU.
+///
+/// The desktop calls take the pointer as it is (see [`Driver::move_pointer`]), as the system
+/// reports no position of its own; the `_at` calls give the exact one a browser reports.
+/// A file per event reaches the context just as winit sends them.
+pub trait FileInput {
+    /// Files start hovering over the window.
+    fn simulate_hover_files(&mut self, files: Vec<crate::PickedFile>);
+    /// A browser drag over the canvas at `position`.
+    fn simulate_hover_files_at(&mut self, files: Vec<crate::PickedFile>, position: Vec2);
+    /// The drag left the window or was cancelled.
+    fn simulate_hover_cancel(&mut self);
+    /// Files are dropped; the next pass delivers them.
+    fn simulate_drop_files(&mut self, files: Vec<crate::PickedFile>);
+    /// A browser drop at `position`.
+    fn simulate_drop_files_at(&mut self, files: Vec<crate::PickedFile>, position: Vec2);
+    /// The user answers a dialog without any window.
+    #[cfg(feature = "file-dialogs")]
+    fn simulate_dialog_result(
+        &mut self,
+        request: &crate::DialogRequest,
+        result: crate::DialogResult,
+    );
+}
+
+impl FileInput for Context {
+    fn simulate_hover_files(&mut self, files: Vec<crate::PickedFile>) {
+        for file in files {
+            self.file_hovered(file);
+        }
+        self.request_repaint();
+    }
+    fn simulate_hover_files_at(&mut self, files: Vec<crate::PickedFile>, position: Vec2) {
+        if self.file_hover_replace(files, position) {
+            self.request_repaint();
+        }
+    }
+    fn simulate_hover_cancel(&mut self) {
+        if self.file_hover_cancelled() {
+            self.request_repaint();
+        }
+    }
+    fn simulate_drop_files(&mut self, files: Vec<crate::PickedFile>) {
+        for file in files {
+            self.file_dropped(file);
+        }
+        self.request_repaint();
+    }
+    fn simulate_drop_files_at(&mut self, files: Vec<crate::PickedFile>, position: Vec2) {
+        self.file_drop_batch(files, position);
+        self.request_repaint();
+    }
+    #[cfg(feature = "file-dialogs")]
+    fn simulate_dialog_result(
+        &mut self,
+        request: &crate::DialogRequest,
+        result: crate::DialogResult,
+    ) {
+        self.dialog_answer(request, result)
+    }
+}
+
 /// Read-only view of the retained state behind a [`Context`].
 pub trait Inspect {
     fn probe(&self) -> Probe<'_>;

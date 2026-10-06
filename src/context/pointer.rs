@@ -166,6 +166,7 @@ impl Context {
 
     pub(super) fn move_pointer(&mut self, pointer: Vec2) {
         self.input.pointer = Some(pointer);
+        self.file_hover_pointer(pointer);
         self.update_auto_scroll_pointer(pointer);
         self.drag_move(pointer);
         if let Some(capture) = self.interaction.capture {

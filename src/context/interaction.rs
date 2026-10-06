@@ -48,6 +48,10 @@ pub enum HitAction {
     DropTarget {
         slot: u32,
     },
+    /// Passive, like `DropTarget`, for a target that takes files from the system.
+    FileDrop {
+        slot: u32,
+    },
     /// Passive: carries the bounds of an accessibility node through placement, scrolling
     /// and visual transforms. Removed from the hit list before it routes any input.
     Semantic,
@@ -384,6 +388,7 @@ impl Context {
                     HitAction::ContextMenu
                         | HitAction::DragSource { .. }
                         | HitAction::DropTarget { .. }
+                        | HitAction::FileDrop { .. }
                 ) && hit.window == window
                     && hit.rect.contains(pointer)
                     && hit.clip.contains(pointer)

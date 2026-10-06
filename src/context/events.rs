@@ -1,7 +1,7 @@
 //! Bridge from native winit events to logical UI input.
 
 use super::{Context, EventResponse};
-use crate::Vec2;
+use crate::{files::PickedFile, Vec2};
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
@@ -16,6 +16,14 @@ impl Context {
     /// press/release pairs even when several events arrive before the next redraw.
     pub fn on_window_event(&mut self, event: &WindowEvent) -> EventResponse {
         let mut consumed = false;
+        if matches!(
+            event,
+            WindowEvent::HoveredFile(_)
+                | WindowEvent::DroppedFile(_)
+                | WindowEvent::HoveredFileCancelled
+        ) {
+            eprintln!("DBG {event:?}");
+        }
         let repaint = match event {
             WindowEvent::CursorMoved { position, .. } => {
                 let pointer = Vec2::new(position.x as f32, position.y as f32) / self.scale;
@@ -120,6 +128,9 @@ impl Context {
                 self.set_viewport(physical, *scale_factor);
                 true
             }
+            WindowEvent::HoveredFile(path) => self.file_hovered(PickedFile::from_path(path)),
+            WindowEvent::HoveredFileCancelled => self.file_hover_cancelled(),
+            WindowEvent::DroppedFile(path) => self.file_dropped(PickedFile::from_path(path)),
             _ => false,
         };
         if repaint {
