@@ -1,6 +1,6 @@
 [package]
 name = "zaxis"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 rust-version = "1.90"
 description = "An event-driven immediate mode GUI for desktop tools"
@@ -39,6 +39,7 @@ z-icons = { version = "0.0.1", path = "crates/z-icons", optional = true }
 image = { version = "=0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 resvg = { version = "=0.48.1", default-features = false, features = ["text"] }
 accesskit = { version = "0.25.1", optional = true }
+rfd = { version = "0.17.2", optional = true, features = ["file-handle-inner"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pollster = "1.0.1"
@@ -57,6 +58,8 @@ web-sys = { version = "0.3", features = [
     "Window", "Document", "HtmlCanvasElement", "HtmlElement", "Element", "Navigator",
     "ClipboardEvent", "DataTransfer", "Event", "EventTarget", "Location",
     "CssStyleDeclaration", "KeyboardEvent", "console",
+    "File", "FileList", "Blob", "Url", "HtmlAnchorElement", "DragEvent", "MouseEvent",
+    "DataTransferItem", "DataTransferItemList", "DomRect",
 ] }
 
 [features]
@@ -74,6 +77,9 @@ bundled-monospace = []
 bundled-icons = ["dep:z-icons"]
 image-gif = ["image/gif"]
 image-tiff = ["image/tiff"]
+# Native open/save/folder dialogs ([`FileDialog`]). Off by default: it pulls in `rfd` and, on
+# Linux, the D-Bus portal client, which applications that never open a dialog do not need.
+file-dialogs = ["dep:rfd"]
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -124,6 +130,11 @@ path = "examples/integration.rs"
 required-features = ["accesskit"]
 
 [[example]]
+name = "file_drop"
+path = "examples/file_drop.rs"
+required-features = ["file-dialogs"]
+
+[[example]]
 name = "web_landing"
 path = "examples/web_landing.rs"
 required-features = ["bundled-icons"]
@@ -137,3 +148,8 @@ debug = false
 
 [profile.bench]
 debug = false
+
+[[example]]
+name = "showcase"
+path = "examples/showcase.rs"
+required-features = ["bundled-icons"]
