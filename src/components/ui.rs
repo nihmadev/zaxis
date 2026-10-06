@@ -199,6 +199,8 @@ impl Ui<'_> {
             drag_delta: events.drag_delta,
             menu_selected: None,
             link: None,
+            files_hovering: false,
+            files_dropped: false,
         }
     }
 

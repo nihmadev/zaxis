@@ -7,11 +7,19 @@ use super::{
 use crate::{
     context::{
         drag::state::{Hover, TargetInfo},
+        file_drop::FileTarget,
         HitAction, HitRegion,
     },
+    files::{FileFilter, PickedFile},
     Id, Rect, Response, Ui, Vec2,
 };
-use std::{any::Any, marker::PhantomData};
+use std::{any::Any, convert::Infallible, marker::PhantomData, sync::Arc};
+
+/// What a target takes from files dragged in from the system.
+struct FileAccept {
+    filter: Arc<FileFilter>,
+    max: usize,
+}
 
 /// A drop region for payloads of type `P`. `accept` decides by value; the type
 /// is checked first, so the predicate only ever sees a `&P`.
@@ -29,6 +37,7 @@ pub struct DropTarget<P, F> {
     indent: f32,
     indicator: bool,
     style: DragStyle,
+    files: Option<FileAccept>,
     payload: PhantomData<fn(&P)>,
 }
 
@@ -51,6 +60,13 @@ pub struct DropOutput<R, P> {
     pub insertion: Option<Insertion>,
     /// The drop, delivered once, on the pass after the pointer was released.
     pub dropped: Option<Dropped<P>>,
+    /// Files from the system are being dragged over this target (it won target selection).
+    pub files_hovering: bool,
+    /// Hovering files, and the target's filter passes at least one.
+    pub files_acceptable: bool,
+    /// Files dropped on this target from the system, once: those its filter passes, up to
+    /// its limit, in the order the system listed them.
+    pub dropped_files: Vec<PickedFile>,
 }
 
 impl<P: Any, F: Fn(&P) -> bool> DropTarget<P, F> {
@@ -65,8 +81,27 @@ impl<P: Any, F: Fn(&P) -> bool> DropTarget<P, F> {
             indent: 0.0,
             indicator: true,
             style: DragStyle::default(),
+            files: None,
             payload: PhantomData,
         }
+    }
+    /// Also take files dragged in from the system that `filter` passes. The target highlights
+    /// while they hover, in the style of an in-window drag, and reports the drop in
+    /// [`DropOutput::dropped_files`]. Exactly one target takes a drop: the topmost under the
+    /// position, and none under a modal. Cache the `Arc` to avoid an allocation per frame.
+    pub fn accepts_files(mut self, filter: impl Into<Arc<FileFilter>>) -> Self {
+        self.files = Some(FileAccept {
+            filter: filter.into(),
+            max: usize::MAX,
+        });
+        self
+    }
+    /// Take at most `max` files of one drop (see [`accepts_files`](Self::accepts_files)).
+    pub fn max_files(mut self, max: usize) -> Self {
+        if let Some(files) = &mut self.files {
+            files.max = max;
+        }
+        self
     }
     /// A disabled target is skipped by hit testing and keeps its state.
     pub fn enabled(mut self, enabled: bool) -> Self {
@@ -117,9 +152,10 @@ impl<P: Any, F: Fn(&P) -> bool> DropTarget<P, F> {
         }
         let id = ui.scope.with(("drop-target", self.key));
         let active = self.enabled && ui.enabled && ui.context.drag_running();
-        let depth = if active { ui.context.drag_enter() } else { 0 };
+        let nests = active || (self.files.is_some() && self.enabled && ui.enabled);
+        let depth = if nests { ui.context.drag_enter() } else { 0 };
         let (inner, size, placement) = ui.measure_effect(id.with("content"), true, build);
-        if active {
+        if nests {
             ui.context.drag_exit();
         }
         let rect = Rect::from_min_size(ui.layout.cursor, size);
@@ -144,8 +180,32 @@ impl<P: Any, F: Fn(&P) -> bool> DropTarget<P, F> {
         let mut state = State {
             hover: None,
             dropped: None,
+            file_hover: None,
+            files: Vec::new(),
             id,
         };
+        if let (Some(accept), true) = (&self.files, self.enabled && ui.enabled) {
+            let slot = ui.context.file_add_target(FileTarget {
+                id,
+                key: self.key,
+                depth,
+                filter: Arc::clone(&accept.filter),
+                max: accept.max,
+                passthrough: self.passthrough,
+            });
+            ui.context.register_hit(HitRegion {
+                id: id.with("files"),
+                window: ui.window,
+                rect,
+                clip: ui.clip,
+                action: HitAction::FileDrop { slot },
+            });
+            state.file_hover = ui.context.files.hover_target.filter(|h| h.id == id);
+            state.files = ui.context.file_claim(id).unwrap_or_default();
+            if !state.files.is_empty() {
+                ui.context.request_repaint();
+            }
+        }
         if active {
             let accepts = ui
                 .context
@@ -227,7 +287,11 @@ impl<P: Any, F: Fn(&P) -> bool> DropTarget<P, F> {
         state: State<P>,
     ) -> DropOutput<R, P> {
         let hover: Option<Hover> = state.hover;
-        if let (Some(hover), true) = (hover, self.indicator) {
+        let file_hover = state.file_hover;
+        let mut response = response;
+        response.files_hovering = file_hover.is_some();
+        response.files_dropped = !state.files.is_empty();
+        if let (Some(hover), true) = (hover.or(file_hover), self.indicator) {
             indicator::paint(
                 ui,
                 &self.style,
@@ -250,12 +314,29 @@ impl<P: Any, F: Fn(&P) -> bool> DropTarget<P, F> {
             position: hover.map(|h| h.local),
             insertion: hover.and_then(|h| h.insertion),
             dropped: state.dropped,
+            files_hovering: file_hover.is_some(),
+            files_acceptable: file_hover.is_some_and(|h| h.accepts),
+            dropped_files: state.files,
         }
+    }
+}
+
+impl DropTarget<Infallible, fn(&Infallible) -> bool> {
+    /// A target for files dragged in from the system only, taking every file; narrow it
+    /// with [`accepts_files`](Self::accepts_files). It has no in-window payload.
+    pub fn files(id: Id) -> Self {
+        fn never(_: &Infallible) -> bool {
+            false
+        }
+        Self::new(id, never as fn(&Infallible) -> bool)
+            .accepts_files(FileFilter::any().directories(true))
     }
 }
 
 struct State<P> {
     hover: Option<Hover>,
     dropped: Option<Dropped<P>>,
+    file_hover: Option<Hover>,
+    files: Vec<PickedFile>,
     id: Id,
 }

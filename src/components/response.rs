@@ -37,6 +37,8 @@ pub struct Response {
     pub(super) drag_delta: Vec2,
     pub(super) menu_selected: Option<Id>,
     pub(super) link: Option<super::LinkActivation>,
+    pub(super) files_hovering: bool,
+    pub(super) files_dropped: bool,
 }
 
 impl Response {
@@ -124,6 +126,18 @@ impl Response {
         self.clicked = activation == Some(super::LinkActivation::Primary);
     }
 
+    /// Files from the system are being dragged over this widget, which is a
+    /// [`DropTarget`](crate::DropTarget) that takes them. Use it to highlight the zone.
+    pub fn files_hovering(self) -> bool {
+        self.files_hovering
+    }
+
+    /// Files from the system were dropped on this widget in this pass, once; take them from
+    /// [`DropOutput::dropped_files`](crate::DropOutput::dropped_files).
+    pub fn files_dropped(self) -> bool {
+        self.files_dropped
+    }
+
     /// The context menu attached with [`super::Widget::context_menu`] chose this item.
     pub fn menu_selected(self) -> Option<Id> {
         self.menu_selected
@@ -143,6 +157,7 @@ impl Response {
             || self.drag_delta != Vec2::ZERO
             || self.menu_selected.is_some()
             || self.link.is_some()
+            || self.files_dropped
     }
 
     /// True when this widget changed its bound value during the current UI pass.
