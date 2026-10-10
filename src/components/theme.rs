@@ -5,12 +5,14 @@ mod overrides;
 pub mod painter;
 mod palette;
 mod resolve;
+mod tabs;
 mod tokens;
 
 pub use controls::*;
 pub use modal::ModalStyle;
 pub use overrides::*;
 pub use painter::{ControlPaint, PaintMode, PaintPart, Painter};
+pub use tabs::TabsStyle;
 pub use tokens::*;
 
 /// Theme inputs. `None` in overrides inherits; every `Some`, including zero,

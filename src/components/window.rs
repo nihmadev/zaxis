@@ -329,23 +329,25 @@ impl Window {
                 }
             }
         }
+        let displayed = ui.context.windows[&self.id].displayed_rect;
+        let displayed_clip = displayed.intersect(ui.context.viewport());
         if resizable {
-            let grip = Rect::from_min_size(rect.max - Vec2::splat(18.0), Vec2::splat(18.0));
+            let grip = Rect::from_min_size(displayed.max - Vec2::splat(18.0), Vec2::splat(18.0));
             let color = style.muted_text;
             ui.context.paint(
                 self.id.with("grip"),
                 self.id,
-                clip,
+                displayed_clip,
                 vec![
                     Paint::Shape(Shape::Line {
-                        start: rect.max - Vec2::new(13.0, 5.0),
-                        end: rect.max - Vec2::new(5.0, 13.0),
+                        start: displayed.max - Vec2::new(13.0, 5.0),
+                        end: displayed.max - Vec2::new(5.0, 13.0),
                         width: 1.0,
                         color,
                     }),
                     Paint::Shape(Shape::Line {
-                        start: rect.max - Vec2::new(9.0, 5.0),
-                        end: rect.max - Vec2::new(5.0, 9.0),
+                        start: displayed.max - Vec2::new(9.0, 5.0),
+                        end: displayed.max - Vec2::new(5.0, 9.0),
                         width: 1.0,
                         color,
                     }),
@@ -355,11 +357,12 @@ impl Window {
                 id: self.id.with("resize"),
                 window: self.id,
                 rect: grip,
-                clip,
+                clip: displayed_clip,
                 action: HitAction::Resize,
             });
         }
-        ui.context.a11y_end(scope, Some((rect, clip)));
+        ui.context
+            .a11y_end(scope, Some((displayed, displayed_clip)));
         if let Some((scale, opacity)) = visual {
             let context = &mut *ui.context;
             context.visuals.depth -= 1;

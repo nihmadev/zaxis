@@ -31,6 +31,7 @@ pub struct Response {
     pub(super) gained_focus: bool,
     pub(super) double_clicked: bool,
     pub(super) secondary_clicked: bool,
+    pub(super) middle_clicked: bool,
     pub(super) drag_started: bool,
     pub(super) dragging: bool,
     pub(super) drag_stopped: bool,
@@ -84,6 +85,12 @@ impl Response {
     /// attached to the widget open on this same signal.
     pub fn secondary_clicked(self) -> bool {
         self.secondary_clicked
+    }
+
+    /// The middle button was pressed and released over this widget, which senses it
+    /// ([`Sense::MIDDLE`](super::Sense::MIDDLE)).
+    pub fn middle_clicked(self) -> bool {
+        self.middle_clicked
     }
 
     /// The pointer moved past the drag threshold while pressed on this widget.
@@ -152,6 +159,7 @@ impl Response {
             || self.gained_focus
             || self.double_clicked
             || self.secondary_clicked
+            || self.middle_clicked
             || self.drag_started
             || self.drag_stopped
             || self.drag_delta != Vec2::ZERO

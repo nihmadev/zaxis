@@ -5,6 +5,106 @@ Git tags use `v<version>`; releases so far are **0.0.1 Blinking** (`v0.0.1`) and
 the next ones are **0.0.3 Genetic** (`v0.0.3`) and **0.0.4 Motion** (`v0.0.4`).
 The entries below describe the prepared release; publication happens separately.
 
+## 0.0.5
+
+### Added
+
+- Nested popups. A `Popup` (or a `ComboBox`, `ContextMenu`, `KeyBox` panel, `MenuBar`) built
+  inside another popup is its child and no longer closes it: the context keeps one branch of
+  popups, root to leaf, with the nesting taken from the Ui scope, up to `MAX_POPUP_DEPTH`
+  levels. Independent roots still replace the open branch; a sibling replaces its sibling.
+  Pointer presses are targeted at a level (outside the branch closes it, inside an ancestor
+  closes its descendants, both consumed whole), Escape closes one level per press and its
+  autorepeat does not fall through, Tab closes the leaf, focus returns once to the right
+  trigger with a fallback in the parent, and portals, hits, scroll scopes and extra menu
+  panels follow every level through Grid/Table/ScrollArea/`Ui::visual`/moved windows.
+  `Context::close_popup()` closes the leaf; `Context::close_popup_branch()` closes all.
+  Includes the `nested_popups` example, UI/AT regression tests and eleven scenarios in the
+  performance harness.
+
+- Composable `PanZoom`, application-owned `PanZoomState`, `PanZoomOutput` and `ZoomWheel`:
+  local content including negative coordinates, fixed viewport allocation, shared primary
+  background capture and synchronous addressed wheel zoom, reset/fit and coordinate helpers.
+  `Ui::at` places ordinary controls without moving the parent cursor; `Context::visual_transform`
+  exposes completed placement. Includes native `pan_zoom`, UI/AT/GPU readback checks and
+  seven scenarios in the shared performance harness. Shared visual paint rasterizes glyphs
+  at displayed resolution; popup portals keep their blocker fixed and fit their transformed
+  panels to the screen. Table row backgrounds preserve child-control hit priority.
+
+- Keys addressed to widgets and focus groups for components written outside the crate, without
+  access to the context. `Ui::keys` / `claim_keys` / `take_keys` with `KeyInterest` and `KeyEvent`
+  let the focused widget own the keys it declares: the dispatcher decides the owner when
+  `Context::on_input` receives the event (consumed at once, no pass in between), queues each
+  press, repeat and release in arrival order with the modifiers of that moment, delivers it once
+  to the widget that owned the key, and follows a held key to its release across focus changes.
+  An explicit claim beats the keymap; a chord in progress, a listening `KeyBox`, an open popup or
+  modal, text fields, sliders and `InputState` compatibility are kept. Queues are bounded (256 per
+  widget, 1024 in all) and never leave a key half delivered. `FocusGroup` / `FocusGroupOutput` /
+  `FocusAxis` make several controls one Tab stop with arrow, Home and End navigation, a remembered
+  and nameable entry, wrap off by default, nested groups and `FocusGroup::slot`, skipping disabled,
+  hidden, clipped and removed members, with the accessibility role and name chosen by the caller.
+  `Context::input_stats` reports the bounded counters. Example `custom_widget` (a knob, a swatch,
+  a text field and a slider in one panel, with a headless `--smoke-test`), tests in `tests/ui`,
+  benchmark cases `keys_*`, and documentation in Input, Custom widgets, IDs, Accessibility,
+  Integration and Limitations. There is no toolbar component; a toolbar is a `FocusGroup`.
+
+- IDE-style `Dock`: application-owned split/tab trees, panel-ID model operations,
+  floating Window layers, tab dragging and edge splitting, shared SplitPane
+  resizing, context menus, directional keyboard navigation and Action hooks;
+  versioned serde-independent layout persistence, accessibility, Tiled/Flat
+  theme presets and a single sliding spring focus ring. Restrained Snappy motion
+  is the default; reduced motion settles immediately. Includes the `dock` example,
+  regression tests, documentation and verified performance scenarios.
+
+- Actions and keymap: `Actions` / `Action` registry (`Context::set_actions`, `ui.actions()`),
+  per-pass `set_enabled` / `set_checked`, one-shot `triggered` / `trigger`, `MenuItem::action`,
+  `ContextMenuItem::action`, `Button::action` / `triggers` (tooltip with the shortcut, accessible
+  `keyboard_shortcut`), a keymap with chords and timeout, `Mods::PRIMARY`, nested contexts,
+  conflicts, `rebind`, text save/load, `Kbd` per-platform shortcut text, layout rules (Latin
+  letter, physical key on non-Latin layouts), `KeyBox::chord`, `WebOptions::claimed_shortcuts`,
+  the `actions` example and benchmark cases, and the `actions` documentation page.
+
+- Input without a window: `Context::on_input(InputEvent)` is the one input entry point (pointer,
+  buttons, wheel, keys with physical and logical key and text, modifiers, IME, focus, size and DPI,
+  file drops). `on_window_event` converts with `InputEvent::from_window_event` and calls it, so
+  the runner behaves as before. `InputEvent`, `KeyInput`, `WheelDelta` and `ImeEvent` are
+  exported. The debug line that `on_window_event` printed to stderr for file-drop events is gone.
+- New crate `z-hook`: draws a zaxis interface over the frames of the process it runs in, by
+  hooking how that process presents them. A Vulkan implicit layer (Linux, run and checked with
+  Mesa Anv and llvmpipe; builds for Windows), `IDXGISwapChain` hooks for Direct3D 11 and 12
+  (Windows, compiled but not run), input modes (`PassThrough`, `CaptureWhenVisible`,
+  `CaptureWhenFocused`), Win32 message translation, X11 input through XInput2, a frame budget,
+  counters, and `Overlay::install` / `detached` with a `PresentBackend` trait for tests. No
+  OpenGL, no Wayland input. Examples (a Vulkan layer, an ash host, D3D11 and D3D12 hosts),
+  a benchmark and a documentation page.
+
+- Embedding in a host that owns the GPU: `EmbeddedRenderer` draws `DrawData` into a render pass
+  (`prepare` + `record`, with the host's color format, sample count and depth/stencil attachment;
+  backdrop effects it cannot draw are listed in a `RecordReport`) or into a texture
+  (`render_to`, which begins its own passes, so backdrop blur, glass and backdrop-reading materials
+  work over what the host drew), inside a region of the target at any DPI, with no window,
+  surface or device of its own. `EmbedOptions`, `EmbedAlpha`, `EmbedColorSpace`, `EmbedViewport`,
+  `EmbedLoad`, `PhysicalRect`, `RecordReport` and `EmbedError` (target usage, format, region and
+  device loss are errors, not wgpu validation panics in the host). `create_sibling` and
+  `Renderer::create_embedded` share pipelines, the glyph atlas and the image store between
+  panels, viewports and a window renderer. Example `embed`, a documentation page and pixel tests
+  on a real device; benchmark rows `Embed` in the `performance` harness.
+
+### Changed
+
+- `RadioGroup` and `SegmentedControl` are built on focus groups: every option takes focus by click
+  and by assistive technology (before, only the Tab stop did), the arrow keys, Home and End are
+  the group's and are now reported as consumed when they arrive (before, they were returned
+  unconsumed and the control read them from `keys_pressed` later), and a key that moved focus no
+  longer reaches `InputState::keys_pressed`. Selection that follows focus, disabled options, the
+  grid column rule of `RadioGroup` and the public signatures are unchanged.
+- `Renderer` is a facade over a device part (buffers, textures, pipelines per target, backdrop
+  and material state, counters) and a window part (surface, presentation, recovery); public API
+  and behavior are unchanged. The viewport uniform grew from 16 to 32 bytes (the origin of the
+  area it maps to); material `MaterialInput::position` and `origin` stay relative to that area.
+  The hidden `renderer::pipeline` and `renderer::materials` items gained `Target`, `PipelineSet`,
+  `Kind` and `MaterialPipelines::pipeline_in`; their old functions are unchanged.
+
 ## 0.0.4 Motion
 
 Adds accessibility through AccessKit, browser support (WebGPU with a WebGL2 fallback), a

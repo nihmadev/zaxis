@@ -9,6 +9,9 @@ use crate::{
 use super::{HoverStyle, Response, Sense, Style, Widget};
 
 mod flow;
+mod focus;
+mod keys;
+mod region;
 mod scopes;
 mod theme;
 use flow::Flow;
@@ -172,7 +175,18 @@ impl Ui<'_> {
 
     pub(super) fn response(&self, id: Id, rect: Rect, interactive: bool) -> Response {
         let interactive = interactive && self.enabled;
-        let visible = interactive && self.context.scroll_visible(self.window, rect, self.clip);
+        let visible = interactive
+            && if self.context.visuals.depth > 0 {
+                // Layout rectangles inside a deferred visual are not screen rectangles.
+                self.context
+                    .interaction
+                    .previous_hits
+                    .iter()
+                    .find(|hit| hit.id == id)
+                    .is_some_and(|hit| !hit.rect.intersect(hit.clip).is_empty())
+            } else {
+                self.context.scroll_visible(self.window, rect, self.clip)
+            };
         let events = if visible {
             self.context.gestures.events(id)
         } else {
@@ -193,6 +207,7 @@ impl Ui<'_> {
             gained_focus: events.gained_focus,
             double_clicked: events.double_clicked,
             secondary_clicked: events.secondary_clicked,
+            middle_clicked: events.middle_clicked,
             drag_started: events.drag_started,
             dragging: events.dragging,
             drag_stopped: events.drag_stopped,
@@ -232,7 +247,9 @@ impl Ui<'_> {
     /// and give the widget a stable `id_source`. Clipping, scrolling, disabled groups,
     /// pointer capture, layer order, popups, keyboard activation and repaint behave
     /// exactly as they do for a [`super::Button`]; `sense` selects the inputs reported.
-    /// A focusable region receives raw keys through [`Context::input`].
+    /// A focusable region gets its keys from [`Self::keys`]: declare the ones it needs and
+    /// take them in order, owned from the moment they arrive. Several regions that should be one
+    /// Tab stop with arrow navigation are built inside a [`FocusGroup`](crate::FocusGroup).
     pub fn interact(&mut self, rect: Rect, id_source: impl Hash, sense: Sense) -> Response {
         let id = self.interact_id(id_source);
         let response = self.response(id, rect, self.enabled);

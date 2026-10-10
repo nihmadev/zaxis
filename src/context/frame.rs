@@ -66,7 +66,9 @@ impl Context {
         self.tick_selection_autoscroll();
         self.scrolling.begin_frame();
         self.carousel_wheel.begin_frame();
+        self.camera_routing.begin_pass();
         self.a11y.begin_pass();
+        self.actions.begin_pass(self.frame_time);
     }
 
     pub(super) fn finish_frame(&mut self) {
@@ -98,6 +100,7 @@ impl Context {
         self.finish_selection();
         self.retire_widget_state();
         self.finish_routed_input();
+        self.actions.finish_frame(self.frame);
         #[cfg(feature = "accesskit")]
         self.finish_accessibility();
         self.a11y.end_pass(self.frame);
@@ -107,15 +110,7 @@ impl Context {
     /// Close a popup that was not built in this pass or whose owner window was not, note
     /// the windows that were, then finish modals, tooltips, toasts and the drag preview.
     fn finish_overlays(&mut self) {
-        let (frame, windows) = (self.frame, &self.windows);
-        if self.popups.current.as_ref().is_some_and(|popup| {
-            popup.last_frame != frame
-                || !windows
-                    .get(&popup.owner)
-                    .is_some_and(|w| w.last_frame == frame)
-        }) {
-            self.dismiss_popup(true);
-        }
+        self.retire_popups();
         self.visible_windows = self
             .windows
             .iter()
@@ -149,7 +144,14 @@ impl Context {
         self.visuals
             .publish(|id| paint.painted(id) || hits.iter().any(|hit| hit.id == id));
         self.carousel_wheel.finish_frame();
+        self.camera_routing.current.retain(|id, _| {
+            hits.iter()
+                .any(|hit| hit.id == *id && hit.action != super::HitAction::Block)
+        });
+        self.camera_routing.finish_pass();
         self.interaction.publish();
+        self.publish_key_claims();
+        self.publish_focus_groups();
         self.text_fields.publish_tabs();
     }
 
@@ -159,14 +161,16 @@ impl Context {
     fn retire_widget_state(&mut self) {
         let frame = self.frame;
         self.visuals.retire_effects(frame);
-        self.containers.retire(frame);
+        for window in self.containers.retire(frame) {
+            self.forget_window(window);
+        }
         self.local_styles.retain(|_, style| style.2 == frame);
         self.splits.retire(frame);
         self.trees.retire(frame);
         self.menus.retire(frame);
         self.values.retire_numbers(frame);
         let paint = &self.paint_state;
-        self.popups.retire(|id| paint.painted(id));
+        self.popups.retire(frame, |id| paint.painted(id));
         self.values.retire_color_pickers(|id| paint.painted(id));
         self.text_fields.retire(|id| paint.painted(id));
     }
@@ -185,5 +189,7 @@ impl Context {
         self.values.clear_queues();
         self.text_fields.clear_queue();
         self.menus.clear_keys();
+        self.keys.finish_frame();
+        self.focus_groups.finish_frame();
     }
 }

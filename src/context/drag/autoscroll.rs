@@ -116,7 +116,7 @@ impl Context {
         state.offset = (old + delta / state.visual_scale).clamp(Vec2::ZERO, state.max_offset());
         let window = state.window;
         if state.offset != old {
-            self.invalidate_scroll_hits(window);
+            self.invalidate_scroll_hits(window, id);
             self.dirty = true;
         }
     }

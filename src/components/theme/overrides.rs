@@ -181,6 +181,8 @@ pub struct StyleOverrides {
     pub segmented: SegmentedStyle,
     pub radio: RadioStyle,
     pub segmented_outlined: SegmentedStyle,
+    pub tabs: TabsStyle,
+    pub dock: crate::DockStyle,
     pub slider: SliderStyle,
     pub text_edit: TextEditStyle,
     pub window: WindowStyle,
@@ -287,6 +289,8 @@ impl StyleOverrides {
         style.segmented.merge(self.segmented);
         style.radio.merge(self.radio);
         style.segmented_outlined.merge(self.segmented_outlined);
+        style.tabs.merge(self.tabs);
+        style.dock.merge(self.dock);
         style.slider.merge(self.slider);
         style.text_edit.merge(self.text_edit);
         style.window.merge(self.window);

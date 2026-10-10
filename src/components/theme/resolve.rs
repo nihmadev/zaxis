@@ -162,6 +162,67 @@ impl Theme {
         s.segmented_outlined.icon_size = Some(18.0 * d);
         s.segmented_outlined.icon_gap = Some(8.0 * d);
         s.segmented_outlined.segment_padding = Some(16.0 * d);
+        // Tabs (folder look): the strip is darker than the page on dark palettes and a step
+        // below it on light ones; the active tab takes the page surface and ends the
+        // hairline under the row; the pointer shows a raised plate.
+        s.tabs.strip = SurfaceStyle {
+            border: Some(border),
+            ..SurfaceStyle::fill(if light_palette {
+                p.surface_control
+            } else {
+                p.background
+            })
+        };
+        s.tabs.tab.idle.foreground = Some(p.muted);
+        s.tabs.tab.hover = SurfaceStyle {
+            foreground: Some(p.foreground),
+            ..SurfaceStyle::fill(p.hover)
+        };
+        s.tabs.tab.pressed = SurfaceStyle {
+            foreground: Some(p.foreground),
+            ..SurfaceStyle::fill(p.pressed)
+        };
+        s.tabs.tab.selected = SurfaceStyle {
+            foreground: Some(p.foreground),
+            border: Some(border),
+            ..SurfaceStyle::fill(p.surface)
+        };
+        s.tabs.tab.disabled.foreground = Some(p.disabled);
+        s.tabs.close.idle.foreground = Some(p.muted);
+        s.tabs.close.hover = SurfaceStyle {
+            foreground: Some(p.foreground),
+            ..SurfaceStyle::fill(p.pressed)
+        };
+        s.tabs.close.pressed = SurfaceStyle {
+            foreground: Some(p.foreground),
+            ..SurfaceStyle::fill(p.border)
+        };
+        s.tabs.indicator = SurfaceStyle::fill(p.accent);
+        s.tabs.drop_area = SurfaceStyle {
+            border: Some(Border::new(1.5, p.accent)),
+            rounding: Some(radius),
+            ..SurfaceStyle::fill(crate::Color::rgba(
+                p.accent.0[0],
+                p.accent.0[1],
+                p.accent.0[2],
+                40,
+            ))
+        };
+        s.tabs.divider = Some(border);
+        s.tabs.insertion_color = Some(p.accent);
+        s.tabs.height = Some(height + 2.0 * d);
+        s.tabs.padding_x = Some(12.0 * d);
+        s.tabs.icon_size = Some(16.0 * d);
+        s.tabs.icon_gap = Some(6.0 * d);
+        s.tabs.close_size = Some(18.0 * d);
+        s.tabs.close_glyph = Some(10.0 * d);
+        s.tabs.close_gap = Some(8.0 * d);
+        s.tabs.min_width = Some(96.0 * d);
+        s.tabs.max_width = Some(240.0 * d);
+        s.tabs.tab_radius = Some(m.corner_radius + 3.0);
+        s.tabs.plate_radius = Some(m.corner_radius + 1.0);
+        s.tabs.plate_inset = Some(Vec2::new(2.0 * d, 4.0 * d));
+        s.tabs.divider_height = Some(16.0 * d);
         s.popup.surface.rounding = Some(radius);
         s.popup.surface.fill = Some(crate::Gradient::new(p.surface_raised, p.surface_raised));
         s.popup.surface.shadow = Some(floating_shadow(&p, 8.0, 24.0, 110));

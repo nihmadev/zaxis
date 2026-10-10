@@ -39,11 +39,7 @@ impl Context {
     /// Home and End stay text editing keys while a filter field has focus. Returns whether
     /// the key was consumed.
     pub(super) fn menu_key(&mut self, code: KeyCode, state: ElementState) -> bool {
-        let popup_target = self
-            .popups
-            .current
-            .as_ref()
-            .and_then(|popup| popup.key_target);
+        let popup_target = self.popups.top().and_then(|popup| popup.key_target);
         let Some(id) = popup_target.or_else(|| self.interaction.focused_as(HitAction::ComboBox))
         else {
             return false;

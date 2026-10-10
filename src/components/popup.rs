@@ -2,7 +2,10 @@ use std::hash::Hash;
 
 use super::Ui;
 use crate::{
-    context::{popup::PopupState, HitAction, HitRegion},
+    context::{
+        popup::{Opening, Registered},
+        HitAction, HitRegion,
+    },
     layout::LayoutCursor,
     Border, Color, CornerRadius, Id, Layout, Padding, Rect, Vec2,
 };
@@ -132,8 +135,7 @@ impl Popup {
             *open = false;
         }
         if !*open && ui.context.popup_open(id) {
-            ui.context.dismiss_popup(true);
-            ui.context.take_popup_dismissal(id);
+            ui.context.close_popup_of_builder(id);
         }
         if !*open && (!self.animated || self.progress <= 0.0) {
             return None;
@@ -147,8 +149,20 @@ impl Popup {
             .unwrap_or(Padding::all(2.0));
         let gap = self.gap.or(component.gap).unwrap_or(4.0);
         let viewport = ui.context.viewport();
-        let anchor_clip = ui.clip_rect().intersect(viewport);
-        let (full, upward) = place(self.anchor, self.size, viewport, gap);
+        // Visual scopes still use layout coordinates here. Their placement maps the
+        // anchor/panel and fits the portal to the real viewport afterwards.
+        let placement_bounds = if ui.context.visuals.depth > 0 {
+            Rect::from_min_size(Vec2::splat(-1.0e9), Vec2::splat(2.0e9))
+        } else {
+            viewport
+        };
+        let anchor_clip = if ui.context.visuals.depth > 0 {
+            ui.clip
+        } else {
+            ui.clip_rect()
+        }
+        .intersect(placement_bounds);
+        let (full, upward) = place(self.anchor, self.size, placement_bounds, gap);
         if full.is_empty() {
             if *open {
                 ui.context.report(
@@ -160,8 +174,7 @@ impl Popup {
             }
             *open = false;
             if ui.context.popup_open(id) {
-                ui.context.dismiss_popup(true);
-                ui.context.take_popup_dismissal(id);
+                ui.context.close_popup_of_builder(id);
             }
             return None;
         }
@@ -172,37 +185,27 @@ impl Popup {
             Rect::from_min_size(full.min, Vec2::new(full.size().x, height))
         };
         if *open {
-            let existing = ui.context.popups.current.as_ref().filter(|p| p.id == id);
+            let existing = ui.context.popups.index_of(id);
             let return_focus = self
                 .return_focus
-                .or_else(|| existing.and_then(|p| p.return_focus))
+                .or_else(|| existing.and_then(|i| ui.context.popups.branch[i].return_focus))
                 .or(ui.context.focused());
-            // Extra panels (cascading submenus) belong to the popup across frames: hover
-            // routing during this pass needs the previous pass's rectangles.
-            let extra = existing.map(|p| p.extra.clone()).unwrap_or_default();
-            let opening = existing.is_none();
-            if ui
-                .context
-                .popups
-                .current
-                .as_ref()
-                .is_some_and(|p| p.id != id)
-            {
-                ui.context.dismiss_popup(true);
-            }
-            if opening {
-                ui.context.set_focus(self.key_target);
-            }
-            ui.context.popups.current = Some(PopupState {
+            let registered = ui.context.register_popup(Opening {
                 id,
-                owner: ui.window,
+                window: ui.window,
                 anchor: self.anchor.intersect(anchor_clip),
                 rect,
                 return_focus,
                 key_target: self.key_target,
-                last_frame: ui.context.frame,
-                extra,
             });
+            match registered {
+                Registered::Rejected => {
+                    *open = false;
+                    return None;
+                }
+                Registered::Opening => ui.context.set_focus(self.key_target),
+                Registered::Kept => {}
+            }
         }
         ui.context.push_popup_layer(id);
         // An unnamed group only carries the layer: whoever fills the popup says what it is.
@@ -250,13 +253,13 @@ impl Popup {
         ui.context.paint_blur(
             id.with("blur"),
             id,
-            rect.intersect(viewport),
+            rect.intersect(placement_bounds),
             crate::Blur::new(rect)
                 .radius(body.blur)
                 .corner_radius(body.rounding),
         );
         ui.context
-            .paint(body_id(id), id, rect.intersect(viewport), paint);
+            .paint(body_id(id), id, rect.intersect(placement_bounds), paint);
         let mut child_style = style.clone();
         child_style.text_color = body.text_color;
         let mut child = Ui {
@@ -265,7 +268,7 @@ impl Popup {
             window: id,
             scope: id,
             sequence: 0,
-            clip: padding.inset(rect).intersect(viewport),
+            clip: padding.inset(rect).intersect(placement_bounds),
             layout: LayoutCursor::new(
                 padding.inset(full),
                 Layout::Vertical,

@@ -257,7 +257,10 @@ pub struct Probe<'a> {
     pub clicked: &'a HashSet<Id>,
     pub slider_input: &'a HashMap<Id, Vec<SliderInput>>,
     pub combo_boxes: &'a HashMap<Id, crate::components::combo_box::ComboBoxState>,
-    pub popup: &'a Option<popup::PopupState>,
+    /// The leaf popup.
+    pub popup: LeafPopup<'a>,
+    /// The open popups from the root to the leaf.
+    pub popups: &'a [popup::PopupState],
     pub popup_layers: &'a [Id],
     pub modals: &'a modal::Modals,
     pub color_pickers: &'a HashMap<Id, crate::components::color_picker::ColorPickerState>,
@@ -272,6 +275,7 @@ pub struct Probe<'a> {
     pub cards: &'a HashMap<Id, crate::components::card::CardState>,
     pub carousels: &'a HashMap<Id, crate::components::carousel::CarouselState>,
     pub carousel_wheel_queued: usize,
+    pub camera_routing_counts: (usize, usize),
     pub grids: &'a HashMap<Id, crate::components::grid::GridState>,
     pub list_boxes: &'a HashMap<Id, crate::components::list_box::ListState>,
     pub drag: &'a drag::DragRuntime,
@@ -284,6 +288,7 @@ pub struct Probe<'a> {
 /// Sizes of retained per-widget tables, for cleanup assertions.
 pub struct Counts {
     pub context_menus: usize,
+    pub docks: usize,
     pub splits: usize,
     pub collapsing_headers: usize,
     pub split_input: usize,
@@ -317,7 +322,8 @@ impl Inspect for Context {
             clicked: &self.interaction.clicked,
             slider_input: &self.values.sliders_input,
             combo_boxes: &self.menus.combo_boxes,
-            popup: &self.popups.current,
+            popup: LeafPopup(self.popups.top()),
+            popups: &self.popups.branch,
             popup_layers: &self.popups.layers,
             modals: &self.modals,
             color_pickers: &self.values.color_pickers,
@@ -332,6 +338,7 @@ impl Inspect for Context {
             cards: &self.containers.cards,
             carousels: &self.containers.carousels,
             carousel_wheel_queued: self.carousel_wheel.queued(),
+            camera_routing_counts: self.camera_routing.counts(),
             grids: &self.containers.grids,
             list_boxes: &self.containers.list_boxes,
             drag: &self.drag,
@@ -340,6 +347,7 @@ impl Inspect for Context {
             draw_data: &self.geometry.draw_data,
             counts: Counts {
                 context_menus: self.menus.context_menus.len(),
+                docks: self.containers.docks.len(),
                 splits: self.splits.states.len(),
                 collapsing_headers: self.containers.collapsing_headers.len(),
                 split_input: self.splits.pending(),
@@ -409,3 +417,19 @@ pub use crate::accessibility::{testing::AccessTree, AccessStats};
 pub use crate::components::list_box::{heights::HeightIndex, state::ListState};
 pub use crate::components::scroll_area::RowMetrics;
 pub use crate::text::{TextFont, DEFAULT_TAB};
+
+/// The leaf popup of a [`Probe`]: `Option`-like, readable from a temporary probe.
+#[derive(Clone, Copy)]
+pub struct LeafPopup<'a>(Option<&'a popup::PopupState>);
+
+impl<'a> LeafPopup<'a> {
+    pub fn as_ref(self) -> Option<&'a popup::PopupState> {
+        self.0
+    }
+    pub fn is_some(self) -> bool {
+        self.0.is_some()
+    }
+    pub fn is_none(self) -> bool {
+        self.0.is_none()
+    }
+}

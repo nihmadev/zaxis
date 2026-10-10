@@ -73,6 +73,9 @@ pub(super) fn run_suites(
             return Err("GPU benchmark closed before all cases completed".into());
         }
     }
+    if options.gpu {
+        embed::run(options, cases, report)?;
+    }
     if report.results.is_empty() {
         return Err(
             "no cases in the selected suite (cold_ui is CPU-only, protocol is GPU-only)".into(),

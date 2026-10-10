@@ -14,6 +14,7 @@ compatibility re-export of the component module.
 | [Grid](./grid.mdx) | `ui.grid(id, columns, build)` | Shared column widths and arbitrary cell layouts |
 | [Table](./table.mdx) | `Table::new(id).columns(columns).show(ui, build)` | Pinned headers, resize, selection, sort requests and virtual rows |
 | [CollapsingHeader](./collapsing-header.mdx) | `ui.collapsing(id, caption, body)` | Measured disclosure and independent header actions |
+| [Dock](./dock.mdx) | `Dock::new(id, &mut state).show(ui, viewer)` | IDE panel groups, splitting, floating windows and a sliding focus ring |
 | [TreeView](./tree-view.mdx) | `ui.tree(id, &model)` | Stable hierarchical model, keyboard navigation and virtual rows |
 | [Drag and drop](./drag-and-drop.mdx) | `ui.drag_source(id, payload, build)` / `ui.drop_target(id, accept, build)` | Typed in-window drag, drop targets, preview and autoscroll |
 | [Popup](./popup.mdx) | `Popup::new(id, anchor).show(ui, &mut open, build)` | Overlay layer, viewport placement and dismissal |
@@ -31,6 +32,7 @@ compatibility re-export of the component module.
 | [Icons](./icons.mdx) | `ui.image(&icons::USER)` | Bundled Lucide icons, tintable (`bundled-icons` feature) |
 | [Hyperlink](./hyperlink.mdx) | `ui.hyperlink_to(text, url)` | Links, links inside styled text, selectable and copyable static text |
 | [TextEdit](./text-edit.mdx) | `ui.text_edit(&mut String)` | Single-line Unicode editing and IME |
+| [FocusGroup](../input.mdx#focus-groups) | `FocusGroup::new(id).show(ui, build)` | One Tab stop and arrow-key navigation for several controls; a toolbar is built from it |
 | [Button](./button.mdx) | `ui.button(text)` | Activation |
 | [Checkbox](./checkbox.mdx) | `ui.checkbox(&mut bool, text)` | Boolean value |
 | [Switch](./switch.mdx) | `ui.switch(&mut bool, text)` | Animated on/off value |

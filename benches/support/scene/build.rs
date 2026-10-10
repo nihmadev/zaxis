@@ -8,6 +8,14 @@ impl Scene {
     }
 
     fn build_once(&mut self) {
+        if let Some(probe) = &mut self.pan_zoom {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.dock {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(probe) = &mut self.dnd {
             probe.build(&mut self.context);
             return;
@@ -36,11 +44,23 @@ impl Scene {
             probe.build(&mut self.context);
             return;
         }
+        if let Some(probe) = &mut self.popup {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(probe) = &mut self.text_area {
             probe.build(&mut self.context);
             return;
         }
         if let Some(probe) = &mut self.number {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.actions {
+            probe.build(&mut self.context);
+            return;
+        }
+        if let Some(probe) = &mut self.keys {
             probe.build(&mut self.context);
             return;
         }

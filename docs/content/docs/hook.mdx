@@ -1,0 +1,225 @@
+---
+title: Overlay in another process (z-hook)
+icon: Layers
+description: Draw a zaxis interface over the frames of a game, a 3D editor or a tool by hooking how it presents them, and give it the host's input.
+---
+
+`z-hook` (the crate `crates/z-hook`) draws a zaxis interface over the frames of the process it
+runs in, by hooking how that process presents them, and feeds the interface the host's keyboard
+and mouse. Use it for a debug or profiling overlay, a mod's menu, a tool inside a 3D editor.
+
+## Scope
+
+It is for processes you control or that allow this kind of modification. `z-hook` gets control
+only after something loaded it: a Vulkan loader reading an implicit layer, a mod loader, a
+plugin system, a host that calls `LoadLibrary` itself. It does not load itself into other
+processes, hide its module, work around protections or tamper with the host's checks, and none of
+that is planned. Hosts that forbid overlays are out of scope.
+
+```rust
+use z_hook::{Overlay, OverlayOptions};
+
+let overlay = Overlay::install(OverlayOptions::default(), |ctx| {
+    zaxis::Window::new("Debug").show(ctx, |ui| {
+        ui.label("inside the host");
+    });
+})?;
+// F10 shows and hides it. Dropping `overlay` removes the hooks.
+```
+
+The closure runs on the host's render thread once per interface pass and builds the interface
+like `App::update`. `OverlayOptions` sets the APIs to hook, the toggle key
+(`Option<ToggleKey>`, F10 by default), the input mode, fonts (`FontFamily`, as
+`Context::with_fonts`), the colour encoding of the backbuffer (`OutputColor`), a DPI override,
+the starting visibility and the frame budget.
+
+## Supported graphics APIs
+
+| API | Platform | Status | Drawn how |
+| --- | --- | --- | --- |
+| Vulkan | Linux | **Run and checked** (Mesa Anv on Intel, llvmpipe) | Implicit layer; wgpu on the host's own `VkDevice`, straight into the swapchain image |
+| Vulkan | Windows | Builds for `x86_64-pc-windows-msvc`; **not run** | The same layer |
+| Direct3D 12 | Windows | Builds; **not run** | `IDXGISwapChain::Present` vtable hook; own wgpu device, shared texture and fence, copies on the host's queue |
+| Direct3D 11 | Windows | Builds; **not run** | The same hook; copies on the host's immediate context |
+| OpenGL (`wglSwapBuffers`, `glXSwapBuffers`, `eglSwapBuffers`) | any | **Not implemented**, see below | |
+| Metal / macOS | | Not supported | |
+
+What each path rests on, from the sources of the resolved versions (`wgpu` and `wgpu-hal`
+30.0.1, `ash` 0.38, `windows` 0.62):
+
+* **Vulkan.** `wgpu_hal::vulkan::Instance::from_raw`, `Adapter::device_from_raw` and
+  `Device::texture_from_raw` wrap a host's instance, device and image; `wgpu::Device::create_texture_from_hal`
+  takes the state the image is in (`TextureUses::PRESENT`, the layout it has before a present);
+  `vulkan::Queue::add_wait_semaphore` and `add_signal_semaphore` order wgpu's submit after the
+  host's work and before the present. `device_from_raw` requires the device to have been created
+  with the extensions and features wgpu derives for it, which the host did not ask for: the
+  layer adds them in `vkCreateDevice` (see the lifecycle below).
+* **Direct3D 12.** `wgpu-hal`'s DX12 backend cannot be given an existing device or queue: it has
+  `Device::texture_from_raw`, `raw_device` and `raw_queue`, and `Queue::add_wait_fence` /
+  `add_signal_fence` for ordering with another device. So the overlay lives on a device of its
+  own, on the same adapter (matched by LUID), and the two devices share a texture and a fence.
+* **Direct3D 11.** wgpu has no D3D11 backend. The same shared texture is opened on the host's
+  device (`ID3D11Device1::OpenSharedResource1`, `ID3D11Device5::OpenSharedFence`) and
+  `ID3D11DeviceContext4::Signal` / `Wait` order the host's copies. `CopyResource` and the fence
+  calls are not pipeline state, so nothing of the host's context is saved or restored.
+* **Not possible without a fork of wgpu:** drawing on the host's D3D12 device or queue, or on a
+  D3D11 device, with wgpu itself.
+
+### Why not OpenGL
+
+`wglSwapBuffers`, `glXSwapBuffers` and `eglSwapBuffers` are plain exported functions, not methods
+of an object with a vtable, so hooking them needs an inline detour (a trampoline over the
+function's first instructions); the swapchain slots used elsewhere have no equivalent. Drawing
+into the host's context needs either wgpu's GLES backend on that context
+(`wgpu_hal::gles::Adapter::new_external` exists for EGL and WGL) or a second device and a
+GL/Vulkan or GL/D3D interop that is vendor-extension dependent. Either way the layer would have
+to save and restore a state surface far larger than the copies of the DXGI path (bindings,
+programs, framebuffers, blend, scissor, pixel-store and vertex state of the host, per context
+and per extension). That cost is out of proportion for a first version, so OpenGL hosts get no
+overlay and `Api::OpenGl` reports itself as unavailable (an install that asks for nothing else fails with `HookError::NoSupportedApi`).
+
+### The hook library
+
+The DXGI hooks overwrite one pointer in the swapchain class's vtable (`VirtualProtect`, a
+volatile write, the original stored beside it). That needs no trampoline and no instruction
+decoding, so no hook library is used. The inline detour a library provides would be needed for
+the OpenGL entry points. The candidates, checked on crates.io: `retour` 0.4.0-alpha.4
+(BSD-2-Clause, MSRV 1.60, updated 2025-09, the maintained successor of `detour`); `minhook-sys`
+0.1.1 (BSD-2-Clause, last release 2021); `min-hook-rs` 2.2.1 (MIT, 2026-06, few users). If GL is
+added, `retour` is the choice. A vtable patch only sees calls made through the vtable; a host
+that calls the DXGI implementation by another route is not seen.
+
+## Vulkan
+
+Write a `cdylib` that depends on `z-hook` and exports the layer's negotiation symbol:
+
+```rust
+z_hook::vulkan_layer!(|| (OverlayOptions::default(), |ctx: &mut zaxis::Context| { /* build the UI */ }));
+```
+
+and describe it in a manifest (`crates/z-hook/layer/VK_LAYER_ZAXIS_overlay.json` is an
+example): `"type": "GLOBAL"`, `library_path`, `"functions": { "vkNegotiateLoaderLayerInterfaceVersion": … }`
+and an `enable_environment`. The loader finds it through `VK_ADD_IMPLICIT_LAYER_PATH` or the
+implicit-layer directories (`$XDG_DATA_HOME/vulkan/implicit_layer.d`, `/usr/share/vulkan/implicit_layer.d`):
+
+```sh
+cargo build -p z-hook --example vk_overlay
+VK_ADD_IMPLICIT_LAYER_PATH=crates/z-hook/layer ZAXIS_HOOK_ENABLE=1 vkcube
+```
+
+Intercepted: `vkCreateInstance`/`vkDestroyInstance`, `vkCreateDevice`/`vkDestroyDevice`,
+`vkGetDeviceQueue`/`2`, `vkCreateSwapchainKHR`/`vkDestroySwapchainKHR`, `vkQueuePresentKHR`, the
+X11 and Wayland surface constructors and `vkDestroySurfaceKHR`, plus the proc-addr functions.
+
+## Input
+
+| Mode (`OverlayInput`) | Host receives | Overlay receives |
+| --- | --- | --- |
+| `PassThrough` | everything, always | a copy |
+| `CaptureWhenVisible` | nothing while the overlay is visible (a release of a press the host saw still reaches it) | everything |
+| `CaptureWhenFocused` (default) | what no control of the interface used: pointer events outside it, keys while no control has focus | everything, and the events it takes |
+
+A press the overlay took is followed by its release, so the host never sees a release without
+a press. The toggle key is not forwarded (except in `PassThrough`).
+
+Where the events come from:
+
+| Platform | Source | Limits |
+| --- | --- | --- |
+| Windows (D3D11, D3D12) | The host window's procedure is replaced (`SetWindowLongPtrW`) and its messages translated: mouse, wheel, `WM_KEYDOWN`/`UP`, `WM_CHAR` (UTF-16 surrogates joined), IME composition, `WM_SETCURSOR`, `WM_INPUT` (swallowed while the overlay claims the pointer, so mouse look stops) | **Not run on Windows.** The translation is tested without a window. `ClipCursor` and `ShowCursor` are released while `CaptureWhenVisible` shows the overlay and restored when it hides; a host that re-clips every frame wins |
+| Linux, X11 and XWayland | A second X connection selects XInput2 events on the host's window | **Run and checked** on Xvfb with llvmpipe (clicks, typing with Shift and Backspace). Observation only: the host also receives everything, so no capture mode can take input from it. Text comes from the server's keyboard mapping (Latin, Latin-1, Unicode keysyms, Cyrillic, two layout groups); other scripts type nothing. The reader is a thread and a connection of the process |
+| Linux, Wayland | None. The compositor sends the host's input to the host's own objects, which a layer cannot read without taking them over | The overlay shows. A mod that has the host's events passes them through `z_hook::input_sink()` (or `Overlay::input()`) |
+
+Under XWayland on a Wayland desktop the overlay's X11 reader receives events only while the real
+pointer is over the X window: injected `XTEST` motion (as `xdotool` makes) does not enter the
+window there, which is a property of XWayland, not of the reader.
+
+## Threads and frames
+
+`Context` is not `Send`. It lives in a thread-local of the thread that presents (the host's
+render thread) and is created at the first present. Creating it (fonts) took about 9 ms and the first interface pass 2 ms in a release build on this machine, a one-time hitch on that frame that the frame budget then pays back. Other threads (a window procedure, the X11
+reader) reach it through a queue of input events and a few atomics; an event that arrives on the
+render thread outside a frame is handled at once, so its answer is exact, and elsewhere the
+answer is estimated from the last frame. A present from another thread than the owner, or one
+that arrives inside a frame, is passed through unchanged.
+
+Each present: queued input is applied; if the interface needs a pass (`Context::needs_repaint_at`
+or `wants_animation_frame`, no timer of its own) the interface runs; the interface is composited
+over the host's frame. A resting interface costs no pass but is still composited, because the
+host's frame is new each time. Hidden, the overlay does nothing.
+
+The Vulkan and DXGI backends create wgpu's device and pipelines on a background thread (never in
+`DllMain`), and the host's frames pass through untouched until it is ready.
+
+**Frame budget.** A frame (interface pass plus recording) that costs more than
+`frame_budget` (6 ms by default) makes the next presents pass through, in proportion up to 8, so
+the host's average frame time is disturbed by no more than the budget. `Overlay::stats()` counts
+presents, frames drawn, interface passes, and skips by reason, with the last pass and recording
+times.
+
+## Lifecycle and reliability
+
+* Every `extern "system"` entry point catches panics; a panic disables the overlay (reason in
+  `Overlay::disabled_reason()`, in the log) and the host goes on. Errors never reach the host.
+* A host without a usable API, a format that cannot be drawn on (multisampled bit-block
+  backbuffers, formats without alpha), a queue without graphics: the overlay is disabled for that
+  swapchain or for the process, with the reason logged.
+* **Vulkan.** The instance is raised to API 1.3 and gets `VK_KHR_get_physical_device_properties2`;
+  the device gets wgpu's extensions and features merged into the host's request (raised in the
+  host's own structures, never lowered; individual feature structures are folded into a host's
+  `VkPhysicalDeviceVulkan1xFeatures`); swapchain images get `COLOR_ATTACHMENT` and `TRANSFER_SRC`
+  usage and, for `UNORM` formats, their sRGB sibling as a view format. If the driver refuses any
+  of it the host's own request is made again unchanged, and the overlay is off for that object.
+  Swapchain recreation: the overlay moves to the new swapchain; its semaphores per image and its
+  GPU work are released before the old one is destroyed. `vkDestroyDevice` joins the start-up
+  thread and drops every wgpu object before the device goes. Command buffers wgpu allocates below
+  the loader get the loader's dispatch pointer (copied from the device, as `vkSetDeviceLoaderData`
+  would write it; calling that function from inside `vkDestroyDevice`'s lock deadlocked).
+* **Windows.** `ResizeBuffers` and `ResizeBuffers1` drop the overlay's shared texture first; the
+  overlay holds no reference to a backbuffer across calls. `uninstall` restores the vtable slots
+  (a slot patched by someone else after ours keeps our forwarding hook), restores window
+  procedures where nothing replaced ours, waits for hooks in flight and drops the GPU side.
+  Call `Overlay::install` from a thread of yours, never from `DllMain`.
+* There is one overlay per process, drawn on one swapchain (the first of at least 128×128).
+
+## Diagnostics
+
+The crate logs through the `log` crate and never writes to stdout. A Vulkan layer is loaded into
+a process that is not Rust code and has no logger, so `ZAXIS_HOOK_LOG=stderr` (or a file path)
+and `ZAXIS_HOOK_LOG_LEVEL` turn on a small built-in logger. `ZAXIS_HOOK_DUMP=frame.png` writes
+the swapchain image after compositing (`ZAXIS_HOOK_DUMP_FRAME=N` for the Nth overlay frame,
+`ZAXIS_HOOK_DUMP_EVERY=1` to keep rewriting it); it waits for the GPU and is for tests.
+`ZAXIS_HOOK_SCALE` sets the DPI scale of a Vulkan host (a layer cannot ask a window).
+
+## What was checked, and what was not
+
+Run on this machine (Linux, Intel Alder Lake GT2 with Mesa Anv, and llvmpipe), by real
+processes and a frame dump of the swapchain image: the Vulkan layer in `vkcube` (XWayland) and in
+a headless ash host (`examples/vk_host.rs`), `UNORM` and `sRGB` swapchains, a host that asked for
+Vulkan 1.0, swapchain recreation at another size, the Khronos validation layer with
+synchronization validation (clean apart from three SPIR-V layout warnings that come from
+naga's code for wgpu's shaders), X11 input from XInput2 on Xvfb. `cargo test -p z-hook` runs the
+Vulkan checks against a real device and skips them with a message under `ZAXIS_SKIP_GPU_TESTS`
+or when no device is found.
+
+Not run: **everything on Windows** (the DXGI hooks, D3D11 and D3D12 composition, the window
+procedure, IME, cursor handling, the Windows Vulkan layer): only compiled for
+`x86_64-pc-windows-msvc` and unit-tested where it is plain data (message translation, format
+plans, routing). Not run: OpenGL (not implemented), Wayland input (none exists), macOS (not
+supported), any other GPU or driver, a host that is a real game or editor. A successful build and
+the mock tests do not show that the overlay draws in a real application.
+
+## What the embedding work needs
+
+The overlay draws through `EmbeddedRenderer::render_to`, which was enough for Vulkan unchanged.
+Things the hook had to work around, to be asked of `prompts/31-wgpu-embedding.txt`:
+
+* State of the target after `render_to`: the hook needs to know it to transition a host image
+  back (it appends an empty pass on the target to pin it as a colour attachment and records the
+  transition on a separate encoder). Document, and keep, "`render_to` leaves the target as a
+  render attachment".
+* A way to build the backdrop and material pipelines ahead of the first frame that needs them,
+  so the host's render thread does not stall on the first blur.
+* `render_to` fails with `TargetUsage` when a backdrop effect is used and the target has no
+  `COPY_SRC`; a host whose swapchain cannot have it (some surfaces) gets frames without the
+  overlay. A fallback that draws the effect-less part would be better than none.

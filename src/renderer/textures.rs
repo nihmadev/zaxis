@@ -1,5 +1,5 @@
 //! Versioned uploads, shared allocations, independent samplers, managed LRU.
-use super::{diagnostics::RendererStage, RenderError, Renderer};
+use super::{diagnostics::RendererStage, gpu::Gpu, RenderError, Renderer};
 use crate::{DrawData, TextureFilter, TextureId};
 use std::{
     collections::HashMap,
@@ -79,7 +79,7 @@ pub fn nearest_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         ..Default::default()
     })
 }
-impl Renderer {
+impl Gpu {
     pub(super) fn prepare_textures(
         &mut self,
         store: &mut TextureStore,
@@ -324,8 +324,10 @@ impl Renderer {
             self.stats.texture_evictions += 1;
         }
     }
+}
+impl Gpu {
     /// Drop every managed image texture, including those used by sibling renderers.
-    pub fn clear_image_textures(&mut self) {
+    pub(super) fn clear_image_textures(&mut self) {
         let mut allocations = std::collections::HashSet::new();
         self.store
             .lock()
@@ -342,25 +344,15 @@ impl Renderer {
         self.stats.texture_evictions += allocations.len() as u64;
         self.stats.image_resident_bytes_estimate = 0;
     }
-    pub fn max_texture_dimension_2d(&self) -> u32 {
-        self.device.limits().max_texture_dimension_2d
+}
+
+impl Renderer {
+    /// Drop every managed image texture, including those used by sibling renderers.
+    pub fn clear_image_textures(&mut self) {
+        self.gpu.clear_image_textures();
     }
-    pub(super) fn pipeline_for(
-        &self,
-        command: &crate::DrawCommand,
-        data: &DrawData,
-    ) -> &wgpu::RenderPipeline {
-        if command.scroll_hint {
-            &self.scroll_hint_pipeline
-        } else if data
-            .texture_options
-            .get(&command.texture)
-            .is_some_and(|o| o.managed && o.filter == TextureFilter::Linear)
-        {
-            &self.image_pipeline
-        } else {
-            &self.pipeline
-        }
+    pub fn max_texture_dimension_2d(&self) -> u32 {
+        self.gpu.device.limits().max_texture_dimension_2d
     }
 }
 fn image_bytes(store: &TextureStore) -> u64 {

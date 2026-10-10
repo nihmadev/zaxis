@@ -1,7 +1,6 @@
 //! `SegmentedControl`: a plate of equal-weight choices with a sliding raised thumb.
 
 mod control;
-mod input;
 #[doc(hidden)]
 pub mod layout;
 #[doc(hidden)]

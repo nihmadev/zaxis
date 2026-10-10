@@ -74,8 +74,13 @@ pub struct Scene {
     pub images: Option<crate::images::Probe>,
     material: Option<crate::material::Probe>,
     modal: Option<crate::modal::Probe>,
+    popup: Option<crate::popup::Probe>,
     text_area: Option<crate::text_area::Probe>,
     number: Option<crate::number::Probe>,
+    actions: Option<crate::actions::Probe>,
+    keys: Option<crate::keys::Probe>,
+    pan_zoom: Option<crate::pan_zoom::Probe>,
+    dock: Option<crate::dock::Probe>,
     split: Option<split::Probe>,
     disclosure: Option<crate::disclosure::Probe>,
     list_box: Option<crate::list_box::Probe>,
@@ -111,6 +116,11 @@ impl Scene {
         } else {
             None
         };
+        let popup = if let Case::Popup(kind) = case {
+            Some(crate::popup::Probe::new(&mut context, kind, count))
+        } else {
+            None
+        };
         let text_area = if let Case::TextArea(kind) = case {
             Some(crate::text_area::Probe::new(&mut context, kind, count))
         } else {
@@ -121,14 +131,34 @@ impl Scene {
         } else {
             None
         };
+        let actions = if let Case::Actions(kind) = case {
+            Some(crate::actions::Probe::new(&mut context, kind, count))
+        } else {
+            None
+        };
+        let keys = if let Case::Keys(kind) = case {
+            Some(crate::keys::Probe::new(&mut context, kind, count))
+        } else {
+            None
+        };
         let access = if let Case::Access(kind) = case {
             Some(crate::access::Probe::new(&mut context, kind, count))
         } else {
             None
         };
         let mut scene = Self {
-            context,
             access,
+            pan_zoom: if let Case::PanZoom(kind) = case {
+                Some(crate::pan_zoom::Probe::new(kind, count))
+            } else {
+                None
+            },
+            dock: if let Case::Dock(kind) = case {
+                Some(crate::dock::Probe::new(&mut context, kind, count))
+            } else {
+                None
+            },
+            context,
             case,
             count,
             size,
@@ -168,8 +198,11 @@ impl Scene {
             images,
             material,
             modal,
+            popup,
             text_area,
             number,
+            actions,
+            keys,
             dnd: if let Case::Dnd(kind) = case {
                 Some(crate::dnd::Probe::new(kind, count))
             } else {

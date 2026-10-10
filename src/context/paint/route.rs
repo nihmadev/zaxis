@@ -44,7 +44,7 @@ impl Context {
     }
 
     /// Make the paint just recorded under `id` a backdrop blur, wherever it went.
-    pub(crate) fn mark_blur(&mut self, id: Id, radius: f32) {
+    pub(crate) fn mark_blur(&mut self, id: Id, sigma: f32) {
         if let Some(paint) = self
             .placements
             .stack
@@ -52,11 +52,11 @@ impl Context {
             .and_then(|p| p.paints.last_mut())
             .filter(|p| p.id == id)
         {
-            paint.blur = Some(radius);
+            paint.blur = Some(sigma);
         } else if let Some(paint) = self.scrolling.pending.last_mut().filter(|p| p.id == id) {
-            paint.blur = Some(radius);
+            paint.blur = Some(sigma);
         } else if let Some(element) = self.paint_state.last_element_mut(id) {
-            element.blur = Some(radius);
+            element.blur = Some(sigma);
         }
     }
 

@@ -4,6 +4,8 @@
 
 #[path = "support/access.rs"]
 mod access;
+#[path = "support/actions.rs"]
+mod actions;
 #[path = "support/carousel.rs"]
 mod carousel;
 #[path = "support/combo_box.rs"]
@@ -12,16 +14,26 @@ mod combo_box;
 mod disclosure;
 #[path = "support/dnd.rs"]
 mod dnd;
+#[path = "support/dock.rs"]
+mod dock;
+#[path = "support/embed.rs"]
+mod embed;
 #[path = "support/images.rs"]
 mod images;
+#[path = "support/keys.rs"]
+mod keys;
 #[path = "support/list_box.rs"]
 mod list_box;
 #[path = "support/material.rs"]
 mod material;
 #[path = "support/modal.rs"]
 mod modal;
+#[path = "support/popup.rs"]
+mod popup;
 #[path = "support/number.rs"]
 mod number;
+#[path = "support/pan_zoom.rs"]
+mod pan_zoom;
 #[path = "support/report.rs"]
 mod report;
 #[path = "support/scene.rs"]

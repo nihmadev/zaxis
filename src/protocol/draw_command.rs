@@ -4,6 +4,9 @@ use super::{MaterialDraw, TextureId};
 use crate::Rect;
 use std::ops::Range;
 
+/// Largest backdrop blur sigma a command may ask for, in logical pixels.
+pub const MAX_BACKDROP_SIGMA: f32 = 64.0;
+
 /// One indexed draw into the shared frame buffers. Indices are global u32 offsets.
 ///
 /// Build commands by hand with `..Default::default()` so fields added later keep their

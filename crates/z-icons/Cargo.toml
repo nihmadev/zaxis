@@ -1,16 +1,28 @@
 [package]
 name = "z-icons"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 rust-version = "1.90"
-description = "Bundled Lucide icon set (SVG data) for zaxis"
+description = "Framework-independent Lucide icons as static SVG data for Rust applications"
 license = "ISC AND MIT"
 readme = "README.md"
 repository = "https://github.com/nihmadev/zaxis"
 documentation = "https://docs.rs/z-icons"
 keywords = ["icons", "lucide", "svg", "gui"]
-categories = ["gui"]
-include = ["/src/**", "/icons/**", "/Cargo.toml", "/README.md", "/LICENSE-LUCIDE"]
+categories = ["gui", "graphics", "no-std"]
+include = [
+    "/src/**", "/icons/**", "/tests/**", "/examples/**", "/generate.py",
+    "/Cargo.toml", "/README.md", "/CHANGELOG.md", "/LICENSE", "/LICENSE-LUCIDE",
+]
+
+[features]
+default = []
+# Runtime discovery retains every icon. Static constants need no feature.
+catalog = []
+
+[dev-dependencies]
+resvg = { version = "=0.48.1", default-features = false }
 
 [package.metadata.docs.rs]
+all-features = true
 targets = ["x86_64-unknown-linux-gnu"]

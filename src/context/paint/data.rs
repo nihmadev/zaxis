@@ -136,6 +136,7 @@ impl Paint {
             | Self::Gradient { rect, .. } => rect.min,
             Self::Shape(shape) => match shape {
                 Shape::Rect { rect, .. }
+                | Shape::GradientBorder { rect, .. }
                 | Shape::Gradient { rect, .. }
                 | Shape::Shadow { rect, .. } => rect.min,
                 Shape::Circle { center, .. } => *center,
@@ -163,6 +164,7 @@ impl Paint {
             | Self::Gradient { rect, .. } => *rect = rect.translate(delta),
             Self::Shape(shape) => match shape {
                 Shape::Rect { rect, .. }
+                | Shape::GradientBorder { rect, .. }
                 | Shape::Gradient { rect, .. }
                 | Shape::Shadow { rect, .. } => *rect = rect.translate(delta),
                 Shape::Circle { center, .. } => *center += delta,

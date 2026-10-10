@@ -206,7 +206,7 @@ impl Ui<'_> {
             patch.border = None;
             base.apply(patch);
         }
-        let motion = if self.context.palette_transition.is_some() {
+        let motion = if !state.enabled || self.context.palette_transition.is_some() {
             crate::TweenOptions::new(std::time::Duration::ZERO)
         } else {
             self.style().motion.hover.clone()

@@ -34,12 +34,12 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 - [ ] `Notification center` (persistent toast history, actions, grouping)
 - [ ] `Banner` / `Alert` (inline status messages)
 - [ ] `Avatar` and avatar group
-- [ ] `Kbd` shortcut hints rendered per platform
+- [x] `Kbd` shortcut hints rendered per platform (formatter; no component yet)
 - [ ] `Stepper` wizard / multi-step form
 - [x] `Carousel` / pager with snapping (stack of cards and photo slider)
 - [ ] `Toolbar` with overflow and grouped buttons, `ToggleButton` and toggle groups
 - [ ] `StatusBar`
-- [ ] `Dock` / tab strip with draggable, closable, reorderable tabs
+- [x] `Dock` / IDE split panels and draggable, closable, reorderable tabs; floating Window layers, spring focus ring and layout persistence
 - [ ] `PropertyGrid` / inspector (typed rows, categories, reset to default)
 - [ ] `Form` layout helpers (label columns, validation summary)
 - [ ] `FileTree` with icons, rename in place and context actions
@@ -51,7 +51,8 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 - [ ] `Rating`, `Stat` tiles, `Sparkline`
 - [ ] `Chart` primitives: line, bar, area, histogram, with hover tooltips
 - [ ] `Timeline` and `Gantt`-style track view
-- [ ] `Canvas` / `PanZoom` container with local coordinates, snapping and grids
+- [x] `PanZoom` container with application-owned camera, local controls and addressed gestures;
+      scene grids, snapping and object selection remain application responsibilities
 - [ ] `NodeGraph` editor primitives (ports, links, minimap)
 - [ ] `Terminal` view for ANSI output
 - [ ] `Diff view` with inline and side-by-side modes
@@ -66,10 +67,11 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 - [ ] Icons, radio items and custom widgets inside menu rows
 - [ ] Cascading submenus in `ContextMenu` on top of the shared panel engine
 - [ ] Native OS menu bar (macOS) behind an optional feature
-- [ ] Application-level `Action` / `Keymap` registry: commands with ids, shortcuts,
+- [x] Application-level `Action` / `Keymap` registry: commands with ids, shortcuts,
       enabled state, shared by menus, palette and toolbars
-- [ ] Shortcut conflict detection and user rebinding UI (`KeyBox` based)
-- [ ] Multiple popups per context (stacked popups, popup inside popup)
+- [x] Shortcut conflict detection and user rebinding UI (`KeyBox` based)
+- [x] Nested popups: a popup opened from inside another keeps its parent (one branch per context, depth-limited)
+- [ ] Several independent popup branches at once (tooltip-like pinned popups)
 
 ## Text and editing
 
@@ -142,12 +144,14 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 
 ## Rendering and performance
 
-- [ ] Render into an existing wgpu pass (embedding in game engines and other apps)
+- [x] Render into an existing wgpu pass (embedding in game engines and other apps)
 - [ ] Public dirty-region texture upload API
 - [ ] Glyph atlas eviction and GPU buffer shrinking
 - [ ] Shader-based rounded clipping for arbitrary content
 - [x] Custom shaders and materials for widgets
 - [ ] 3D viewport embedding helper
+- [x] Overlay inside another process by hooking present (`z-hook`: Vulkan layer on Linux checked; DXGI on Windows written, not run)
+- [ ] z-hook: run and verify the Windows DXGI paths; OpenGL hooks; input for Wayland hosts
 - [ ] Frame pacing diagnostics and a built-in profiler overlay
 - [ ] Software renderer fallback when no GPU adapter is available
 - [x] WebAssembly target for the library (browser runner)

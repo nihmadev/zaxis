@@ -14,6 +14,14 @@ impl Scene {
         self.previous_revision = self.draw_data().revision;
         self.previous_tessellations = self.context.cache_stats().tessellated_elements;
         self.input_verified = true;
+        if let Some(probe) = &mut self.pan_zoom {
+            probe.input(&mut self.context, step);
+            return;
+        }
+        if let Some(probe) = &mut self.dock {
+            probe.input(&mut self.context, step);
+            return;
+        }
         if let Some(probe) = &mut self.dnd {
             probe.input(&mut self.context, step);
             return;
@@ -42,11 +50,23 @@ impl Scene {
             probe.input(&mut self.context, step);
             return;
         }
+        if let Some(probe) = &mut self.popup {
+            probe.input(&mut self.context, step);
+            return;
+        }
         if let Some(probe) = &mut self.text_area {
             probe.input(&mut self.context, step);
             return;
         }
         if let Some(probe) = &mut self.number {
+            probe.input(&mut self.context, step);
+            return;
+        }
+        if let Some(probe) = &mut self.actions {
+            probe.input(&mut self.context, step);
+            return;
+        }
+        if let Some(probe) = &mut self.keys {
             probe.input(&mut self.context, step);
             return;
         }

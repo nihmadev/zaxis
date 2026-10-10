@@ -3992,8 +3992,24 @@ name = "z-emoji"
 version = "0.0.1"
 
 [[package]]
-name = "z-icons"
+name = "z-hook"
 version = "0.0.1"
+dependencies = [
+ "ash",
+ "image",
+ "log",
+ "pollster 1.0.1",
+ "windows 0.62.2",
+ "x11rb",
+ "zaxis",
+]
+
+[[package]]
+name = "z-icons"
+version = "0.0.2"
+dependencies = [
+ "resvg",
+]
 
 [[package]]
 name = "zaxis"

@@ -128,11 +128,12 @@ impl Context {
             modal.last_frame = frame;
             return false;
         }
-        let return_focus = return_focus.or(match &self.popups.current {
+        let return_focus = return_focus.or(match self.popups.branch.first() {
             Some(popup) => popup.return_focus,
             None => self.interaction.focused,
         });
         self.cancel_underlying_interactions();
+        self.keys.reset();
         self.modals.stack.push(ModalState {
             id,
             return_focus,
@@ -191,6 +192,7 @@ impl Context {
             return;
         };
         let state = self.modals.stack.remove(position);
+        self.keys.reset();
         self.remove_popup_hits(id);
         self.interaction.keyboard_active = None;
         let inside = self.top_modal_id();
@@ -244,6 +246,9 @@ impl Context {
         })
     }
     pub(super) fn modal_tab_scope(&self, hit: &HitRegion) -> bool {
+        if self.popups.is_active() {
+            return self.popups.is_top_layer(hit.window);
+        }
         self.top_modal_id().is_none_or(|top| hit.window == top)
     }
 
@@ -283,12 +288,11 @@ impl Context {
             return;
         };
         let (id, pending) = (top.id, top.pending_focus);
-        let popup = self.popups.current.as_ref().map(|popup| popup.id);
         let focused = self.interaction.focused.is_some_and(|focus| {
             self.interaction.previous_hits.iter().any(|hit| {
                 hit.id == focus
                     && hit.action.focusable()
-                    && (hit.window == id || Some(hit.window) == popup)
+                    && (hit.window == id || self.popups.index_of_layer(hit.window).is_some())
             })
         });
         let mut settled = focused;

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::layout::{self, snap, Item, Metrics};
 use super::paint::{self, Texts};
-use super::{input, RadioGroup};
+use super::{input, RadioGroup, RadioLayout};
 use crate::{
     components::{
         appearance::{alpha, Appearance},
@@ -10,10 +10,13 @@ use crate::{
         theme::{ControlPaint, ControlState, PaintPart},
         visible_label, HoverStyle, Response, Sense, Tooltip, Ui, Widget,
     },
-    context::invalid_value,
-    AccessRole, Border, Color, CornerRadius, Id, Rect, Vec2,
+    context::{invalid_value, FocusAxis},
+    AccessRole, Border, Color, CornerRadius, Id, KeyInterest, Rect, Vec2,
 };
 use std::hash::Hash;
+use winit::keyboard::KeyCode;
+
+const ARROWS: [KeyCode; 2] = [KeyCode::ArrowUp, KeyCode::ArrowDown];
 
 impl<T: PartialEq + Hash> Widget for RadioGroup<'_, T> {
     fn ui(self, ui: &mut Ui<'_>) -> Response {
@@ -91,8 +94,11 @@ impl<T: PartialEq + Hash> Widget for RadioGroup<'_, T> {
             .map(|c| c.rect.translate(bounds.min))
             .collect();
 
-        // Roving focus: only the active option is a Tab stop. Keys move it before the hit
-        // regions are registered, so the target is focusable in this very pass.
+        // Roving focus: the options are one focus group, so the group is one Tab stop
+        // that lands on the selected option (the first enabled one when nothing is
+        // selected) and the arrow keys, Home and End move focus between enabled options.
+        // Every option keeps `Sense::FOCUS`: a click or assistive technology can focus any
+        // of them. The group moves focus only; choosing is done below.
         let keys: Vec<Id> = options.iter().map(|o| o.key()).collect();
         let ids: Vec<Id> = keys
             .iter()
@@ -100,38 +106,54 @@ impl<T: PartialEq + Hash> Widget for RadioGroup<'_, T> {
             .collect();
         let enabled: Vec<bool> = options.iter().map(|o| enabled_all && o.enabled).collect();
         let selected_idx = options.iter().position(|o| o.value == *selected);
+        let entry = selected_idx
+            .filter(|i| enabled[*i])
+            .or_else(|| enabled.iter().position(|e| *e));
+        let focus_group = gid.with("focus");
         let mut chosen = None;
-        let mut focus = ui
-            .context
-            .focused()
-            .and_then(|f| ids.iter().position(|id| *id == f))
-            .filter(|i| enabled[*i]);
-        if let Some(from) = focus {
-            let pressed = &ui.context.input().keys_pressed;
-            if let Some(to) = input::target(pressed, cfg.layout, from, &enabled) {
-                focus = Some(to);
-                ui.context.request_focus(ids[to]);
-                if cfg.follow_focus && selected_idx != Some(to) {
-                    chosen = Some(to);
+        let options_len = options.len();
+        let build = |ui: &mut Ui<'_>| -> Vec<Response> {
+            let responses: Vec<Response> = (0..options_len)
+                .map(|i| {
+                    let allowed = cfg.enabled && options[i].enabled;
+                    let sense = Sense::CLICK | Sense::FOCUS;
+                    ui.add_enabled_ui(allowed, |ui| {
+                        ui.interact(rows[i], (gid, "option", keys[i]), sense)
+                    })
+                })
+                .collect();
+            if let Some(entry) = entry {
+                ui.focus_entry(&responses[entry]);
+            }
+            responses
+        };
+        let responses = if options_len > 1 {
+            let axis = match cfg.layout {
+                RadioLayout::Vertical => FocusAxis::Vertical,
+                RadioLayout::Horizontal | RadioLayout::Grid(_) => FocusAxis::Horizontal,
+            };
+            ui.focus_scope(focus_group, axis, true, build).0
+        } else {
+            build(ui)
+        };
+        let pick =
+            |i: usize| (cfg.follow_focus && enabled[i] && selected_idx != Some(i)).then_some(i);
+        if let Some(moved) = ui.context.focus_groups.take_moved(focus_group) {
+            chosen = ids.iter().position(|id| *id == moved).and_then(pick);
+        }
+        if let RadioLayout::Grid(_) = cfg.layout {
+            // A grid also moves along its columns with Up and Down; the group's flat
+            // order only knows Left and Right, so the column rule stays here.
+            for (from, response) in responses.iter().enumerate() {
+                for event in ui.keys(response, KeyInterest::keys(&ARROWS).repeats()) {
+                    let pressed = HashSet::from([event.code]);
+                    if let Some(to) = input::target(&pressed, cfg.layout, from, &enabled) {
+                        ui.context.request_focus(ids[to]);
+                        chosen = pick(to).or(chosen);
+                    }
                 }
             }
         }
-        let active = focus
-            .or_else(|| selected_idx.filter(|i| enabled[*i]))
-            .or_else(|| enabled.iter().position(|e| *e));
-        let responses: Vec<Response> = (0..options.len())
-            .map(|i| {
-                let sense = if active == Some(i) {
-                    Sense::CLICK | Sense::FOCUS
-                } else {
-                    Sense::CLICK
-                };
-                let allowed = cfg.enabled && options[i].enabled;
-                ui.add_enabled_ui(allowed, |ui| {
-                    ui.interact(rows[i], (gid, "option", keys[i]), sense)
-                })
-            })
-            .collect();
         if chosen.is_none() {
             chosen = responses
                 .iter()

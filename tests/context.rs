@@ -88,3 +88,6 @@ mod cases_2;
 
 #[path = "context/cases_3.rs"]
 mod cases_3;
+
+#[path = "context/platform_input.rs"]
+mod platform_input;

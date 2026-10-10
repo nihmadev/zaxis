@@ -1,0 +1,95 @@
+[package]
+name = "z-hook"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.90"
+description = "Draws a zaxis interface over the frames of a host process by hooking its presentation"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nihmadev/zaxis"
+documentation = "https://docs.rs/z-hook"
+keywords = ["overlay", "vulkan", "hook", "gui", "debug"]
+categories = ["gui", "graphics", "development-tools::debugging"]
+include = ["/src/**", "/examples/**", "/tests/**", "/layer/**", "/Cargo.toml", "/README.md"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[features]
+default = ["vulkan", "x11"]
+# The Vulkan implicit layer (Linux and Windows): draws into the swapchain images of the host.
+vulkan = ["dep:ash"]
+# Input for the Vulkan layer from the host's X11 window.
+x11 = ["dep:x11rb"]
+
+[dependencies]
+# No accessibility adapter (it needs a window) and no dialogs; the fonts stay bundled.
+zaxis = { version = "0.0.4", path = "../..", default-features = false, features = [
+    "bundled-emoji", "bundled-weights", "bundled-monospace",
+] }
+log = "0.4"
+image = { version = "=0.25.9", default-features = false, features = ["png"] }
+ash = { version = "0.38", default-features = false, features = ["std"], optional = true }
+
+# Input from the host's X11 window (observe only): XInput2 on a connection of its own.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+x11rb = { version = "0.13", default-features = false, features = ["xinput"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+pollster = "1.0.1"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_UI_Input_Ime",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_System_SystemServices",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+] }
+
+[dev-dependencies]
+ash = { version = "0.38", default-features = false, features = ["std", "loaded"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[[example]]
+name = "vk_overlay"
+path = "examples/vk_overlay.rs"
+crate-type = ["cdylib"]
+required-features = ["vulkan"]
+
+[[example]]
+name = "vk_host"
+path = "examples/vk_host.rs"
+required-features = ["vulkan"]
+
+# Windows hosts and the overlay library for them: built on Windows only.
+[[example]]
+name = "d3d11_host"
+path = "examples/d3d11_host.rs"
+
+[[example]]
+name = "d3d12_host"
+path = "examples/d3d12_host.rs"
+
+[[example]]
+name = "dxgi_overlay"
+path = "examples/dxgi_overlay.rs"
+crate-type = ["cdylib"]
+
+[[bench]]
+name = "overlay"
+path = "benches/overlay.rs"
+harness = false

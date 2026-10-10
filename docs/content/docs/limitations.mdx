@@ -6,6 +6,7 @@ description: Supported scope and boundaries of the 0.0.3 Genetic development rel
 
 | Area | Current boundary |
 | --- | --- |
+| PanZoom | Application-owned camera and local controls; primary background pan and explicit wheel reservation. No scene graph, object selection, snapping, grids, rotation, inertia or touch/pinch. Visible rect is conservative under ancestor clipping. Scale range is 0.0001..64; positioned coordinates within +/-1000000. Glyph raster resolution is bucketed/capped; extreme magnification softens text and raster images retain source limits. See [PanZoom](./components/pan-zoom.mdx) |
 | Native windows | Built-in runner opens several native windows (`WindowPlan`, `Windows`), each with its own `Context` and surface over shared glyph, image and appearance resources; no native menus or tray icons; window geometry is not persisted |
 | Backends | winit and wgpu are always dependencies; no optional backend feature flags |
 | Browser | `wasm32-unknown-unknown` on WebGPU or WebGL2, one canvas and one window per page; no system fonts, file paths, threads, IME composition or native chrome; a lost WebGL context is not recovered; Chrome only was checked. See [Web](./web.mdx) |
@@ -15,14 +16,15 @@ description: Supported scope and boundaries of the 0.0.3 Genetic development rel
 | Fonts | Bundled Inter in Regular, Medium, SemiBold and Bold (`bundled-weights`), bundled JetBrains Mono for monospace text (`bundled-monospace`; replaceable with `RunOptions::with_monospace_family`), a custom `FontFamily` through `RunOptions::with_font_family` or `Context::with_fonts`, system fallback and bundled color emoji; weights without a file use the nearest one and are never synthesized; variable-font axes are not used (cosmic-text 0.17 shapes them inconsistently); fallback fonts follow the weight only where they have that file; no runtime font setter, glyph eviction, or italic |
 | Static text selection | `SelectableLabel`, `Hyperlink` and `rich_label` select by grapheme cluster, copy exactly the selected text and group into a `SelectionScope`; one selection per native window, none across windows; in a virtualized list only the rows that were built are selected and copied; a range crossing a direction change in bidirectional text is a set of rectangles, not a visually reordered span; the library never opens an address unless `open_in_browser` is requested, and then only `https`, `http` and `mailto` unless the allowlist is extended |
 | Toasts | `Toast` stacks in the bottom-right corner of the window that shows it; passive: no focus, pointer input or actions; announced to screen readers as a polite status region |
-| Accessibility | AccessKit tree on Windows (UI Automation) and macOS (NSAccessibility); Linux and BSD AT-SPI only with the `accesskit_unix` feature; none in the browser or on mobile. No drag-and-drop requests; virtualized rows that were not built have no node; in `RadioGroup` and `SegmentedControl` only the current tab stop accepts a focus request; built-in names such as "Close", "Menu", "Resize", "Previous", "Next", "Page N", "Copy" and "Hue" are English only; tab panels are linked to their tab by build order; `TitleBar` follows the content in tree order; no password field; `Card` has no name API. Checked with tests, a UI Automation client and Narrator on Windows 11; NVDA, JAWS, Accessibility Insights, VoiceOver and Orca were not tried. See [Accessibility](./accessibility.mdx#limitations) |
+| Accessibility | AccessKit tree on Windows (UI Automation) and macOS (NSAccessibility); Linux and BSD AT-SPI only with the `accesskit_unix` feature; none in the browser or on mobile. No drag-and-drop requests; virtualized rows that were not built have no node; built-in names such as "Close", "Menu", "Resize", "Previous", "Next", "Page N", "Copy" and "Hue" are English only; tab panels are linked to their tab by build order; `TitleBar` follows the content in tree order; no password field; `Card` has no name API. Checked with tests, a UI Automation client and Narrator on Windows 11; NVDA, JAWS, Accessibility Insights, VoiceOver and Orca were not tried. See [Accessibility](./accessibility.mdx#limitations) |
 | Modal dialogs | One input target at a time (the newest open modal); no dragging or resizing of the modal, or library-side dialog queue; a modal covers only its own native window, and an OS close request goes to `App::close_requested`, where `CloseRequested::reject` keeps the window open for a "Save changes?" modal; `Floating` `ColorPicker` and `Window` panels inside a modal are shown inline or stay below it; windows narrower than about 200 px can push a two-button action row past the edge |
 | Window state | Geometry retained by ID, with initial-position/size builders; no public reset, forced reposition, or forced resize method |
-| Custom interaction | External widgets get a `Response` for their own rectangle with `Ui::interact` and a `Sense` (hover, click, drag, focus); there is no public hit-region type, text editing or IME for custom widgets, and a focused widget reads raw keys from `InputState` |
+| Custom interaction | External widgets get a `Response` for their own rectangle with `Ui::interact` and a `Sense` (hover, click, drag, focus), keys they own with `Ui::keys` and a shared Tab stop with `FocusGroup`; there is no public hit-region type, text editing or IME for custom widgets. See [Keys and focus groups](#keys-and-focus-groups) |
 | Drag and drop | In-window drag and drop of in-process typed payloads between components of one `Context`; OS files can be dragged in ([File dialogs and file drop](./file-dialogs-and-drop.mdx)); no clipboard drag, dragging files out, transfer between native windows (each has its own `Context`) or processes, OLE, or dragging selected text |
-| Renderer integration | Renderer owns its surface, device, and queue; no public render-into-existing-pass API |
+| Renderer integration | `Renderer` owns its surface, device, and queue. In a host that owns the device, `EmbeddedRenderer` draws into its pass (`record`) or texture (`render_to`) without a window ([Embedding](./embedding.mdx)): backdrop blur, glass and backdrop-reading materials need `render_to` and a single-sample texture with `COPY_SRC`; a pass reports them instead of drawing them. Checked only with pixel tests on Vulkan (Mesa, Intel); Metal, DX12, GL, a browser and a real engine's frame graph were not tried. Input without winit goes through `Context::on_input(InputEvent)` ([Input](./input.mdx#input-without-a-window)) |
+| Overlay in another process | `z-hook` draws over a host's Vulkan, Direct3D 11 or Direct3D 12 frames ([Overlay](./hook.mdx)). Run and checked only for Vulkan on Linux (Mesa Anv, llvmpipe) with X11 input; the Windows paths (DXGI hooks, D3D11/D3D12 composition, window procedure input, IME) compile but were never run; no OpenGL, no macOS; no input from Wayland hosts; an X11 host is observed, not taken from; one overlay and one swapchain per process; a host that creates its device before the overlay is installed cannot be drawn on |
 | Materials | User fragment shaders on rectangles with rounded corners (and an image or the backdrop); no user vertex or compute shaders, no GLSL/HLSL input, no shader files reloaded at runtime, no shape hit testing and no whole-frame post-processing. At most 256 registered materials, 64 cached pipelines between frames and 1024 bytes of uniforms per draw (992 of them parameters). A shader that loops forever hangs the GPU for as long as the driver allows: bounding loops is the author's job. A material that reads the backdrop costs a copy and a blur of the area behind it. WebGL2 and WebGPU are covered by naga validation and translation to GLSL ES 3.00 in tests; no browser run was done. A material cannot be used by a custom backend that ignores `DrawCommand::material` |
-| Antialiasing | Automatic 4× MSAA when supported, otherwise 1×; no public override |
+| Antialiasing | The window renderer draws with one sample (shapes are antialiased by coverage); `EmbeddedRenderer::record` follows the sample count of the host's pass |
 | Texture upload | Complete image payloads, full uploads on revision change; no public dirty-region API |
 | Memory | Window/scroll states and glyph atlas pages remain for the context lifetime; GPU buffers grow without shrinking |
 | Persistence | Application stores and loads its own model; library does not serialize UI or application state |
@@ -42,3 +44,66 @@ The repository targets desktop tools, and the runner also builds for the browser
 [Web](./web.mdx)): one canvas, WebGPU with a WebGL2 fallback, and the differences listed
 there. Browser support is new; only Chrome has been tried, and Firefox, Safari, mobile
 browsers and input methods are unchecked.
+
+## Keys and focus groups
+
+- Only the focused widget can own a key, and only keys named in the last finished pass: a key
+  that arrives before the first pass, or for a widget that has not declared it yet, takes the
+  usual path. Claims, the events and the group's axis and `wrap` take effect from the pass that
+  built them.
+- A claim does not apply to a text field, slider, drag value, combo box, tree or split handle
+  (they keep their keys; the claim is reported), to a widget under an open popup or modal, or
+  while a `KeyBox` listens or a chord is in progress. A claim beats a shortcut on the same key,
+  so `any_mods()` can hide shortcuts; claim exact modifiers.
+- Typing, IME and text editing are not delivered to custom widgets; a claimed printable key types
+  nothing. There is no subscription to composition for widgets other than `TextEdit`.
+- A widget has at most 64 claims. The queue holds 256 events per widget and 1024 in all; beyond
+  that new presses and repeats are dropped (counted in `InputStats`, reported once per overflow),
+  while releases of delivered presses are always kept. A lost window focus, and a modal or popup
+  opening or closing, drop queued events and held-key owners.
+- A group moves focus along one axis in the order its members were built; there is no
+  two-dimensional navigation (`RadioGroup` adds the column rule of its grid layout itself).
+  Members that are fully clipped away, such as rows scrolled out of a `ScrollArea`, cannot be
+  reached by the arrows until they are scrolled into view, and focus does not scroll them in.
+- A control with its own roving focus, such as `TabBar`, or its own arrows, such as `ListBox`, belongs
+  in a `FocusGroup::slot` inside a group, not directly in it, so that an arrow is never handled
+  twice. `TabBar`, `TreeView`, `ListBox`, menus and `TextEdit` keep their own rules and were not
+  rebuilt on groups; `RadioGroup` and `SegmentedControl` were.
+- A group's `Response` and `FocusGroupOutput::stop()` follow the groups the last pass published.
+  There is no toolbar component yet; a toolbar is a `FocusGroup` an application builds.
+- Checked with tests and benchmarks through `Context::on_input`, and with the example without a
+  window. Real keyboards and layouts, a screen reader, an embedded or overlay host and a browser
+  were not tried with these paths.
+
+## Actions and keymap
+
+- The registry and the active keymap context belong to one `Context`; windows with their own
+  contexts need their own registry. One context path is active at a time.
+- Nested popups: at most `MAX_POPUP_DEPTH` (6) levels; a popup built outside its parent's closure
+  is an independent root; while a branch is open only its leaf takes keys and the wheel, and
+  hover over an ancestor is not routed. See [Popup](./components/popup.mdx#nested-popups).
+- Open menus and popups own the keyboard: shortcuts wait until they close. A key the focused widget
+  claimed with `Ui::keys` beats a shortcut on the same key; a chord in progress beats the claim.
+- A focused text field keeps printable keys, its editing shortcuts and `Ctrl+Alt` combinations.
+- A chord of the shortcut editor is at most two strokes; files may hold four.
+- Layouts are handled by one rule (Latin letter, else physical key); there are no per-layout
+  tables. Dead keys count as physical.
+- A page counts as Linux for shortcut text. The Escape or timeout that ends a chord is not shown.
+- Icons of actions are shown by `Button` only; menus draw none.
+
+## Dock
+
+- Floating Dock panels are in-viewport `Window` layers, not native OS windows;
+  dragging across native windows/processes is unsupported.
+- Moving and splitting have no dedicated assistive-technology actions. Tabs can
+  be activated/closed by AT. Built-in menu/action names are English.
+- Closing animation replays ordinary paints; custom material passes and nested
+  deferred scrolling content are not frozen for the exit. Visible content lays
+  out at its final size, then translates/clips; there is no persistent bitmap cache.
+- Minimum sizes hold when space permits. An undersized viewport proportionally
+  reduces minimums to preserve reachable content and dividers.
+- A critically damped spring does not overshoot from rest. Interrupting a moving
+  spring preserves momentum, which can briefly continue the previous direction.
+- Saved IDs assume the application's stable values and hashing contract persist.
+  Payload serialization and ID migration belong to the application. Loading
+  omits unavailable panels and limits file size, entries and nesting depth.

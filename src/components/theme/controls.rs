@@ -296,6 +296,8 @@ merge_fields!(CheckboxStyle; size,gap,indicator_width; body,indicator);
 merge_fields!(SwitchStyle; width,height,gap,thumb_inset; track,thumb);
 merge_fields!(SegmentedStyle; padding,gap,icon_size,icon_gap,segment_padding,font_size,font_weight,divider,mark; track,thumb,segment);
 merge_fields!(RadioStyle; size,dot_size,halo_size,border_width,gap,row_gap,column_gap,row_height,font_size,font_weight,dot_spring; body,dot,halo);
+merge_fields!(super::TabsStyle; insertion_color,insertion_width,insertion_gap,height,padding_x,icon_size,icon_gap,close_size,close_glyph,close_gap,min_width,max_width,tab_radius,plate_radius,plate_inset,divider,divider_height,font_size,font_weight; strip,tab,close,indicator,drop_area);
+merge_fields!(crate::DockStyle; preset,motion,gap,panel_radius,inactive_border,ring_width,ring_gap,ring_active,ring_inactive,ring_glow,ring_gradient,preview_color,minimum,padding,spring; surface,tabs);
 merge_fields!(SliderStyle; width,height,track_height,thumb_radius; track,fill,thumb);
 merge_fields!(TextEditStyle; width,height,font_size,font_weight,font_family,padding,rounding,placeholder,selection,cursor_width,blink_interval,caret,selection_foreground,area_padding,area_min_height; surface);
 merge_fields!(WindowStyle; padding,title_height,title_font_size,title_font_weight; body,title);

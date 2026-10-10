@@ -1,400 +1,261 @@
-//! Ordered backdrop effects. Offscreen attachments are allocated only for blur frames.
-use super::{
-    materials::{Draw, MaterialFrame},
-    textures::TextureStore,
-    viewport::scissor,
-    Renderer,
-};
-use crate::{Color, DrawData, Rect, Vec2};
-use std::sync::Arc;
-use wgpu::util::DeviceExt;
+//! Ordered backdrop effects. The window is drawn into an offscreen canvas in segments; at
+//! each effect the area behind it is filtered (pyramid + Gaussian, see `params`) and the
+//! effect's mesh is composited into the canvas (the blurred level replaces what is behind the shape). Independent effects
+//! share one set of filter passes (`plan`), unchanged backdrops are not filtered again
+//! (`cache`), and every texture exists only while frames have effects.
+//!
+//! The engine needs a device and a few bind group layouts, not a window, so tests drive it
+//! headless (`BlurDevice`).
 
-mod material;
+pub mod area;
+mod cache;
+pub mod params;
+mod passes;
 mod pipelines;
+pub mod plan;
+mod targets;
+mod uniforms;
 
-struct Target {
-    view: wgpu::TextureView,
-    group: wgpu::BindGroup,
+use crate::{Color, DrawData};
+use passes::{Group, Offsets};
+pub use pipelines::BlurPipelines;
+use plan::Plan;
+use std::sync::Arc;
+use targets::{Set, Tex};
+use uniforms::Uniforms;
+
+/// Independent sets of filter textures a window keeps. Groups beyond this share the last
+/// one and are recomputed every frame.
+pub const MAX_SETS: usize = 3;
+
+/// What the engine needs from a device.
+#[derive(Clone, Copy)]
+pub struct BlurDevice<'a> {
+    pub device: &'a wgpu::Device,
+    pub queue: &'a wgpu::Queue,
+    /// Format of the canvas (the surface's attachment format).
+    pub format: wgpu::TextureFormat,
+    /// Format of the pyramid; see [`intermediate_format`].
+    pub intermediate: wgpu::TextureFormat,
+    pub texture_layout: &'a wgpu::BindGroupLayout,
+    pub sampler: &'a wgpu::Sampler,
+    pub viewport_layout: &'a wgpu::BindGroupLayout,
+    /// Layout of the material backdrop group (sharp, blurred, sampler), if materials exist.
+    pub backdrop_layout: Option<&'a wgpu::BindGroupLayout>,
 }
 
-/// Pipelines and layout, created once and shared by every window of a device.
-pub(super) struct BlurPipelines {
-    layout: wgpu::BindGroupLayout,
-    gaussian: wgpu::RenderPipeline,
-    down: wgpu::RenderPipeline,
-    copy: wgpu::RenderPipeline,
+/// Half-float where the adapter renders to and filters it, else the canvas format: pyramid
+/// levels keep their precision, so large blurs of smooth gradients do not band.
+pub fn intermediate_format(
+    adapter: &wgpu::Adapter,
+    canvas: wgpu::TextureFormat,
+) -> wgpu::TextureFormat {
+    let format = wgpu::TextureFormat::Rgba16Float;
+    let features = adapter.get_texture_format_features(format);
+    let usages = wgpu::TextureUsages::RENDER_ATTACHMENT
+        | wgpu::TextureUsages::TEXTURE_BINDING
+        | wgpu::TextureUsages::COPY_SRC
+        | wgpu::TextureUsages::COPY_DST;
+    if features.allowed_usages.contains(usages)
+        && features
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE)
+    {
+        format
+    } else {
+        canvas
+    }
 }
 
-/// Offscreen targets and parameters of one window; freed on resize and when it closes.
-pub(super) struct BlurRenderer {
-    canvas: Target,
-    backdrop: Target,
-    low: Target,
-    scratch: Target,
-    blurred: Target,
-    /// Sharp and blurred backdrop for materials that read them (bind group 2).
-    material_group: wgpu::BindGroup,
+/// Work done by the filter in one frame (`bytes` is the standing size of its textures).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameStats {
+    pub effects: u64,
+    pub batches: u64,
+    pub reused: u64,
+    pub passes: u64,
+    pub copies: u64,
+    pub pixels: u64,
+    pub bytes: u64,
+}
+
+/// One frame to draw.
+pub struct Frame<'a> {
+    pub data: &'a DrawData,
+    /// Physical size of the canvas and the output.
+    pub size: [u32; 2],
+    pub clear: Color,
+    pub output: &'a wgpu::TextureView,
+    pub vertices: &'a wgpu::Buffer,
+    pub indices: &'a wgpu::Buffer,
+    pub viewport_group: &'a wgpu::BindGroup,
+}
+
+/// Where a frame goes and what it starts from, when the output is not a window of its own.
+#[derive(Clone, Copy, Default)]
+pub struct Compose<'a> {
+    /// Content to draw over, copied into the canvas from `base_origin` instead of clearing it.
+    /// Effects then see it as their backdrop, so nothing is reused between frames.
+    pub base: Option<&'a wgpu::Texture>,
+    /// Texel of `base` the canvas starts at.
+    pub base_origin: [u32; 2],
+    /// Part of the output the canvas is drawn into, `[x, y, width, height]` in output pixels;
+    /// `None` is the whole output, cleared first. With a region the rest is kept unless
+    /// `clear_output` is set.
+    pub region: Option<[u32; 4]>,
+    /// Clear the whole output to this color before the canvas goes into the region.
+    pub clear_output: Option<wgpu::Color>,
+}
+
+/// Draws command `index` that is not an effect composite, with the pass's scissor already
+/// set. The group is the backdrop of a material that reads it.
+pub type DrawPlain<'f> = dyn FnMut(&mut wgpu::RenderPass<'_>, usize, Option<&wgpu::BindGroup>) + 'f;
+
+/// Textures and parameters of one window; freed on resize, on idle and when it closes.
+pub struct BlurRenderer {
     pipelines: Arc<BlurPipelines>,
-    parameters: Vec<(f32, [wgpu::BindGroup; 2])>,
-    downsample: u32,
+    canvas: Tex,
+    size: [u32; 2],
+    sets: Vec<Set>,
+    uniforms: Uniforms,
 }
 
 impl BlurRenderer {
-    fn new(renderer: &Renderer) -> Self {
-        let pipelines = Arc::clone(
-            renderer
-                .blur_pipelines
-                .get_or_init(|| Arc::new(BlurPipelines::new(renderer))),
-        );
-        let target = || Self::target(renderer, 1);
-        let (backdrop, blurred) = (target(), target());
+    pub fn new(dev: &BlurDevice, pipelines: Arc<BlurPipelines>, size: [u32; 2]) -> Self {
         Self {
-            canvas: target(),
-            material_group: material::backdrop_group(renderer, &backdrop, &blurred),
-            backdrop,
-            low: target(),
-            scratch: target(),
-            blurred,
+            canvas: Tex::new(dev, size, dev.format),
+            uniforms: Uniforms::new(dev),
             pipelines,
-            parameters: Vec::new(),
-            downsample: 1,
+            size,
+            sets: Vec::new(),
         }
     }
 
-    fn target(renderer: &Renderer, divisor: u32) -> Target {
-        let device = &renderer.device;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("zaxis blur attachment"),
-            size: wgpu::Extent3d {
-                width: renderer.config.width.div_ceil(divisor),
-                height: renderer.config.height.div_ceil(divisor),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: renderer.attachment_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&Default::default());
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("zaxis blur texture"),
-            layout: &renderer.texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&renderer.sampler),
-                },
-            ],
-        });
-        Target { view, group }
+    /// Physical size of the canvas this renderer was made for.
+    pub fn size(&self) -> [u32; 2] {
+        self.size
     }
 
-    fn prepare(&mut self, renderer: &Renderer, data: &DrawData) {
-        let radii: Vec<_> = data
-            .commands
-            .iter()
-            .filter_map(|c| c.blur.map(|r| r * data.scale_factor))
-            .collect();
-        let min_sigma = radii.iter().copied().fold(f32::INFINITY, f32::min);
-        let downsample = if min_sigma >= 8.0 {
-            4
-        } else if min_sigma >= 4.0 {
-            2
-        } else {
-            1
-        };
-        if self.downsample != downsample {
-            self.low = Self::target(renderer, downsample);
-            self.scratch = Self::target(renderer, downsample);
-            self.blurred = Self::target(renderer, downsample);
-            self.material_group = material::backdrop_group(renderer, &self.backdrop, &self.blurred);
-            self.downsample = downsample;
-        }
-        if self
-            .parameters
-            .iter()
-            .map(|p| p.0)
-            .eq(radii.iter().copied())
-        {
-            return;
-        }
-        self.parameters = radii
-            .into_iter()
-            .map(|sigma| {
-                let samples = (3.0 * sigma / self.downsample as f32)
-                    .ceil()
-                    .clamp(1.0, 32.0);
-                let groups = [
-                    [sigma / renderer.config.width as f32, 0.0, samples, 0.0],
-                    [0.0, sigma / renderer.config.height as f32, samples, 0.0],
-                ]
-                .map(|step| {
-                    let buffer =
-                        renderer
-                            .device
-                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some("zaxis blur step"),
-                                contents: bytemuck::cast_slice(&step),
-                                usage: wgpu::BufferUsages::UNIFORM,
-                            });
-                    renderer
-                        .device
-                        .create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("zaxis blur step group"),
-                            layout: &self.pipelines.layout,
-                            entries: &[wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: buffer.as_entire_binding(),
-                            }],
-                        })
-                });
-                (sigma, groups)
-            })
-            .collect();
+    /// Estimated bytes of the textures and parameter buffers held.
+    pub fn bytes(&self) -> u64 {
+        self.canvas.bytes + self.sets.iter().map(Set::bytes).sum::<u64>() + self.uniforms.bytes()
     }
 
-    fn fullscreen(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        output: &wgpu::TextureView,
-        input: &wgpu::BindGroup,
-        parameters: &wgpu::BindGroup,
-        pipeline: &wgpu::RenderPipeline,
-        region: Option<[u32; 4]>,
-    ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("zaxis blur fullscreen pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: output,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            ..Default::default()
-        });
-        pass.set_pipeline(pipeline);
-        if let Some([x, y, w, h]) = region {
-            pass.set_scissor_rect(x, y, w, h);
-        }
-        pass.set_bind_group(0, input, &[]);
-        pass.set_bind_group(1, parameters, &[]);
-        pass.draw(0..3, 0..1);
-    }
-
-    fn filter_region(&self, [x, y, width, height]: [u32; 4]) -> [u32; 4] {
-        let d = self.downsample;
-        let left = x / d;
-        let top = y / d;
-        // One extra texel supports bilinear sampling at the composite edges.
-        let right = (x + width)
-            .div_ceil(d)
-            .saturating_add(1)
-            .min(self.blurred.view.texture().width());
-        let bottom = (y + height)
-            .div_ceil(d)
-            .saturating_add(1)
-            .min(self.blurred.view.texture().height());
-        let left = left.saturating_sub(1);
-        let top = top.saturating_sub(1);
-        [left, top, right - left, bottom - top]
-    }
-
-    fn segment(
-        &self,
-        renderer: &Renderer,
-        store: &TextureStore,
-        encoder: &mut wgpu::CommandEncoder,
-        data: &DrawData,
-        range: std::ops::Range<usize>,
-        clear: Option<Color>,
-        materials: &MaterialFrame,
-    ) {
-        let load = match clear {
-            Some(color) => {
-                let c = color.linear();
-                wgpu::LoadOp::Clear(wgpu::Color {
-                    r: c[0] as f64,
-                    g: c[1] as f64,
-                    b: c[2] as f64,
-                    a: c[3] as f64,
-                })
-            }
-            None => wgpu::LoadOp::Load,
-        };
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("zaxis backdrop segment"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &self.canvas.view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            ..Default::default()
-        });
-        if data.indices.is_empty() {
-            return;
-        }
-        pass.set_bind_group(0, &renderer.viewport_group, &[]);
-        pass.set_vertex_buffer(0, renderer.vertices.slice(..));
-        pass.set_index_buffer(renderer.indices.slice(..), wgpu::IndexFormat::Uint32);
-        for (index, command) in data
-            .commands
-            .iter()
-            .enumerate()
-            .skip(range.start)
-            .take(range.len())
-        {
-            if command.indices.is_empty() {
-                continue;
-            }
-            let Some([x, y, w, h]) =
-                scissor(command.clip_rect, data.scale_factor, renderer.physical_size)
-            else {
-                continue;
-            };
-            pass.set_scissor_rect(x, y, w, h);
-            if let Draw::Material { pipeline, offset } = materials.draw(index) {
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(1, &store.textures[&command.texture].bind_group, &[]);
-                let backdrop = command.blur.is_some().then_some(&self.material_group);
-                materials.bind(&mut pass, *offset, backdrop);
-            } else if matches!(materials.draw(index), Draw::Skip) {
-                continue;
-            } else if command.blur.is_some() {
-                pass.set_pipeline(&renderer.backdrop_pipeline);
-                pass.set_bind_group(1, &self.blurred.group, &[]);
-                pass.set_bind_group(2, &self.backdrop.group, &[]);
-            } else {
-                pass.set_pipeline(renderer.pipeline_for(command, data));
-                pass.set_bind_group(1, &store.textures[&command.texture].bind_group, &[]);
-            }
-            pass.draw_indexed(command.indices.clone(), 0, 0..1);
-        }
-    }
-}
-
-impl Renderer {
-    pub(super) fn render_blur(
+    /// Draw `frame`: its commands in order into the canvas, effects filtered and composited,
+    /// then the canvas into the output.
+    pub fn render(
         &mut self,
+        dev: &BlurDevice,
         encoder: &mut wgpu::CommandEncoder,
-        data: &DrawData,
-        clear: Color,
-        output: &wgpu::TextureView,
-        store: &TextureStore,
-        materials: &MaterialFrame,
-    ) {
-        let mut blur = self.blur.take().unwrap_or_else(|| BlurRenderer::new(self));
-        blur.prepare(self, data);
-        let effects: Vec<_> = data
-            .commands
+        frame: &Frame,
+        draw: &mut DrawPlain,
+    ) -> FrameStats {
+        self.render_over(dev, encoder, frame, draw, Compose::default())
+    }
+
+    /// Like [`render`](Self::render), starting from the content of `compose` and writing
+    /// only its region of the output.
+    pub fn render_over(
+        &mut self,
+        dev: &BlurDevice,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &Frame,
+        draw: &mut DrawPlain,
+        compose: Compose,
+    ) -> FrameStats {
+        let data = frame.data;
+        let plan = plan::plan(data, self.size);
+        let signatures = cache::signatures(data, &plan, self.size, frame.clear);
+        let mut stats = FrameStats {
+            effects: plan.jobs.len() as u64,
+            batches: plan.batches.len() as u64,
+            ..Default::default()
+        };
+        let materials: Vec<bool> = plan
+            .jobs
             .iter()
-            .enumerate()
-            .filter_map(|(i, c)| c.blur.map(|_| i))
+            .map(|job| data.commands[job.command].material.is_some())
             .collect();
-        blur.segment(
-            self,
-            store,
-            encoder,
-            data,
-            0..effects[0],
-            Some(clear),
-            materials,
-        );
-        for (n, &index) in effects.iter().enumerate() {
-            let parameters = &blur.parameters[n].1;
-            let command = &data.commands[index];
-            let mut min = Vec2::splat(f32::INFINITY);
-            let mut max = Vec2::splat(f32::NEG_INFINITY);
-            for &i in &data.indices[command.indices.start as usize..command.indices.end as usize] {
-                let position = Vec2::from_array(data.vertices[i as usize].position);
-                min = min.min(position);
-                max = max.max(position);
-            }
-            let bounds = Rect::from_min_max(min, max).intersect(command.clip_rect);
-            if let Some(region) = scissor(bounds, data.scale_factor, self.physical_size) {
-                // Keep only the affected resolved texels before writing the next
-                // segment. Coverage mixes both RGBA backgrounds at blur edges.
-                let [x, y, width, height] = region;
-                let origin = wgpu::Origin3d { x, y, z: 0 };
-                encoder.copy_texture_to_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        origin,
-                        ..blur.canvas.view.texture().as_image_copy()
-                    },
-                    wgpu::TexelCopyTextureInfo {
-                        origin,
-                        ..blur.backdrop.view.texture().as_image_copy()
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-                // Horizontal samples are needed three sigma above and below the
-                // composite region so the vertical pass never samples cleared pixels.
-                let padding = Vec2::splat(
-                    command.blur.unwrap() * 3.0 + 2.0 * blur.downsample as f32 / data.scale_factor,
-                );
-                let padded = Rect::from_min_max(bounds.min - padding, bounds.max + padding);
-                let horizontal_region = scissor(padded, data.scale_factor, self.physical_size)
-                    .map(|region| blur.filter_region(region));
-                let source = if blur.downsample > 1 {
-                    blur.fullscreen(
-                        encoder,
-                        &blur.low.view,
-                        &blur.canvas.group,
-                        &parameters[0],
-                        &blur.pipelines.down,
-                        horizontal_region,
-                    );
-                    &blur.low.group
-                } else {
-                    &blur.canvas.group
-                };
-                blur.fullscreen(
-                    encoder,
-                    &blur.scratch.view,
-                    source,
-                    &parameters[0],
-                    &blur.pipelines.gaussian,
-                    horizontal_region,
-                );
-                blur.fullscreen(
-                    encoder,
-                    &blur.blurred.view,
-                    &blur.scratch.group,
-                    &parameters[1],
-                    &blur.pipelines.gaussian,
-                    Some(blur.filter_region(region)),
-                );
-            }
-            let end = effects.get(n + 1).copied().unwrap_or(data.commands.len());
-            blur.segment(self, store, encoder, data, index..end, None, materials);
+        let mut set_of = vec![0; plan.jobs.len()];
+        for (batch, range) in plan.batches.iter().enumerate() {
+            set_of[range.clone()].fill(batch.min(MAX_SETS - 1));
         }
-        blur.fullscreen(
+        self.prepare_sets(dev, &plan, &set_of, &materials);
+        let blocks = self.write_blocks(dev, &plan);
+        let first = plan.jobs.first().map_or(data.commands.len(), |j| j.command);
+        let mut segment = Segment {
+            frame,
+            plan: &plan,
+            blocks: &blocks,
+            set_of: &set_of,
+        };
+        let clear = match compose.base {
+            Some(base) => {
+                self.copy_base(encoder, base, compose.base_origin);
+                None
+            }
+            None => Some(frame.clear),
+        };
+        self.segment(&mut segment, encoder, draw, 0..first, clear);
+        for (batch, range) in plan.batches.iter().enumerate() {
+            let set = batch.min(MAX_SETS - 1);
+            let reusable =
+                compose.base.is_none() && (batch < MAX_SETS - 1 || plan.batches.len() <= MAX_SETS);
+            let signature = cache::combine(&signatures[range.clone()]);
+            if reusable && self.sets[set].signature == Some(signature) {
+                stats.reused += 1;
+            } else {
+                let group = Group {
+                    jobs: &plan.jobs[range.clone()],
+                    offsets: &blocks.filters[range.clone()],
+                    unused: blocks.unused,
+                    materials: &materials[range.clone()],
+                };
+                passes::filter_group(
+                    encoder,
+                    &self.pipelines,
+                    &self.uniforms,
+                    &self.canvas,
+                    &self.sets[set],
+                    &group,
+                    &mut stats,
+                );
+                self.sets[set].signature = reusable.then_some(signature);
+            }
+            for job in range.clone() {
+                let from = plan.jobs[job].command;
+                let to = plan
+                    .jobs
+                    .get(job + 1)
+                    .map_or(data.commands.len(), |j| j.command);
+                self.segment(&mut segment, encoder, draw, from..to, None);
+            }
+        }
+        self.finish(
             encoder,
-            output,
-            &blur.canvas.group,
-            &blur.parameters[0].1[0],
-            &blur.pipelines.copy,
-            None,
+            frame,
+            blocks.unused,
+            compose.region,
+            compose.clear_output,
         );
-        self.blur = Some(blur);
+        stats.bytes = self.bytes();
+        stats
     }
 }
+
+/// Everything a segment of commands needs to know about the frame.
+pub(crate) struct Segment<'a> {
+    pub frame: &'a Frame<'a>,
+    pub plan: &'a Plan,
+    pub blocks: &'a Blocks,
+    pub set_of: &'a [usize],
+}
+
+/// The parameter blocks of a frame, as dynamic offsets.
+pub(crate) struct Blocks {
+    pub filters: Vec<Offsets>,
+    pub effects: Vec<u32>,
+    pub unused: u32,
+}
+
+mod draw;

@@ -56,6 +56,12 @@ pub struct WebOptions {
     pub container_id: Option<String>,
     /// The graphics API. The `zaxis_backend` URL parameter overrides [`WebBackend::Auto`].
     pub backend: WebBackend,
+    /// Shortcuts the page may take from the browser, in the text of a
+    /// [`Stroke`](crate::Stroke): `"mod+s"`, `"ctrl+shift+p"`, `"f5"`. A key that matches one
+    /// and that an action took does not reach the browser, so `Ctrl+S` runs Save instead of
+    /// opening the browser's save dialog. `mod` stands for Ctrl and for Command. By default
+    /// the browser keeps every one of its shortcuts. Strokes that cannot be read are ignored.
+    pub claimed_shortcuts: Vec<String>,
 }
 
 /// Whether the browser's own reaction to a key press over the canvas must be cancelled.
@@ -96,4 +102,63 @@ pub fn blocks_browser_default(
             | "End"
     );
     navigation || key.chars().count() == 1 || consumed && !key.starts_with('F')
+}
+
+/// Whether the page takes this key from the browser because the application claimed the
+/// shortcut in [`WebOptions::claimed_shortcuts`] and the UI used the key (`consumed`).
+pub fn claims_shortcut(
+    claimed: &[String],
+    key: &str,
+    modifiers: (bool, bool, bool, bool),
+    consumed: bool,
+) -> bool {
+    use crate::{Mods, Stroke};
+    let (ctrl, meta, alt, shift) = modifiers;
+    let Some(code) = browser_key(key) else {
+        return false;
+    };
+    consumed
+        && claimed
+            .iter()
+            .filter_map(|text| text.parse::<Stroke>().ok())
+            .any(|stroke| {
+                let wanted = stroke.mods;
+                let (want_ctrl, want_meta) =
+                    (wanted.contains(Mods::CTRL), wanted.contains(Mods::META));
+                let command = if wanted.contains(Mods::PRIMARY) {
+                    // The command key of any system: Ctrl or Command, not both.
+                    ctrl != meta && !want_ctrl && !want_meta
+                } else {
+                    ctrl == want_ctrl && meta == want_meta
+                };
+                command
+                    && stroke.code() == Some(code)
+                    && alt == wanted.contains(Mods::ALT)
+                    && shift == wanted.contains(Mods::SHIFT)
+            })
+}
+
+/// The key a `KeyboardEvent.key` value names.
+fn browser_key(key: &str) -> Option<winit::keyboard::KeyCode> {
+    let lower = key.to_ascii_lowercase();
+    let name = match lower.as_str() {
+        "arrowleft" => "left",
+        "arrowright" => "right",
+        "arrowup" => "up",
+        "arrowdown" => "down",
+        " " => "space",
+        "," => "comma",
+        "." => "period",
+        "/" => "slash",
+        "\\" => "backslash",
+        ";" => "semicolon",
+        "'" => "quote",
+        "[" => "bracketleft",
+        "]" => "bracketright",
+        "-" => "minus",
+        "=" => "equal",
+        "`" => "backquote",
+        other => other,
+    };
+    crate::actions::key_code(name)
 }

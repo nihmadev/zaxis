@@ -1,11 +1,11 @@
-//! Retained state of container widgets: grids, cards, wrapped flows, tab pages, carousels,
+//! Retained state of container widgets: grids, cards, wrapped flows, tab pages, tab strips, carousels,
 //! list boxes and collapsing headers. Each entry lives while its widget is built, except
 //! that a collapsing header hidden by a collapsed ancestor lives as long as the ancestor.
 
 use super::Id;
 use crate::components::{
     card::CardState, carousel::CarouselState, collapsing_header::CollapsingState, grid::GridState,
-    list_box::ListState, motion::TabPagesState, ui::FlowState,
+    list_box::ListState, motion::TabPagesState, tab_bar::state::TabBarState, ui::FlowState,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -16,6 +16,8 @@ pub(crate) struct Containers {
     /// Measured rows of horizontal wrapping layouts.
     pub(crate) flows: HashMap<Id, FlowState>,
     pub(crate) tab_pages: HashMap<Id, TabPagesState>,
+    pub(crate) tab_bars: HashMap<Id, TabBarState>,
+    pub(crate) docks: HashMap<Id, crate::components::dock::DockRuntime>,
     pub(crate) carousels: HashMap<Id, CarouselState>,
     pub(crate) list_boxes: HashMap<Id, ListState>,
     pub(crate) collapsing_headers: HashMap<Id, CollapsingState>,
@@ -23,14 +25,23 @@ pub(crate) struct Containers {
 
 impl Containers {
     /// Containers not built in pass `frame` lose their state.
-    pub(super) fn retire(&mut self, frame: u64) {
+    pub(super) fn retire(&mut self, frame: u64) -> Vec<Id> {
+        let removed = self
+            .docks
+            .values()
+            .filter(|state| state.last_frame != frame)
+            .flat_map(|state| state.window_ids())
+            .collect();
         self.grids.retain(|_, state| state.last_frame == frame);
         self.cards.retain(|_, state| state.last_frame == frame);
         self.flows.retain(|_, state| state.last_frame == frame);
         self.tab_pages.retain(|_, state| state.last_frame == frame);
+        self.tab_bars.retain(|_, state| state.last_frame == frame);
+        self.docks.retain(|_, state| state.last_frame == frame);
         self.carousels.retain(|_, state| state.last_frame == frame);
         self.list_boxes.retain(|_, state| state.last_frame == frame);
         self.retire_collapsing_headers(frame);
+        removed
     }
 
     /// Keep retained nested headers while an ancestor hides them. Removing the entire

@@ -49,7 +49,7 @@ pub struct Placement {
     paints_range: Range<usize>,
     hits_range: Range<usize>,
     scopes_range: Range<usize>,
-    ime: Option<(Option<usize>, Rect)>,
+    ime: Option<(Id, Option<usize>, Rect)>,
     targets: Vec<(usize, Rect)>,
 }
 
@@ -169,7 +169,7 @@ impl Context {
         let Some(p) = self.collecting(window) else {
             return false;
         };
-        p.ime = Some((scope, rect));
+        p.ime = Some((window, scope, rect));
         true
     }
 

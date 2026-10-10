@@ -1,4 +1,6 @@
+mod blur;
 mod combo_box;
+mod embed;
 mod image;
 mod material_backends;
 mod material_gpu;

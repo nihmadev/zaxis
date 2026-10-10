@@ -147,6 +147,13 @@ Ordinary commands set `scroll_hint: false`. A command cannot combine this with
 backdrop blur. Effects participate in batching and revision comparisons, so a
 backend must preserve them even when geometry ranges are unchanged.
 
+`effect: Some(BackdropEffect)` accompanies `blur` with `blur == Some(effect.sigma)` and adds the
+layers of glass in this order: saturation, brightness, exclusion veil, tint luminosity, tint,
+noise. With `lens > 0` the backdrop is first sampled `bevel` logical pixels deep into the shape
+along its inward normal (the bend is strongest at the edge), and a specular rim is added. The
+shape is the mesh bounds of the command as a rounded box with `radii` (logical pixels: top left,
+top right, bottom right, bottom left). A backend that only knows `blur` draws the plain blur.
+
 ## Materials
 
 `material: Some(MaterialDraw { id, uniforms })` replaces the fragment color stage of the command
@@ -198,7 +205,8 @@ contexts' texture payloads without remapping IDs and commands.
 
 - Geometry: `(source, revision)`.
 - Textures: producer identity, texture ID, size, and image revision.
-- Viewport uniform: logical viewport size.
+- Viewport uniform: logical viewport size, scale factor and the origin of the area it maps to
+  (zero for a window, the region's corner when [embedded](./embedding.mdx) in a target the host owns).
 
 Changing producer clears the built-in renderer's nonwhite texture cache. Omitted
 texture IDs within the same producer are not immediately freed by that renderer.

@@ -229,14 +229,14 @@ impl Ui<'_> {
         let (inner, size, placement) =
             self.measure_effect_as(id, self.enabled && (interactive || input.is_some()), build);
         let rect = transform.rect(Rect::from_min_size(self.layout.cursor, size));
-        if rect.intersect(self.clip_rect()).is_empty() {
+        if rect.intersect(self.clip).is_empty() {
             self.context.hide_placement_animations(&placement);
         }
         self.context.place_visual(
             placement,
             transform,
             opacity.clamp(0.0, 1.0),
-            self.clip_rect(),
+            self.clip,
             interactive && input.unwrap_or(true),
         );
         self.allocate_space(size);
@@ -259,7 +259,9 @@ impl Ui<'_> {
     ) -> (R, Vec2, crate::context::placement::Placement) {
         let bounds = Rect::from_min_max(self.layout.cursor, self.layout.bounds.max);
         let spacing = self.style().spacing.max(0.0);
-        let parent_clip = self.clip_rect();
+        // This clip uses the current UI's units. An enclosing visual's parent clip
+        // applies when that enclosing placement closes.
+        let parent_clip = self.clip;
         self.context.begin_placement(self.window);
         self.context.visuals.depth += 1;
         self.context.visuals.clips.push((self.window, parent_clip));

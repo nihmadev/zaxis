@@ -402,9 +402,7 @@ fn outlined_variant_selects_by_mouse_and_keyboard_without_a_thumb() {
         draw_with(&mut c, &mut mode, options(), outlined, at * 100);
     }
     assert!(settled(&c), "fills fade out and stop requesting redraws");
-    for _ in 0..2 {
-        press(&mut c, KeyCode::Tab);
-    }
+    // The click focused the segment it chose: the keyboard is already in the group.
     draw_with(&mut c, &mut mode, options(), outlined, 5000);
     press(&mut c, KeyCode::Home);
     draw_with(&mut c, &mut mode, options(), outlined, 5001);

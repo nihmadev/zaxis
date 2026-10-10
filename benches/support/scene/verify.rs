@@ -2,6 +2,14 @@ use super::*;
 impl Scene {
     /// Assertions run outside measured intervals; every interaction must actually work.
     pub fn verify(&self) {
+        if let Some(probe) = &self.pan_zoom {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.dock {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(probe) = &self.dnd {
             probe.verify(&self.context);
             return;
@@ -30,11 +38,23 @@ impl Scene {
             probe.verify(&self.context);
             return;
         }
+        if let Some(probe) = &self.popup {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(probe) = &self.text_area {
             probe.verify(&self.context);
             return;
         }
         if let Some(probe) = &self.number {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.actions {
+            probe.verify(&self.context);
+            return;
+        }
+        if let Some(probe) = &self.keys {
             probe.verify(&self.context);
             return;
         }

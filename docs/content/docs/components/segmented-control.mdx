@@ -60,14 +60,16 @@ component.
 
 ## Keyboard and pointer
 
-The control is a single Tab stop (roving focus): Tab lands on the selected segment (the first
-enabled one when nothing is selected). Left/Right (Up/Down when vertical) move focus and,
-by default, the selection to the next enabled segment; Home/End jump to the ends. Nothing
-wraps. `focus_follows_selection(false)` makes arrows move only the focus, and Space/Enter
-select. A click selects on release over the same segment, like `Button`. Disabled options and
-a disabled control ignore input and are skipped by the keyboard. The focus ring appears only for
-keyboard focus. Arrow keys are read only while a segment has focus, so a nested `TextEdit` or
-`ScrollArea` keeps them.
+The segments are one [focus group](../input.mdx#focus-groups) (a single Tab stop, roving focus):
+Tab lands on the selected segment (the first enabled one when nothing is selected). Left/Right
+(Up/Down when vertical) move focus and, by default, the selection to the next enabled segment;
+Home/End jump to the ends. Nothing wraps. `focus_follows_selection(false)` makes arrows move
+only the focus, and Space/Enter select. A click focuses the segment and selects it on release
+over the same segment, like `Button`. Disabled options and a disabled control ignore input and
+are skipped by the keyboard. The focus ring appears only for keyboard focus. The arrow keys
+belong to the group only while a segment has focus, so a nested `TextEdit` or `ScrollArea` keeps
+them. All of the navigation is the group's; what stays with the control is the selection that
+follows focus, taken from the group's `navigated()` event.
 
 ## Motion
 
@@ -81,7 +83,6 @@ resize place it without animation. Text and fills ease with `Style::motion.hover
 - No multi-select and no "nothing selected" toggle; use `Checkbox` or `Switch`.
 - Labels are one line; there is no wrapping inside a segment.
 - Keyboard navigation does not wrap around the ends.
-- A click on a segment selects it but does not move keyboard focus onto it.
 - The `Outlined` variant reserves room for the check mark in segments without an icon, so
   selecting never changes widths.
 
@@ -89,6 +90,6 @@ resize place it without animation. Text and fills ease with `Style::motion.hover
 
 Role `RadioGroup` with one `RadioButton` per segment: toggled state, position in the set
 and the control's orientation. A segment is named by its text, or by its tooltip when it
-shows only an icon. A `Click` request selects it. Only the segment that is the current tab
-stop accepts a `Focus` request.
+shows only an icon. A `Click` request selects it, and a `Focus` request focuses any segment and
+makes it the Tab stop.
 See [Accessibility](../accessibility.mdx#roles-states-and-requests).

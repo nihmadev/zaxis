@@ -1,0 +1,159 @@
+---
+title: Dock
+description: Application-owned IDE panels, split groups, floating windows and a sliding focus ring.
+---
+
+`Dock` composes the existing `TabBar`, `SplitPane`, `Window`, drag-and-drop and
+animation engines. A dock is a tree of split areas; each leaf is a group of panel
+tabs. The application owns both the layout and the panel contents.
+
+```rust
+use zaxis::{Dock, DockChild, DockNode, DockState, Id, Layout};
+
+let editor = Id::new("editor");
+let files = Id::new("files");
+let mut state = DockState::new(DockNode::split("workspace", Layout::Horizontal, [
+    DockChild::new(DockNode::tabs("left", [files]), 0.2),
+    DockChild::new(DockNode::tabs("center", [editor]), 0.8),
+]));
+
+// In each immediate-mode UI pass:
+ui.dock(&mut state, |ui, panel| {
+    if *panel == editor { ui.label("Editor"); }
+    else { ui.label("Files"); }
+});
+```
+
+Use stable application values for `PanelId` (an alias of `Id`) and node IDs.
+Positions, indices and captions are unsuitable identities. `Ui::dock` supplies
+default titles; `Dock::new(id_source, &mut state).show(ui, viewer)` supplies
+explicit identity and customization.
+
+## Contents and output
+
+Implement `DockViewer::title(&PanelId) -> String` and
+`ui(&mut Ui, &PanelId)`. Optional `icon`, `closable` and `can_float` customize tabs
+and permitted pointer/menu actions. All three permissions default to true/none
+as appropriate. Passing `&mut viewer` keeps its application state between frames.
+
+The viewer runs exactly once per visible active panel in a pass, including
+floating groups. Hidden tabs and closing paint replays never invoke it. Closing
+a panel changes the layout; it does not delete application-owned data.
+
+`DockOutput` contains the current pass's `events`, visible `panels`, dock `bounds`,
+animated `focus_ring`, `focus_ring_color` and drag `preview`. Each panel output
+contains its panel/group ID, displayed and target bounds, content bounds and
+whether it floats. User operations emit one `Closed`, `Moved`, `Split`,
+`Floated`, `Activated` or `LayoutChanged` event; repeated idle frames emit none.
+Programmatic state methods return their own event and do not replay it in
+`DockOutput`. A separator gesture can change shares on successive input frames.
+
+## Editing the model
+
+`DockState` exposes `root: Option<DockNode>`, `floats: Vec<DockFloat>` (back to
+front) and `focused: Option<PanelId>`. `DockNode::Split` has an axis and weighted
+`DockChild` values. `DockNode::Tabs` has panel values and an active value.
+
+| Method | Effect |
+| --- | --- |
+| `activate(panel)` | Select and focus a panel |
+| `move_panel(panel, target, before)` | Move into the target panel's group; optional insertion value |
+| `split(panel, target, side, ratio)` | Move a panel into an adjacent group; ratio is its share |
+| `close(panel)` | Remove a panel and collapse empty/redundant areas |
+| `float(panel, bounds)` | Detach into an internal floating `Window` |
+| `dock_float(panel, target, side, ratio)` | Return to a group or an adjacent split |
+| `dock_root(panel)` | Return a float to an empty dock surface |
+| `open(panel, target)` | Reopen a missing panel, or activate an existing one |
+| `normalize()` | Repair duplicate IDs, bad shares/selection and redundant areas |
+| `validate(available)` | Return `DockIssue` values without changing the layout |
+| `retain_panels(keep)` | Drop values absent from application data, then normalize |
+
+Operations are UI-independent and return `Result<DockEvent, DockError>`.
+Invalid references, non-finite split ratios or floating bounds do not partially
+mutate a valid layout. Ratios clamp to 0.05–0.95. Normalization removes empty
+groups, collapses one-child splits and merges adjacent splits of the same axis.
+Duplicates retain their first occurrence in tree order. `Dock::show` reports
+invalid model data through `DiagnosticKind::InvalidValue` before repairing it.
+
+## Pointer, focus and keyboard
+
+Drag a tab onto a panel: the middle half joins its group, and the outer quarters
+split at the nearest edge. A translucent preview follows the proposed rectangle
+on a spring. Drop on a tab strip for ordered insertion. The shared tab strip
+provides overflow scrolling, drag autoscroll, close controls and icons.
+Escape cancels without changing the model. Releasing outside all targets floats
+the tab, subject to `can_float`.
+
+Floating windows move by their tab header, resize by the standard Window grip
+and rise on click. Drag the header or a tab onto a dock area to return it. These
+are layers inside the native application viewport, not additional OS windows.
+Their input bounds, resize grip and accessibility bounds follow the displayed
+frame during motion; contents retain their final layout size.
+Right-click a tab for Close, Close others, Float, Split right and Split down.
+Splitting needs another panel to remain in the source group.
+
+SplitPane handles enforce minimums when the viewport has enough room. Double
+click restores equal shares for that split. An undersized viewport scales the
+minimums to fit; it cannot preserve impossible absolute minimum dimensions.
+
+Each tab strip has one roving Tab stop. Clicking a panel background or focusing
+one of its child controls activates that panel. Ctrl+Alt+arrow selects the nearest
+group in that direction; Ctrl+Shift+arrow moves the active tab there, including
+floating groups. Dock reserves these chords before child editing/navigation.
+Registered application actions can override them. If no neighboring group exists,
+the shared TabBar can still reorder with Ctrl+Shift+left/right. Close and split shortcuts are
+application actions: pass their IDs through `DockActions` and configure the
+existing [Actions/keymap](../actions.mdx) registry. Dock installs no close/split keys.
+
+## Motion and style
+
+The default `Tiled` preset has rounded panels, theme-spacing gaps and one sliding
+accent ring for the entire dock. `Flat` has zero-radius panels, a one-pixel gap
+and thin SplitPane handles. Both inherit light/dark palettes.
+
+`DockStyle` merges `Style::dock`, theme overrides and builder overrides, including
+surface, tabs, minimums, gaps, ring and springs. See [Dock tokens](../style.mdx#dock-tokens).
+The default motion is `Snappy`: a critically damped 6 Hz spring, with 0.2 px
+distance and 0.8 px/s velocity thresholds. `Smooth` uses 4.5 Hz; `Off` and
+global reduced motion finish immediately. Appearance/exit effects are restrained:
+new regions reveal near their destination; exits shrink slightly and fade for
+100 ms. Existing panels travel from their current pose and velocity.
+
+Contents lay out immediately at their final size and translate/clip inside the
+animated panel. They do not repeatedly lay out at intermediate widths and do not
+scale text. The viewer still executes once per visible panel per frame; existing
+text/geometry caches remain responsible for reuse. The ring follows the displayed
+panel rectangle while an offset spring carries focus between panels, so it does
+not trail a separately animated layout target. See [Dock animation](../animation.mdx#dock-motion).
+
+## Save and load
+
+```rust
+let text = state.save();
+std::fs::write("workspace.dock", &text)?;
+let restored = DockState::load(&text, [editor, files])?;
+state = restored;
+```
+
+The serde-independent `zaxis-dock 1` text format saves exact hexadecimal IDs,
+selected/focused panels, split shares, floating bounds and stacking order.
+Loading filters unavailable panels and repairs selection. Invalid/oversized text
+returns an error; assignment happens only after successful parsing. Limits are
+4 MiB, 16,384 collection entries and 128 levels of nesting. Persist using stable
+application values and the same ID hashing contract across launches; migrating
+IDs or hashing versions is the application's responsibility. Panel payloads and
+transient animation/input state are not serialized.
+
+## Accessibility and example
+
+The named root is a Group, each strip a TabList, and visible panel content a
+named, selected Group. Focus remains on its actual child control or tab. Tab
+activation and close controls accept accessibility actions. The focus ring and
+closing paint replays do not enter the accessibility tree. Dragging and splitting
+have no dedicated assistive-technology action; built-in menu/action names are
+English. See [limitations](../limitations.mdx#dock).
+
+Run `cargo run --release --example dock` for an editor workspace with working
+files, tasks, outline, plot, notes, floating panels, presets, motion, themes and
+layout saving/loading (`target/dock-layout.txt`). `--smoke-test` closes after four
+frames; it is not visual validation.

@@ -419,7 +419,7 @@ impl Context {
     /// A press that hit nothing selectable clears the selection.
     pub(super) fn selection_press_elsewhere(&mut self, hit: Option<super::HitRegion>) {
         let owned = hit.is_some_and(|hit| self.selection.owners.contains_key(&hit.id));
-        if !owned && self.popups.current.is_none() {
+        if !owned && !self.popups.is_active() {
             self.clear_selection();
         }
     }

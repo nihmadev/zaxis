@@ -10,6 +10,7 @@ use crate::{
 
 #[doc(hidden)]
 pub mod binding;
+mod chord;
 pub use binding::{KeyBinding, MouseBinding};
 
 /// Which key box is waiting for input. Only one captures at a time; the pass number
@@ -19,6 +20,9 @@ pub(crate) struct KeyCapture {
     id: Option<Id>,
     frame: u64,
     middle_down: bool,
+    /// Strokes of a chord recorded so far, and when the chord is taken as complete.
+    strokes: Vec<crate::Stroke>,
+    deadline: Option<crate::Instant>,
 }
 
 impl Context {
@@ -36,6 +40,10 @@ impl Context {
 /// and middle mouse buttons bind as `RMB` and `MMB`. The primary button binds only with
 /// [`KeyBox::allow_left_click`]. `changed()` is set on the pass that changes the binding.
 ///
+/// [`KeyBox::chord`] records a whole shortcut instead: the key with the modifiers held, and
+/// with [`KeyBox::sequence`] a second stroke after it. It is the box to build a shortcut
+/// editor from, next to [`Keymap::rebind`](crate::Keymap::rebind).
+///
 /// ```no_run
 /// # fn menu(ui: &mut zaxis::Ui<'_>) {
 /// let mut aim = zaxis::KeyBinding::Key(zaxis::winit::keyboard::KeyCode::KeyE);
@@ -43,7 +51,7 @@ impl Context {
 /// # }
 /// ```
 pub struct KeyBox<'a> {
-    binding: &'a mut KeyBinding,
+    target: chord::Target<'a>,
     label: String,
     id: Option<Id>,
     enabled: bool,
@@ -56,9 +64,37 @@ pub struct KeyBox<'a> {
 
 impl<'a> KeyBox<'a> {
     pub fn new(binding: &'a mut KeyBinding, label: impl Into<String>) -> Self {
+        Self::with_target(chord::Target::Key(binding), label.into())
+    }
+
+    /// A box that records a shortcut: a key with the modifiers held (`Ctrl+Shift+S`).
+    /// Backspace or Delete clears it, Escape or a press elsewhere cancels, and `changed()` is
+    /// set on the pass that changes the chord. The key counts as the keymap counts it, so
+    /// the recorded chord is the one the keyboard will match, on any layout.
+    pub fn chord(chord: &'a mut crate::Chord, label: impl Into<String>) -> Self {
+        Self::with_target(
+            chord::Target::Chord {
+                chord,
+                sequence: false,
+            },
+            label.into(),
+        )
+        .button_size(Vec2::new(160.0, 24.0))
+    }
+
+    /// With [`KeyBox::chord`]: after a stroke, wait for a second one and record both
+    /// (`Ctrl+K Ctrl+C`); one stroke is taken as complete when no second comes in time.
+    pub fn sequence(mut self, sequence: bool) -> Self {
+        if let chord::Target::Chord { sequence: own, .. } = &mut self.target {
+            *own = sequence;
+        }
+        self
+    }
+
+    fn with_target(target: chord::Target<'a>, label: String) -> Self {
         Self {
-            binding,
-            label: label.into(),
+            target,
+            label,
             id: None,
             enabled: true,
             allow_left: false,
@@ -105,13 +141,18 @@ impl<'a> KeyBox<'a> {
 
     /// The binding the input of this pass selects, if any. Escape and a press elsewhere
     /// select the current binding again, which ends the capture without a change.
-    fn capture(&self, context: &mut Context, over_button: bool) -> Option<KeyBinding> {
+    fn capture(
+        binding: KeyBinding,
+        allow_left: bool,
+        context: &mut Context,
+        over_button: bool,
+    ) -> Option<KeyBinding> {
         let middle_down = context.input().middle_down;
         let middle_edge = middle_down && !context.key_capture.middle_down;
         context.key_capture.middle_down = middle_down;
         let input = context.input();
         if input.keys_pressed.contains(&KeyCode::Escape) {
-            return Some(*self.binding);
+            return Some(binding);
         }
         if input.keys_pressed.contains(&KeyCode::Backspace)
             || input.keys_pressed.contains(&KeyCode::Delete)
@@ -132,10 +173,10 @@ impl<'a> KeyBox<'a> {
             return Some(KeyBinding::Mouse(MouseBinding::Middle));
         }
         if input.primary_pressed && !over_button {
-            return Some(if self.allow_left {
+            return Some(if allow_left {
                 KeyBinding::Mouse(MouseBinding::Left)
             } else {
-                *self.binding
+                binding
             });
         }
         None
@@ -143,7 +184,7 @@ impl<'a> KeyBox<'a> {
 }
 
 impl Widget for KeyBox<'_> {
-    fn ui(self, ui: &mut Ui<'_>) -> Response {
+    fn ui(mut self, ui: &mut Ui<'_>) -> Response {
         let enabled = self.enabled && ui.is_enabled();
         let style = ui.style().clone();
         let size = font_size(style.font_size);
@@ -175,23 +216,22 @@ impl Widget for KeyBox<'_> {
                     id: Some(id),
                     frame: ui.context.frame,
                     middle_down: ui.context.input().middle_down,
+                    ..Default::default()
                 };
             }
             capturing = !capturing;
         } else if capturing {
-            if let Some(next) = self.capture(ui.context, response.hovered) {
-                if *self.binding != next {
-                    *self.binding = next;
-                    response.changed = true;
-                }
+            if let Some(changed) = self.poll(ui.context, response.hovered) {
+                response.changed |= changed;
                 ui.context.key_capture = KeyCapture::default();
                 capturing = false;
             }
         }
         // A button that is pressed while it listens; its value is the binding it shows.
+        let value = self.target.label(ui.context);
         ui.a11y(id, row, crate::AccessRole::Button, |node| {
             node.label(visible_label(&self.label))
-                .value(self.binding.label())
+                .value(value.as_str())
                 .toggled(capturing)
                 .disabled(!enabled)
                 .clicks(id);
@@ -273,9 +313,9 @@ impl Widget for KeyBox<'_> {
         ui.context
             .paint(id.with("button"), ui.window, ui.clip, shapes);
         let caption = if capturing {
-            "...".to_owned()
+            self.target.capturing_label(ui.context)
         } else {
-            self.binding.label()
+            self.target.label(ui.context)
         };
         let small = (size - 3.0).max(1.0) * scale;
         let caption_size = ui

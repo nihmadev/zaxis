@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{Id, Vec2};
 
+mod actions;
 mod cascade;
 mod nav;
 mod trigger;
@@ -43,6 +44,8 @@ pub struct MenuItem {
     shortcut: String,
     checked: bool,
     enabled: bool,
+    /// Bound to a registered action: see [`MenuItem::action`].
+    action: bool,
 }
 
 impl MenuItem {
@@ -53,10 +56,25 @@ impl MenuItem {
             text,
             shortcut: String::new(),
             checked: false,
+            action: false,
         }
     }
     pub fn new(id: impl Hash, text: impl Into<String>) -> Self {
         Self::with_kind(Kind::Action(Id::new(id)), text.into())
+    }
+    /// An item that runs a registered action. Its caption, shortcut, enabled and checked
+    /// state come from the registry, so it always agrees with the toolbar button and the key.
+    /// Choosing it raises the action's event (`ui.actions().triggered(id)`); the item is not
+    /// reported in [`MenuBarOutput::selected`]. Pass the value the action was declared with.
+    ///
+    /// ```
+    /// use zaxis::MenuItem;
+    /// let save = MenuItem::action("file.save");
+    /// ```
+    pub fn action(id: impl Hash) -> Self {
+        let mut item = Self::with_kind(Kind::Action(crate::actions::action_id(id)), String::new());
+        item.action = true;
+        item
     }
     /// An item that opens a nested panel. Submenus nest to any depth.
     pub fn submenu(text: impl Into<String>, items: impl IntoIterator<Item = MenuItem>) -> Self {
@@ -160,7 +178,23 @@ impl<'a> MenuBar<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui<'_>) -> MenuBarOutput {
+    pub fn show(self, ui: &mut Ui<'_>) -> MenuBarOutput {
+        if !actions::any(self.items) {
+            return self.show_items(ui);
+        }
+        let items = actions::resolve(ui, self.items);
+        let bar = MenuBar {
+            source: self.source,
+            items: &items,
+            compact: self.compact,
+            style: self.style,
+        };
+        let mut output = bar.show_items(ui);
+        actions::raise(ui, &items, &mut output.selected);
+        output
+    }
+
+    fn show_items(mut self, ui: &mut Ui<'_>) -> MenuBarOutput {
         self.style.normalize();
         let compact = self.compact;
         let bar = ui.scope.with(("menu-bar", self.source));
@@ -378,14 +412,8 @@ impl<'a> MenuBar<'a> {
             extra.push((layer, rect));
             parent = rect;
         }
-        if let Some(popup) = ui
-            .context
-            .popups
-            .current
-            .as_mut()
-            .filter(|p| p.id == popup_id)
-        {
-            popup.extra = extra;
+        if let Some(index) = ui.context.popups.index_of(popup_id) {
+            ui.context.popups.branch[index].extra = extra;
         }
     }
 }

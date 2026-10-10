@@ -2,13 +2,11 @@
 
 use super::{
     adapter,
-    geometry::create_buffer,
-    materials::{MaterialPipelines, MaterialUniforms},
-    pipeline,
-    textures::{self, create_texture, TextureStore},
-    viewport, PresentationMode, RenderError, Renderer, RendererStats,
+    gpu::{self, Gpu},
+    pipeline::Target,
+    PresentationMode, RenderError, Renderer,
 };
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use winit::{dpi::PhysicalSize, window::Window};
 
 impl Renderer {
@@ -58,91 +56,23 @@ impl Renderer {
         let (config, attachment_format) =
             surface_config(&surface, &adapter, size, presentation_mode)?;
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let viewport_layout = viewport::create_layout(&device);
-        let (uniform, viewport_group) = viewport::create_uniform(&device, &viewport_layout);
-        let (texture_layout, sampler) = textures::create_bindings(&device);
-        let nearest_sampler = textures::nearest_sampler(&device);
-        let image_pipeline = pipeline::create_with_fragment(
-            &device,
-            &viewport_layout,
-            &texture_layout,
-            attachment_format,
-            1,
-            "fs_image_linear",
-        );
-        let pipeline = pipeline::create(
-            &device,
-            &viewport_layout,
-            &texture_layout,
-            attachment_format,
-            1,
-        );
-        let vertices = create_buffer(&device, 256, wgpu::BufferUsages::VERTEX, "zaxis vertices");
-        let backdrop_pipeline = pipeline::create_with_fragment(
-            &device,
-            &viewport_layout,
-            &texture_layout,
-            attachment_format,
-            1,
-            "fs_backdrop",
-        );
-        let scroll_hint_pipeline = pipeline::create_with_fragment(
-            &device,
-            &viewport_layout,
-            &texture_layout,
-            attachment_format,
-            1,
-            "fs_scroll_hint",
-        );
-        let indices = create_buffer(&device, 256, wgpu::BufferUsages::INDEX, "zaxis indices");
-        let materials = MaterialPipelines::new(&device, &queue, &viewport_layout, &texture_layout);
-        let material_uniforms = MaterialUniforms::new(&device, &materials.params_layout);
-        let white = create_texture(
-            &device,
-            &queue,
-            &texture_layout,
-            &sampler,
-            [1, 1],
-            &[255; 4],
-            0,
-        );
+        let gpu = Gpu::new(device, queue, gpu::half_float(&adapter), device_lost);
+        let pipelines = gpu
+            .pipelines
+            .lock()
+            .expect("pipeline cache mutex")
+            .get(Target::color(attachment_format));
         let mut renderer = Self {
+            gpu,
             surface,
             window,
             instance,
             adapter,
-            device,
-            queue,
             config,
             presentation_mode,
             attachment_format,
             physical_size: size,
-            pipeline,
-            image_pipeline,
-            backdrop_pipeline,
-            scroll_hint_pipeline,
-            blur: None,
-            blur_pipelines: Arc::new(OnceLock::new()),
-            materials: Arc::new(Mutex::new(materials)),
-            material_uniforms,
-            material_errors: Vec::new(),
-            uniform,
-            viewport_layout,
-            viewport_group,
-            texture_layout,
-            sampler,
-            nearest_sampler,
-            store: Arc::new(Mutex::new(TextureStore::new(white))),
-            vertices,
-            indices,
-            vertex_capacity: 256,
-            index_capacity: 256,
-            uploaded: None,
-            uploaded_sizes: [0; 2],
-            viewport_value: [1.0, 1.0, 0.0, 0.0],
-            device_lost,
-            stats: RendererStats::default(),
-            diagnostics: Default::default(),
+            pipelines,
         };
         renderer.resize(size)?;
         if let Some(error) = validation.pop().await {
@@ -179,54 +109,17 @@ impl Renderer {
         if attachment_format != self.attachment_format {
             return Err(RenderError::UnsupportedSurface);
         }
-        self.store.lock().expect("texture store mutex").shared = true;
-        let (uniform, viewport_group) =
-            viewport::create_uniform(&self.device, &self.viewport_layout);
-        let buffer = |usage, label| create_buffer(&self.device, 256, usage, label);
         let mut renderer = Self {
+            gpu: self.gpu.sibling(),
             surface,
             window,
             instance: self.instance.clone(),
             adapter: self.adapter.clone(),
-            device: self.device.clone(),
-            queue: self.queue.clone(),
             config,
             presentation_mode,
             attachment_format,
             physical_size: size,
-            pipeline: self.pipeline.clone(),
-            image_pipeline: self.image_pipeline.clone(),
-            backdrop_pipeline: self.backdrop_pipeline.clone(),
-            scroll_hint_pipeline: self.scroll_hint_pipeline.clone(),
-            blur: None,
-            blur_pipelines: Arc::clone(&self.blur_pipelines),
-            materials: Arc::clone(&self.materials),
-            material_uniforms: MaterialUniforms::new(
-                &self.device,
-                &self
-                    .materials
-                    .lock()
-                    .expect("material pipelines mutex")
-                    .params_layout,
-            ),
-            material_errors: Vec::new(),
-            uniform,
-            viewport_layout: self.viewport_layout.clone(),
-            viewport_group,
-            texture_layout: self.texture_layout.clone(),
-            sampler: self.sampler.clone(),
-            nearest_sampler: self.nearest_sampler.clone(),
-            store: Arc::clone(&self.store),
-            vertices: buffer(wgpu::BufferUsages::VERTEX, "zaxis vertices"),
-            indices: buffer(wgpu::BufferUsages::INDEX, "zaxis indices"),
-            vertex_capacity: 256,
-            index_capacity: 256,
-            uploaded: None,
-            uploaded_sizes: [0; 2],
-            viewport_value: [1.0, 1.0, 0.0, 0.0],
-            device_lost: Arc::clone(&self.device_lost),
-            stats: RendererStats::default(),
-            diagnostics: Default::default(),
+            pipelines: Arc::clone(&self.pipelines),
         };
         renderer.resize(size)?;
         Ok(renderer)

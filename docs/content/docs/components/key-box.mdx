@@ -28,3 +28,11 @@ input meanwhile. Builders: `id_source`, `enabled`, `allow_left_click`, `button_s
 Role `Button`, named by its label; the value is the current binding. It is toggled while
 it waits for a key. A `Click` request starts capture like a pointer click.
 See [Accessibility](../accessibility.mdx#roles-states-and-requests).
+
+## Recording a shortcut
+
+`KeyBox::chord(&mut chord, label)` records a `Chord`: a key with the modifiers held, and with
+`.sequence(true)` a second stroke after it (taken as one stroke when none comes within the chord
+timeout). Backspace or Delete clears it, Escape or a press elsewhere cancels. The key is recorded
+as the keymap will match it, so the result works on any layout. Pair it with `Keymap::rebind` and
+`Keymap::conflicts`; the `actions` example is a rebinding window built this way.

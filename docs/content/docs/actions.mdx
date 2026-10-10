@@ -1,0 +1,126 @@
+---
+title: Actions and keymap
+icon: Command
+description: Commands declared once, shown and run by menus, buttons and keys from one registry.
+---
+
+An application declares its commands once. `MenuBar`, `ContextMenu`, `Button` (and a
+future toolbar, dock or command palette) show them and run them from the same source, so
+the caption, the shortcut, the enabled state and the check mark never disagree.
+
+```rust
+#[derive(Hash, Debug)]
+enum Cmd { Save, Clear }
+
+context.set_actions(
+    Actions::new()
+        .register(Action::new(Cmd::Save, "Save").group("File")
+            .shortcut(Mods::PRIMARY.key(KeyCode::KeyS)))
+        .register(Action::new(Cmd::Clear, "Clear")
+            .shortcut_in("editor", Mods::PRIMARY.key(KeyCode::KeyK)
+                .then(Mods::PRIMARY.key(KeyCode::KeyC)))),
+);
+
+// every pass, before the widgets that show it:
+ui.actions().set_enabled(Cmd::Save, doc.dirty());
+MenuBar::new("menu", &[MenuItem::submenu("File", [MenuItem::action(Cmd::Save)])]).show(ui);
+ui.add(Button::action(Cmd::Save));
+if ui.actions().triggered(Cmd::Save) { doc.save(); }
+```
+
+## Declaring
+
+`Action::new(id, title)` takes any `Hash + Debug` value (an enum variant or a `&'static str`)
+and makes the stable `Id` from it, never from a position or a label. The `Id` the action
+reports works wherever the value does. Builders: `shortcut`, `shortcut_in(context, chord)`,
+`group`, `description`, `icon`, `allowed_in_modal`, `name`. `Actions::register` / `insert`
+add them. A duplicate id (the first is kept), an empty title (the name is used), an unreadable
+shortcut, an empty registry and shortcuts that collide are reported as `InvalidValue`
+diagnostics; nothing panics. `Context::set_actions` installs the registry.
+
+## State and events
+
+- `set_enabled(id, bool)` and `set_checked(id, bool)` describe the **pass being built**. They are
+  cleared at the start of the next pass, so a state the application stops setting returns to
+  enabled and unchecked instead of sticking. Set them before the widgets that show them. Keys
+  that arrive between passes see what the last pass showed. A disabled action is shown
+  disabled and runs from nowhere: not from the keyboard, the pointer or `trigger`.
+- `triggered(id)` answers `true` **once per user gesture**, from a menu, a button, a key, or
+  `trigger(id)` (code, on the same path). The event is removed when taken, so an action wired
+  to three widgets has one effect, and it waits one pass, so it does not matter whether the
+  application asks before or after the widget that raised it. `take(id)` also tells the
+  `ActionSource`. Items bound with `MenuItem::action` and `ContextMenuItem::action` raise the
+  event instead of appearing in `selected`.
+- `Button::action(id)` takes caption, icon, enabled and checked state from the registry, adds a
+  tooltip with the shortcut and the description, and raises the event; `Button::new(..).triggers(id)`
+  keeps its own caption.
+- Registered state is per `Context`; windows with their own contexts need their own registry.
+
+## Keys
+
+A shortcut is a `Chord` of one to four `Stroke`s; a stroke is `Mods` plus the existing
+`KeyBinding`. `Mods::PRIMARY` is Command on macOS and Control elsewhere, written once. Chords
+text round-trips: `"ctrl+k ctrl+c".parse::<Chord>()` and `to_string()`. `Kbd::new(&chord)` writes
+it for people (`⌘⇧S` on macOS, `Ctrl+Shift+S` elsewhere) and is what menus and tooltips use.
+
+**Priority.** Inside `Context::key` a key goes to: a drag; Escape on a pending chord; a popup
+(an open menu owns the keyboard, so shortcuts wait); the top modal's Escape; menu navigation;
+the focused split handle, tree and selectable text; **the keymap**; then the focused slider, drag
+value or text field, and focus traversal. A modal blocks every action unless it was declared
+`allowed_in_modal(true)`. A `KeyBox` that listens takes keys before the keymap
+(`key_capture_active`). A focused text field keeps printable keys and its editing shortcuts
+(copy, paste, undo, select all, caret movement); `Ctrl+S`, function keys and the like still
+reach the keymap. `Ctrl+Alt` combinations stay with the field too (AltGr types characters).
+A key an action took is not repeated: autorepeat and release are swallowed.
+
+**Chords.** The first stroke of a chord is taken and waits (`ui.actions().pending_chord()` gives
+text such as `Ctrl+K …` for a status bar). The second runs the action. Escape, a different key
+(which is also used up), the timeout (`Keymap::set_chord_timeout`, 1.5 s) or the window losing
+focus ends it.
+
+**Contexts.** A binding can be scoped: `shortcut_in("editor/find", ..)`. `set_context("editor")`
+names the context for a pass (set it from where the focus is); the narrowest scope with an
+answer wins, then each wider one, then the unscoped bindings. A disabled action lets the
+wider scope answer. One context path is active at a time.
+
+**Layouts.** Letters follow the Latin letter the key produces, so a shortcut follows the printed
+letter on Dvorak and AZERTY. A layout with no Latin letters (Russian, Greek, Hebrew) falls
+back to the physical key named by the US layout: `Ctrl+ы` is `Ctrl+S`. Digits, arrows,
+function and punctuation keys are always physical. Checked in a live window with the Russian
+layout (typed text, `Ctrl+ы` saves).
+
+## Conflicts and rebinding
+
+`Keymap::conflicts()` lists two actions on the same chord in one context (`Same`) and a chord
+that is the beginning of another (`Prefix`); registering reports them too. On a conflict the
+action registered first wins. Different contexts never conflict.
+
+`Keymap::rebind(id, Some(chord))` replaces all bindings of an action with one (in the context of
+its first binding) and returns the conflicts it makes; `None` unbinds; `reset` and `reset_all` return the
+defaults. `KeyBox::chord(&mut chord, label)` records a key with its modifiers
+(`.sequence(true)` waits for a second stroke), on the key as the keyboard will match it. The
+`actions` example builds a rebinding window from it that shows the clashes.
+
+**Saving.** `Keymap::save()` writes only the changed actions as text, without serde; `load`
+replaces the overrides and returns the lines it skipped:
+
+```text
+# zaxis keymap 1
+Save = mod+shift+s, f2
+Find@editor = mod+f
+Close =
+```
+
+Names are the action `name` (by default its `Debug` text). The first line of an action replaces its
+defaults; later lines add other contexts; an empty right side leaves it unbound.
+
+## Web
+
+A page keeps the browser's shortcuts. List the ones the page may take in
+`WebOptions::claimed_shortcuts` (`"mod+s"`); a key that matches and that an action used does not
+reach the browser.
+
+## Accessibility
+
+Buttons and menu rows of an action carry its `keyboard_shortcut` (and the description). A
+click from assistive technology goes through the same widget, so it raises the same event.

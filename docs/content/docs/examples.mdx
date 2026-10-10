@@ -10,9 +10,13 @@ Run these commands from the repository root.
 | --- | --- | --- |
 | Basic controls and panel interaction | `cargo run --example demo` | [demo.rs](https://github.com/nihmadev/zaxis/blob/main/examples/demo.rs) |
 | Long settings and nested scrolling | `cargo run --example scroll_area` | [scroll_area.rs](https://github.com/nihmadev/zaxis/blob/main/examples/scroll_area.rs) |
+| Pan/zoom camera, SVG and ordinary local controls | `cargo run --release --example pan_zoom` (`-- --smoke-test`) | [pan_zoom.rs](https://github.com/nihmadev/zaxis/blob/main/examples/pan_zoom.rs) |
+| Nested popups: editor with combo box, key box and child panel, in a dialog and at an edge | `cargo run --release --example nested_popups` (`-- --smoke-test`) | [nested_popups.rs](https://github.com/nihmadev/zaxis/blob/main/examples/nested_popups.rs) |
 | Searchable dropdown and popup layers | `cargo run --example combo_box` | [combo_box.rs](https://github.com/nihmadev/zaxis/blob/main/examples/combo_box.rs) |
+| Actions, keymap and shortcut rebinding | `cargo run --release --example actions` (`-- --smoke-test`) | [actions.rs](https://github.com/nihmadev/zaxis/blob/main/examples/actions.rs) |
 | Settings application | `cargo run --example settings` | [settings.rs](https://github.com/nihmadev/zaxis/blob/main/examples/settings.rs) |
 | Custom winit host | `cargo run --example integration` | [integration.rs](https://github.com/nihmadev/zaxis/blob/main/examples/integration.rs) |
+| zaxis inside a host's own wgpu device, 3D scene, MSAA and depth | `cargo run --release --example embed` (`-- --pass` to record into the scene's pass) | [embed.rs](https://github.com/nihmadev/zaxis/blob/main/examples/embed.rs) |
 | Every built-in animation, by tab | `cargo run --example animations` | [animations.rs](https://github.com/nihmadev/zaxis/blob/main/examples/animations.rs) |
 | Application value and physical spring | `cargo run --example custom_animation` | [custom_animation.rs](https://github.com/nihmadev/zaxis/blob/main/examples/custom_animation.rs) |
 | In-window drag and drop |  `cargo run --release --example drag_and_drop` | [drag_and_drop.rs](https://github.com/nihmadev/zaxis/blob/main/examples/drag_and_drop.rs) |
@@ -35,9 +39,14 @@ cargo run --example settings -- --vsync
 
 ## Custom widget and validation
 
-`custom_widget` implements a rotary knob with `Widget`, `Ui::interact` and `Ui::paint`
-and uses it in a Grid, a ScrollArea and a disabled group; drag turns it, arrows step,
-double click resets, right click opens a menu. `validation` is a sign-up form built from
+`custom_widget` implements a rotary knob and a colour swatch with `Widget`, `Ui::interact`,
+`Ui::keys` and `Ui::paint` and uses the knob in a Grid, a ScrollArea and a disabled group; drag
+turns it, arrows step (Shift: fine, Home and End: the ends), double click resets, right click
+opens a menu. Below, a `FocusGroup` panel of a `Button`, the swatch, a `TextEdit` and a `Slider`
+edits the application's model: Tab enters and leaves it once, the arrows move between its
+controls, and the text field and slider keep their own keys.
+`cargo run --example custom_widget -- --smoke-test` sends those keys through
+`Context::on_input` without a window and checks the resulting values. `validation` is a sign-up form built from
 `Field`, `Validation` and the field-like controls; errors appear after a field is left
 or after submit. Both toggle the [debug overlay](./diagnostics.mdx#debug-overlay) with F3.
 
@@ -105,6 +114,7 @@ modes; the custom spring asserts a single completion event.
 cargo run --example demo -- --smoke-test
 cargo run --example settings -- --smoke-test
 cargo run --example integration -- --smoke-test
+cargo run --release --example embed -- --smoke-test
 cargo run --example accessibility -- --smoke-test
 cargo run --example animations -- --smoke-test
 cargo run --example custom_animation -- --smoke-test

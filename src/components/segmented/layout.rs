@@ -53,7 +53,7 @@ pub fn snap(value: f32, scale: f32) -> f32 {
 
 /// Rounds to physical pixels so the parts add up to the rounded whole (largest remainder),
 /// without drift at any scale factor. `total` forces the sum; `None` rounds each part alone.
-fn snap_widths(widths: &[f32], total: Option<f32>, scale: f32) -> Vec<f32> {
+pub(crate) fn snap_widths(widths: &[f32], total: Option<f32>, scale: f32) -> Vec<f32> {
     let px: Vec<f32> = widths.iter().map(|w| (w * scale).max(0.0)).collect();
     if total.is_none() {
         return px.iter().map(|v| v.round() / scale).collect();
@@ -82,19 +82,39 @@ fn measure(ctx: &mut Context, text: &str, m: &Metrics) -> Vec2 {
 
 /// The longest prefix on a grapheme boundary that fits `budget` together with an ellipsis.
 fn fit_text(ctx: &mut Context, text: &str, m: &Metrics, budget: f32) -> Option<Label> {
-    let cuts: Vec<usize> = text.grapheme_indices(true).map(|(i, _)| i).collect();
+    fit_label(ctx, text, m.font, m.weight, budget)
+}
+
+/// [`fit_text`] for any text style: tab strips cut their labels the same way.
+pub(crate) fn fit_label(
+    ctx: &mut Context,
+    text: &str,
+    font: f32,
+    weight: FontWeight,
+    budget: f32,
+) -> Option<Label> {
+    let measure = |ctx: &mut Context, text: &str| {
+        if text.is_empty() {
+            Vec2::ZERO
+        } else {
+            ctx.measure_text(text, font, weight, f32::INFINITY)
+        }
+    };
+    let mut cuts: Vec<usize> = text.grapheme_indices(true).map(|(i, _)| i).collect();
+    // The end of the text closes the last grapheme, so `keep` may be all of them.
+    cuts.push(text.len());
     let build = |keep: usize| format!("{}…", text[..cuts[keep]].trim_end());
-    let (mut lo, mut hi) = (0, cuts.len());
+    let (mut lo, mut hi) = (0, cuts.len() - 1);
     while lo < hi {
         let mid = (lo + hi).div_ceil(2);
-        if measure(ctx, &build(mid), m).x <= budget {
+        if measure(ctx, &build(mid)).x <= budget {
             lo = mid;
         } else {
             hi = mid - 1;
         }
     }
     let shown = build(lo);
-    let size = measure(ctx, &shown, m);
+    let size = measure(ctx, &shown);
     (size.x <= budget).then_some(Label {
         text: shown,
         size,

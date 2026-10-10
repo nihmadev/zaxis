@@ -1,0 +1,291 @@
+---
+title: Embedding in a wgpu host
+icon: PictureInPicture
+description: Draw zaxis into a render pass or texture owned by a game engine, an editor or another GUI, with no window, surface or device of its own.
+---
+
+`EmbeddedRenderer` turns a [`DrawData`](./protocol.mdx) frame into GPU work on a device the host
+created. The host keeps its window, event loop, swapchain, scene and frame graph; zaxis gets
+clones of the `wgpu::Device` and `wgpu::Queue`, a target to draw into, and nothing else. It does
+not create a surface, does not need a `winit::window::Window`, never calls `device.poll` and
+never submits: it writes buffers and textures through the queue and records commands into a
+pass or encoder you pass in.
+
+Use it when the application already owns the GPU frame: a game engine, a 3D editor, a
+profiler or debug overlay, another GUI toolkit. For an ordinary tool use the
+[desktop runner](./app.mdx), or a [custom host](./integration.mdx) around `Renderer` when you own
+only the event loop.
+
+The host and zaxis must use the same `wgpu` major version (30). `zaxis::wgpu` re-exports the
+one zaxis was built with.
+
+## Two ways to draw
+
+| | `prepare` + `record` | `render_to` |
+| --- | --- | --- |
+| Draws into | A pass you began (`wgpu::RenderPass`) | A `wgpu::TextureView` through your `CommandEncoder`; the passes are zaxis's |
+| MSAA, depth/stencil | The ones of your pass (`sample_count`, `depth_format` of the options) | None: the target is single-sample, no depth |
+| Backdrop blur, glass, materials that read the backdrop | Not drawn; reported, see below | Work: the pixels you drew are the backdrop |
+| Needs from the target | Whatever your pass has | `RENDER_ATTACHMENT`; with a backdrop effect over your pixels also `COPY_SRC` |
+| Cost beyond the draw | Nothing: no pass, no copy | Without effects nothing; with effects an offscreen copy of the region, the filter and a copy back |
+
+Choose per frame: a HUD without effects goes into the scene's pass (one render pass, MSAA and
+depth shared with the scene); a panel of glass goes into the finished scene texture.
+
+## Create
+
+```rust
+use zaxis::{EmbedOptions, EmbeddedRenderer};
+
+let options = EmbedOptions::new(surface_config.format)
+    .sample_count(4)
+    .depth_format(wgpu::TextureFormat::Depth32Float);
+let mut ui = EmbeddedRenderer::new_with_adapter(
+    device.clone(),
+    queue.clone(),
+    &adapter,
+    options,
+)?;
+```
+
+`EmbeddedRenderer::new(device, queue, options)` does the same without an adapter. The adapter is
+only used to check that `Rgba16Float` can be rendered to and filtered, which the backdrop filter
+prefers for its intermediate textures; without it desktop assumes yes and a browser assumes no.
+
+The pipelines for the options are built here, not in the first frame.
+
+| `EmbedOptions` | Meaning |
+| --- | --- |
+| `format` | Format of the target **texture** |
+| `sample_count` | 1, 2, 4, 8 or 16: the color attachment of your pass. `render_to` ignores it |
+| `depth_format` | Depth/stencil format of your pass, if it has one. The interface neither tests nor writes depth or stencil, so it may draw into a pass whose attachment is read-only |
+| `alpha` | `Opaque`, or `Premultiplied` when the result is composited with alpha: a `Clear` color is premultiplied first, as for a transparent window |
+
+Invalid options are an `EmbedError::InvalidOptions` before anything is built: formats other than
+`Rgba8Unorm[Srgb]`, `Bgra8Unorm[Srgb]`, `Rgba16Float`, `Rgb10a2Unorm` (and `Rgba32Float` with
+`FLOAT32_BLENDABLE`), other sample counts, a depth format that is not one.
+
+## Color
+
+The shaders write linear color and rely on the **sRGB view** of the target to encode it after
+premultiplied-alpha blending, exactly as the window renderer does. Float targets hold linear values.
+`EmbedOptions::attachment_format()` is the format of the view your pass must render to:
+
+| `format` | `attachment_format()` | Texture needs |
+| --- | --- | --- |
+| `Rgba8UnormSrgb`, `Bgra8UnormSrgb` | the same | nothing special |
+| `Rgba8Unorm`, `Bgra8Unorm` | the `Srgb` sibling | the sRGB format in the texture's `view_formats` |
+| `Rgba16Float`, `Rgb10a2Unorm` | the same | nothing special |
+
+A plain unorm view of a unorm texture would make the interface too dark; zaxis does not guess a
+second encoding. The same draw data in each of these gives the same pixels as the window renderer
+on an sRGB surface (8-bit formats exactly, `Rgba16Float` within rounding).
+
+## Record into your pass
+
+`prepare` uploads geometry, atlas pages and the viewport uniform, but only what changed: geometry
+when `(source, revision)` is new, textures when their payload is. Call it outside the pass, any time
+before you submit. `record` then writes commands into your pass.
+
+```rust
+use zaxis::{EmbedViewport, PhysicalRect};
+
+context.set_viewport(size, scale_factor);
+context.run(|context| build_ui(context));
+let size = [config.width, config.height];
+ui.prepare(context.draw_data(), EmbedViewport::whole(size))?;
+
+let mut pass = encoder.begin_render_pass(&scene_pass_descriptor);
+draw_scene(&mut pass);
+let report = ui.record(&mut pass)?;
+drop(pass);
+```
+
+`EmbedViewport` has the `region` of the target the interface covers and the full `target` size.
+For a panel in the corner use `EmbedViewport::region(target, PhysicalRect::new(x, y, w, h))`.
+The draw data must have been built for the region: its logical size times its scale factor is the
+region in physical pixels (within one pixel), otherwise `prepare` returns
+`EmbedError::InvalidViewport` with both sizes. The scale factor is the DPI and is independent of
+the size: at 1.25 or 1.5 the region does not have to be a whole number of logical pixels.
+
+State of the pass:
+
+- **Viewport and scissor.** `record` sets the viewport to the region and a scissor rectangle per
+  command, cut from the command's logical clip by the same rule as the window renderer (`ceil` of
+  the minimum, `floor` of the maximum, inside the clip) and moved to the region. When it returns,
+  both are back to the whole target, the default of a new pass. A host that had set its own sets
+  them again.
+- **Pixels.** Only the region changes; the rest of the attachments is untouched, and geometry that
+  extends past the region cannot reach it.
+- **Bindings.** Pipeline, vertex and index buffers and bind groups 0 to 3 are replaced.
+  Re-bind what you need afterwards.
+- **Nothing recorded.** A frame without commands records nothing and leaves the pass alone.
+- **Attachments of the pass** must match the options; wgpu reports a mismatch as a validation
+  error in your device's error handler. A pass cannot be inspected, so zaxis cannot check first.
+
+### Backdrop effects in a pass
+
+A pass cannot read what it has already drawn, so the effects that need it cannot be drawn there.
+`record` does not guess: it returns a `RecordReport`.
+
+| `RecordReport` | What happened |
+| --- | --- |
+| `draw_calls` | Draws recorded |
+| `skipped_backdrop` | Indexes (in `DrawData::commands`) of blur and glass commands. Not drawn: their mesh is only the shape to composite into, so drawing it would paint a plain box. The widgets' own translucent fills, text and borders are separate commands and are drawn |
+| `degraded_materials` | Indexes of materials declared `reads_backdrop`, drawn against a transparent backdrop |
+
+Render such frames with `render_to`, or accept a translucent panel without blur.
+
+## Render into a texture
+
+```rust
+use zaxis::EmbedLoad;
+
+ui.render_to(
+    &mut encoder,
+    &scene_view,          // single-sample view, format = options.attachment_format()
+    None,                 // Some(PhysicalRect) for a region
+    EmbedLoad::Keep,      // or EmbedLoad::Clear(color)
+    context.draw_data(),
+)?;
+```
+
+`render_to` begins its own passes in the encoder, after whatever you recorded before it.
+`Keep` draws over your pixels, so they are the backdrop of blur and glass. `Clear` clears the **whole**
+texture first (a render pass cannot clear a sub-rectangle); the clear color is straight sRGB.
+
+Requirements on the texture are checked here and returned as errors, not left to wgpu's validation:
+
+| Condition | Error |
+| --- | --- |
+| Not single-sample | `TargetMismatch` (resolve it first) |
+| Format does not match the options (ignoring the sRGB suffix) | `TargetMismatch` |
+| No `RENDER_ATTACHMENT` | `TargetUsage { missing: RENDER_ATTACHMENT }` |
+| A backdrop effect with `Keep` and no `COPY_SRC` | `TargetUsage { missing: COPY_SRC }` |
+| Region empty, outside the texture, or draw data built for another size | `InvalidViewport` |
+
+The view must cover the whole first mip level and layer of a 2D texture. A frame with a backdrop
+effect is drawn into an offscreen canvas the size of the region (created on first use, freed when
+the region changes size, after a stretch without effects, on `release_targets` and on drop) and
+copied back into the region; the filter runs every frame because the backdrop is yours and may
+have changed.
+
+## Several panels and viewports
+
+One `EmbeddedRenderer` is one surface: its geometry buffers, viewport uniform and backdrop textures
+belong to it, so a frame it prepared is valid until the next `prepare` or `render_to` on **the same
+value** is submitted. For a second panel use `create_sibling(options)`:
+
+```rust
+let mut left = EmbeddedRenderer::new(device.clone(), queue.clone(), options)?;
+let mut right = left.create_sibling(options)?;
+```
+
+Siblings share pipelines (one set per target kind: format, samples, depth, built once however many
+ask), the glyph atlas and the image store, so a glyph or an image is uploaded once for all. Their
+draw data must allocate `TextureId`s from one source: build their contexts from the same
+[`SharedResources`](./app.mdx#multiple-windows). Siblings may have different options.
+
+`Renderer::create_embedded(options)` makes an `EmbeddedRenderer` that shares the atlas, images and
+pipelines of a window `Renderer`: the window and a panel drawn into the host's own target use one
+atlas.
+
+`set_options` changes the target format, sample count or depth format (for example after the host
+recreated its swapchain). Buffers and the atlas stay, only what depends on the old target is
+dropped, and the frame prepared for it is forgotten: call `prepare` again.
+
+## Input, frames and threads
+
+The host stays in charge of events. The loop for one frame:
+
+1. **Input.** Forward the host's events to `Context::on_window_event`, which takes a
+   `winit::event::WindowEvent` (the example has winit), or build `InputEvent`s and call
+   `Context::on_input`, which needs no window ([Input](./input.mdx#input-without-a-window)).
+   The result says whether the interface consumed the event and wants a repaint. Apply
+   `context.cursor_icon()` to the host's cursor.
+2. **Size.** `context.set_viewport(size, scale_factor)` whenever the host's target or DPI changes.
+3. **Build.** `context.run(|context| ...)` builds a complete UI pass and
+   `context.draw_data()` is the frame.
+4. **Upload and record.** `prepare` + `record`, or `render_to`, as above.
+5. **Submit** with the rest of your frame.
+
+**Repaint.** zaxis has no scheduler of its own here, and an embedded host needs none:
+the host decides when its frame runs. Redraw the interface when your own scene moves, when
+`context.needs_repaint_at(Instant::now())` is true (input, animation, a timer), and sleep until
+`context.next_repaint()` if you can. `context.wants_animation_frame()` is true while something
+visible moves (an animated material, a spring) and means "draw a frame at your display rate".
+Do not skip `Context::run` because `needs_repaint` is false when your frame is going to draw the
+interface anyway: the flag schedules future work, it does not say the target kept its pixels. See
+[Repaint scheduling](./repaint.mdx).
+
+**Threads.**
+
+| | Send | Sync |
+| --- | --- | --- |
+| `Context` | no | no: it lives on the thread that builds the interface |
+| `DrawData` (what `draw_data()` borrows) | yes | yes, but it is not `Clone`; do not move it |
+| `EmbeddedRenderer`, `RecordReport`, `EmbedError` | yes | yes (native; wgpu resources are not `Send` in a browser) |
+
+Build the interface and `prepare` on the same thread (queue writes are allowed from any thread)
+and `record` on the thread that records commands: keep the renderer in an
+`Arc<Mutex<EmbeddedRenderer>>`, lock for `prepare`, lock again for `record`. `prepare` and `record`
+take the shared texture store's lock for a short time; nothing waits for the GPU.
+
+## Device loss and errors
+
+Errors are values; none of them panics in the host's process or leaves the renderer unusable.
+
+| `EmbedError` | What to do |
+| --- | --- |
+| `DeviceLost(reason)` | Make a new renderer on the new device; the draw data carries every texture and material source it needs |
+| `InvalidOptions`, `InvalidViewport`, `TargetUsage`, `TargetMismatch` | Fix the target or options; the frame is skipped |
+| `NotPrepared` | `record` before `prepare`, or after `set_options` |
+| `Render(RenderError)` | Invalid draw data, a texture over the budget, a texture upload |
+
+zaxis does not install a device-lost callback on your device (that would replace yours). Call
+`ui.notify_device_lost(reason)` from the host's own callback; every renderer on that device then
+returns `DeviceLost` instead of touching it.
+
+## Requirements and limits
+
+- The device needs at least the downlevel default limits: four bind groups, one dynamic uniform
+  buffer binding, `max_texture_dimension_2d` covering the region.
+- The first use of a [material](./materials.mdx) compiles its pipeline synchronously.
+- Backdrop effects need `render_to`; see above.
+- `render_to` needs a single-sample target; draw MSAA scenes into a multisampled texture, resolve
+  it, and render the interface into the resolved one, or use `record`.
+- Text, images and the glyph atlas upload through `queue.write_texture`, which the host's queue
+  orders before its next submission.
+- Not provided: a surface, presentation, window handling, or a way to feed the context events
+  without winit's event types. A host without winit can build pointer, wheel, focus and resize
+  events but not keyboard events (`winit::event::KeyEvent` has no public constructor), so a
+  platform-neutral input path for `Context` remains to be added; it is a requirement of the
+  [present-hook crate](https://github.com/nihmadev/zaxis/blob/main/prompts/30-z-hook-present-hook.txt).
+
+## Example
+
+[examples/embed.rs](https://github.com/nihmadev/zaxis/blob/main/examples/embed.rs) is a winit
+host with its own wgpu device that draws a rotating cube with 4x MSAA and depth, then the tools
+(a checkbox and sliders that change the scene) and two blurred panels.
+
+```sh
+cargo run --release --example embed          # render_to: the panels blur the cube
+cargo run --release --example embed -- --pass # record into the scene's MSAA + depth pass
+cargo run --release --example embed -- --smoke-test
+```
+
+`--smoke-test` needs no window: it renders both modes into an offscreen texture, reads the pixels
+back, sends clicks through the context to the checkbox and a slider, and checks that an unchanged
+interface uploads nothing.
+
+## Checked, and not
+
+Pixel tests on a real device (`cargo test --test renderer embed`, skipped with
+`ZAXIS_SKIP_GPU_TESTS=1`) compare `record` with an independent recording of the same draw data for
+`Bgra8UnormSrgb`, `Rgba8Unorm`, `Rgba8UnormSrgb` and `Rgba16Float`, one and four samples, with and
+without a depth attachment, at scales 1, 1.25, 1.5 and 2, in regions with an odd offset and at the
+edges; `render_to` against `record`; blur and a backdrop material in `render_to`, and their
+degradation in a pass; siblings, resizing, format changes, device loss and every error above. They
+ran on one machine (Intel integrated GPU, Mesa, Vulkan); other backends (Metal, DX12, GL), a
+browser and a real engine with its own frame graph were not tried, and matching test pixels do not
+prove that the interface fits another engine's passes and barriers.

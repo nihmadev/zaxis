@@ -33,7 +33,8 @@ let response = ui.add(Button::new("Apply")
 | `padding(Padding)` | `Style::button_padding` |
 | `rounding(CornerRadius)` | Radius 5 on all corners; independent of `Style::rounding` |
 | `corner_radius(f32 or CornerRadius)` | Same override, with scalar shorthand |
-| `variant(ButtonVariant)` | `Surface`; `Solid` (accent fill), `Soft` (translucent tint), `Outline`, `Ghost`. Explicit `style`, `border` and `rounding` still win |
+| `variant(ButtonVariant)` | `Surface`; `Solid` (accent fill), `Soft` (translucent tint), `Outline`, `Ghost`, `Glass` (see [Glass](/docs/style#glass)). Explicit `style`, `border` and `rounding` still win |
+| `glass(f32)` | Glass look at a strength in `0..=1` on any variant, `0` opts out of a glass theme. It blurs the backdrop unless `blur` is set |
 | `selected(bool)` | `false`; selected buttons keep the pressed fill |
 | `icon(impl Into<ImageSource>)` | A leading icon one line tall, tinted like the caption (for example `&icons::CHEVRON_DOWN` with `bundled-icons`); it widens the button and moves with `align`, hover, pressed and disabled looks |
 | `border(Border)` | `Style::border`; visible keyboard focus takes precedence |

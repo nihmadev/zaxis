@@ -12,16 +12,18 @@ impl Context {
             self.input.secondary_down = false;
             self.input.secondary_released = true;
             self.gesture_secondary_release();
-            return self.popups.current.is_some();
+            return self.popups.is_active();
         }
         if self.input.secondary_down {
-            return self.popups.current.is_some();
+            return self.popups.is_active();
         }
         self.input.secondary_down = true;
         self.input.secondary_pressed = true;
         self.drag_cancel(crate::components::drag_drop::DragReason::Cancelled);
-        if self.popups.current.is_some() {
-            self.dismiss_popup(true);
+        // A secondary press closes what it lands outside of, like a primary one (and is
+        // consumed whole); inside the leaf it goes on to the widget under it, so a
+        // context menu can open from a popup.
+        if self.press_dismisses_popups() {
             return true;
         }
         if let Some(pointer) = self.input.pointer {
@@ -42,6 +44,9 @@ impl Context {
 
     /// Returns whether the press went to something.
     fn primary_press(&mut self) -> bool {
+        if !self.input.focused {
+            return false;
+        }
         if self.input.primary_down {
             return self.interaction.capture.is_some();
         }
@@ -49,8 +54,7 @@ impl Context {
         self.interaction.focus_visible = false;
         self.input.primary_pressed = true;
         self.interaction.keyboard_active = None;
-        if self.press_outside_popup() {
-            self.dismiss_popup(true);
+        if self.press_dismisses_popups() {
             // Consume the whole gesture; never capture underlying content.
             return true;
         }
@@ -64,6 +68,21 @@ impl Context {
             self.set_focus(None);
             return false;
         };
+        if self
+            .camera_routing
+            .previous
+            .get(&hit.id)
+            .is_some_and(|target| target.pan)
+            && !self.camera_routing.pan_has_room(hit.id)
+        {
+            self.report(
+                super::DiagnosticKind::InvalidUsage,
+                Some(hit.id),
+                None,
+                || "PanZoom input queue full; new background pan returned to host".into(),
+            );
+            return false;
+        }
         if self.windows.contains_key(&hit.window) {
             self.raise_window(hit.window);
         }
@@ -74,7 +93,7 @@ impl Context {
         if !(self.is_modal_layer(hit.window) && focus.is_none()) {
             self.set_focus(focus);
         }
-        if hit.action != HitAction::Block {
+        if !matches!(hit.action, HitAction::Block | HitAction::NativeDrag) {
             let pointer = self.input.pointer.unwrap();
             self.interaction.capture = Some(Capture {
                 hit,
@@ -87,16 +106,20 @@ impl Context {
         true
     }
 
-    /// The pointer is outside the open popup, its extra panels and (for a popup with a key
-    /// target) its anchor.
-    fn press_outside_popup(&self) -> bool {
-        self.popups.current.as_ref().is_some_and(|popup| {
-            self.input.pointer.is_some_and(|p| {
-                !popup.rect.contains(p)
-                    && !popup.extra.iter().any(|(_, rect)| rect.contains(p))
-                    && (popup.key_target.is_none() || !popup.anchor.contains(p))
-            })
-        })
+    /// A press outside the whole branch closes it; a press inside an ancestor but outside
+    /// the popups opened from it closes those. Returns whether it closed anything. The
+    /// popup's extra panels and the trigger of a popup that has one count as inside it.
+    fn press_dismisses_popups(&mut self) -> bool {
+        let Some(point) = self.input.pointer.filter(|_| self.popups.is_active()) else {
+            return false;
+        };
+        let keep = match self.popups.level_at(point) {
+            Some(level) if level + 1 == self.popups.branch.len() => return false,
+            Some(level) => level + 1,
+            None => 0,
+        };
+        self.dismiss_popups_from(keep, true);
+        true
     }
 
     /// The press captured by `hit` starts the gesture of its component.

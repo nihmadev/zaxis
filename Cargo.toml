@@ -18,7 +18,7 @@ include = [
 ]
 
 [workspace]
-members = ["crates/z-emoji", "crates/z-icons"]
+members = ["crates/z-emoji", "crates/z-icons", "crates/z-hook"]
 resolver = "2"
 
 [package.metadata.docs.rs]
@@ -35,7 +35,7 @@ unicode-segmentation = { version = "1.13", default-features = false }
 cosmic-text = "0.17.0"
 unicode-script = "0.5.8"
 z-emoji = { version = "0.0.1", path = "crates/z-emoji", optional = true }
-z-icons = { version = "0.0.1", path = "crates/z-icons", optional = true }
+z-icons = { version = "0.0.2", path = "crates/z-icons", optional = true }
 image = { version = "=0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 resvg = { version = "=0.48.1", default-features = false, features = ["text"] }
 accesskit = { version = "0.25.1", optional = true }
@@ -113,6 +113,11 @@ required-features = ["bundled-icons"]
 [[example]]
 name = "segmented_control"
 path = "examples/segmented_control.rs"
+required-features = ["bundled-icons"]
+
+[[example]]
+name = "tabs"
+path = "examples/tabs.rs"
 required-features = ["bundled-icons"]
 
 [[example]]

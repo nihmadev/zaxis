@@ -12,9 +12,11 @@ use crate::{Id, Response};
 /// matched by value and identified by the value's hash. Use `Option<U>` as `T` for a group
 /// that may select nothing: `(Some(x), "label")` options never match `None`.
 ///
-/// Keyboard: the group is a single Tab stop. Tab lands on the selected option (the first
-/// enabled one when nothing is selected); arrows (by [`RadioLayout`]) move the focus to the
-/// next enabled option, wrapping around, and by default select it; Home/End jump to the ends.
+/// Keyboard: the options are one [`FocusGroup`](crate::FocusGroup), a single Tab stop. Tab lands
+/// on the selected option (the first enabled one when nothing is selected); arrows (by
+/// [`RadioLayout`]) move the focus to the next enabled option, wrapping around, and by default
+/// select it; Home/End jump to the ends. A grid also moves along a column with Up and Down. A
+/// click or a request from assistive technology focuses any option.
 /// With [`focus_follows_selection(false)`](Self::focus_follows_selection) arrows only move the
 /// focus and Space/Enter select. A click selects on release over the same row. The
 /// [`Response`] reports `changed()` once per user action; assigning the value from outside

@@ -1,5 +1,6 @@
 //! Global UI state, winit input integration, repaint scheduling, and geometry cache.
 
+pub(crate) mod actions;
 mod animation;
 mod carousel;
 pub(crate) mod clipboard;
@@ -14,16 +15,20 @@ pub mod drag;
 pub mod events;
 pub(crate) mod file_drop;
 mod file_io;
+pub(crate) mod focus_group;
 mod frame;
 #[doc(hidden)]
 pub mod geometry;
 mod gesture;
 mod id;
+pub(crate) mod id_map;
 mod images;
 mod ime;
 mod init;
 mod input;
 mod interaction;
+mod key_events;
+mod key_routing;
 mod keyboard;
 mod materials;
 mod menus;
@@ -31,7 +36,9 @@ pub(crate) mod modal;
 #[doc(hidden)]
 pub mod native_chrome;
 mod paint;
+pub(crate) mod pan_zoom;
 pub(crate) mod placement;
+mod platform_input;
 mod pointer;
 pub(crate) mod popup;
 mod repaint;
@@ -59,16 +66,20 @@ use crate::time::Instant;
 use crate::{text::TextSystem, DrawData, Style, Vec2};
 use std::collections::{HashMap, HashSet};
 
+pub use actions::{ActionSource, ActionsHandle, PendingChord};
 #[cfg(target_arch = "wasm32")]
 pub(crate) use clipboard::web::install as install_web_clipboard;
 pub use clipboard::{ClipboardBackend, ClipboardError};
 pub(crate) use diagnostics::{invalid_value, Diagnostics};
 pub use diagnostics::{DebugOverlay, Diagnostic, DiagnosticKind};
+pub use focus_group::FocusAxis;
 pub use id::Id;
-pub use input::{EventResponse, InputState};
+pub use input::{EventResponse, InputState, InputStats};
 pub(crate) use interaction::{HitAction, HitRegion};
+pub use key_events::{KeyEvent, KeyInterest};
 pub use materials::MaterialUse;
 pub(crate) use paint::{MaterialImage, Paint};
+pub use platform_input::{ImeEvent, InputEvent, KeyInput, WheelDelta};
 pub use shared::SharedResources;
 pub(crate) use text_input::TextEditInput;
 pub(crate) use values::{NumberInputEvent, SliderInput};
@@ -172,9 +183,16 @@ pub struct Context {
     pub(crate) splits: split::Splits,
     pub(crate) containers: containers::Containers,
     pub(crate) carousel_wheel: carousel::CarouselWheel,
+    pub(crate) camera_routing: pan_zoom::CameraRouting,
     /// Selection and retained state of static text; see [`selection`].
     pub(crate) selection: selection::SelectionState,
     pub(crate) key_capture: crate::components::key_box::KeyCapture,
+    /// The registry of actions and keymap, their per-pass state and events.
+    pub(crate) actions: actions::ActionRuntime,
+    /// Keys claimed by widgets: declarations, events waiting for their owner, held keys.
+    pub(crate) keys: key_routing::KeyRouting,
+    /// Groups of regions that share one Tab stop and move focus with the arrow keys.
+    pub(crate) focus_groups: focus_group::FocusGroups,
     /// Nodes described for assistive technology and the tree built from them.
     pub(crate) a11y: crate::accessibility::State,
 }

@@ -393,12 +393,15 @@ to wait until Enter completes. Reusing the source in an entirely different area
 requires an appropriate stable parent `push_id`.
 
 Scale uses a relative pivot in measured bounds (center by default). Layout and
-text measurement stay at logical size. Cached base meshes/glyph UVs are transformed
-without measuring/rasterizing every frame; the small scale preset uses the existing
-GPU texture filtering. Parent clipping stays fixed, child clips follow geometry.
+text measurement stay at logical size. Cached base meshes are transformed; glyphs and
+curves rasterize/tessellate at displayed resolution, using quarter-step scale buckets
+and a bounded resolution cap. A changing raster bucket rebuilds glyph geometry while
+retaining its shaped layout; motion within a bucket reuses it. Beyond the cap, text
+uses texture filtering. Parent clipping stays fixed, child clips follow geometry.
 Opacity multiplies every primitive's alpha, including text, borders, shadows,
 gradients and the blur mask. It never edits shared Style. Blur remains opt-in.
-Popup portals keep their viewport clip and are transformed with their anchor.
+Popup anchors follow their transform; panels fit the screen viewport independently
+and their full-viewport blockers stay fixed.
 `Ui::visual` exposes the same axis-aligned mapping and subtree opacity directly.
 Widget `Response.rect` remains a logical layout bound; after the helper returns,
 `Ui::displayed_rect(&response)` or `Context::visual_rect(id, rect)` obtains its
@@ -570,3 +573,34 @@ The [animation gallery](./examples.mdx) continuously previews all built-in track
 and effects in the unchanged grey theme. Existing hover/expand/page durations remain untouched: new presence and
 reorder defaults are 240/200 ms, displacement 8 px. All motion is opt-in; typing,
 selection, cursor input, dragging/resizing and streaming tokens remain immediate.
+
+## Dock motion
+
+[Dock](./components/dock.mdx) uses retained spring channels keyed by stable panel
+IDs. Layout first computes final SplitPane rectangles; existing panels travel
+from their displayed rectangle to those targets. Retargeting preserves current
+velocity. The default critical damping prevents overshoot from rest; a reversal
+while moving preserves momentum instead of jumping to zero velocity.
+An activated tab inherits its group's motion. A focus handoff rebases the offset
+velocity against both panels' velocities, preserving the ring's velocity in the viewport.
+
+Panel contents build at the final size, then translate and clip into the displayed
+rectangle. This avoids repeated text wrapping/layout at intermediate sizes and
+keeps text at its normal scale. It is not a bitmap cache: visible viewers still
+run once each pass and geometry/text caches supply reuse. A closing panel replays
+ordinary paints only, with no interaction or semantics, during a restrained
+100 ms fade and small shrink. Material passes and nested deferred scroll paints
+are not frozen into exit replays. New regions reveal close to their destination.
+
+One focus ring spans docked and floating panels. Its base is the displayed panel
+rectangle; a spring animates the remaining offset on a focus change. Radius and
+color also use spring channels. Stroke edges and width snap to physical pixels.
+The inactive color fades more slowly (2 Hz) after viewport/child focus loss.
+Dragging changes only the preview spring until a drop commits the layout.
+
+`Snappy` (default, 6 Hz) and `Smooth` (4.5 Hz) use critical damping, mass 1 and
+0.2 px / 0.8 px/s settle thresholds. `Off` and reduced motion apply target values
+immediately. Settled channels keep no repaint deadline. The optional rotating
+contour requests frames only while enabled, focused and motion is permitted;
+turning it off, losing focus or reducing motion releases its track. Removing a
+Dock retires its transient geometry, input, animation and owned floating layers.

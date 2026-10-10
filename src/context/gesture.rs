@@ -98,6 +98,7 @@ pub(crate) struct Events {
     pub drag_delta: Vec2,
     pub gained_focus: bool,
     pub lost_focus: bool,
+    pub middle_clicked: bool,
 }
 
 #[derive(Default)]
@@ -131,9 +132,11 @@ impl Gestures {
             drag_delta: self.drag_delta.get(&id).copied().unwrap_or_default(),
             gained_focus: self.focus_gained.contains(&id),
             lost_focus: self.focus_lost.contains(&id),
+            middle_clicked: self.middle.contains(&id),
         }
     }
-    /// A middle click (press and release) on link `id` was delivered this pass.
+    /// A middle click (press and release) on link or middle-sensing region `id` was delivered
+    /// this pass.
     pub(crate) fn middle_clicked(&self, id: Id) -> bool {
         self.middle.contains(&id)
     }
@@ -161,6 +164,9 @@ impl Gestures {
 impl Context {
     /// A primary press was captured by `hit`.
     pub(super) fn gesture_press(&mut self, hit: HitRegion, pointer: Vec2) {
+        if self.camera_routing.previous.contains_key(&hit.id) && self.drag.pending.is_some() {
+            return;
+        }
         self.gestures.drag = hit.action.sense().drag().then_some(DragGesture {
             id: hit.id,
             last: pointer,
@@ -202,6 +208,8 @@ impl Context {
         let delta = pointer - drag.last;
         drag.last = pointer;
         *self.gestures.drag_delta.entry(drag.id).or_default() += delta;
+        let id = drag.id;
+        self.route_camera_pan(id, delta);
     }
 
     /// The primary button was released while `hit` held the capture.
@@ -243,14 +251,18 @@ impl Context {
         }
     }
 
-    /// The middle button over a link is a click on it, never an auto-scroll. `None` when
-    /// the press did not start on a link and the scrolling code should handle it.
+    /// The middle button over a link or a `Sense::MIDDLE` region is a click on it, never an
+    /// auto-scroll. `None` when the press did not start on one and the scrolling code should
+    /// handle it.
     pub(super) fn gesture_middle(&mut self, pressed: bool) -> Option<bool> {
         let under = self
             .input
             .pointer
             .and_then(|p| self.hit_test(p))
-            .filter(|hit| hit.action == HitAction::Link)
+            .filter(|hit| {
+                hit.action == HitAction::Link
+                    || matches!(hit.action, HitAction::Interact(sense) if sense.middle())
+            })
             .map(|hit| hit.id);
         if pressed {
             self.gestures.middle_press = under;

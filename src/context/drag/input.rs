@@ -25,7 +25,16 @@ impl Context {
         if self.drag.session.as_ref().is_some_and(|s| s.keyboard) {
             self.drag_cancel(DragReason::Cancelled);
         }
-        if self.drag.session.is_some() || top.is_some_and(|hit| !arms_drag(hit.action)) {
+        if self.drag.session.is_some()
+            || top.is_some_and(|hit| {
+                !arms_drag(hit.action)
+                    && !self
+                        .camera_routing
+                        .previous
+                        .get(&hit.id)
+                        .is_some_and(|target| target.pan)
+            })
+        {
             return;
         }
         let Some(pointer) = self.input.pointer else {

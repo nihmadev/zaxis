@@ -32,6 +32,9 @@ pub enum HitAction {
     Link,
     Move,
     Resize,
+    /// Empty space of a tab strip that drags the native window of an undecorated host.
+    /// Inert otherwise, like `Block`.
+    NativeDrag,
     ScrollThumb {
         area: Id,
         axis: usize,
@@ -73,6 +76,20 @@ impl HitAction {
             Self::Interact(sense) => sense,
             _ => Sense::NONE,
         }
+    }
+    /// Controls that use keys of their own (text editing, adjusting, popup lists, trees,
+    /// split boundaries): a widget cannot claim keys on them and a group yields to them.
+    pub(crate) fn keeps_keys(self) -> bool {
+        matches!(
+            self,
+            Self::TextEdit
+                | Self::Slider
+                | Self::DragValue
+                | Self::ComboBox
+                | Self::Tree
+                | Self::TreeRow { .. }
+                | Self::SplitResize { .. }
+        )
     }
     pub fn focusable(self) -> bool {
         matches!(self, Self::Interact(sense) if sense.focus())
@@ -266,6 +283,8 @@ impl Context {
         self.text_fields
             .focus_changed(self.interaction.focused, focus);
         self.gestures.focus_changed(self.interaction.focused, focus);
+        self.focus_groups
+            .focus_changed(self.interaction.focused, focus, &mut self.gestures);
         self.interaction.focused = focus;
     }
     /// Move focus to a widget returned by a component on this pass.
@@ -281,7 +300,12 @@ impl Context {
         if self.interaction.note(&hit) {
             self.note_hit_collision(&hit);
         }
+        self.focus_groups.note_hit(&hit);
         self.route_hit(hit);
+    }
+    /// A measured background must sort before descendants built to measure its bounds.
+    pub(crate) fn reserve_hit_order(&mut self, id: Id) {
+        self.interaction.reserve(id);
     }
     /// Deliver a hit already counted by `register_hit` to its final list.
     pub(crate) fn route_hit(&mut self, hit: HitRegion) {
@@ -317,7 +341,8 @@ impl Context {
     }
 
     pub(crate) fn hovered(&self, id: Id, window: Id, rect: Rect, clip: Rect) -> bool {
-        let (rect, clip) = if self.visuals.depth > 0 {
+        let deferred = self.visuals.depth > 0;
+        let (rect, clip) = if deferred {
             self.interaction
                 .previous_hits
                 .iter()
@@ -328,13 +353,19 @@ impl Context {
         };
         self.input.pointer.is_some_and(|p| {
             rect.contains(p)
-                && self.scroll_clip(window, clip).contains(p)
-                && self
-                    .visuals
-                    .clips
-                    .iter()
-                    .filter(|(owner, _)| *owner == window)
-                    .all(|(_, clip)| clip.contains(p))
+                && (if deferred {
+                    clip
+                } else {
+                    self.scroll_clip(window, clip)
+                })
+                .contains(p)
+                && (deferred
+                    || self
+                        .visuals
+                        .clips
+                        .iter()
+                        .filter(|(owner, _)| *owner == window)
+                        .all(|(_, clip)| clip.contains(p)))
                 && self.top_window(p).is_none_or(|top| top == window)
                 && self
                     .interaction
@@ -355,8 +386,7 @@ impl Context {
         // second press on the trigger could never reach it.
         if let Some(target) = self
             .popups
-            .current
-            .as_ref()
+            .top()
             .filter(|popup| popup.id == window && popup.anchor.contains(pointer))
             .and_then(|popup| popup.key_target)
         {

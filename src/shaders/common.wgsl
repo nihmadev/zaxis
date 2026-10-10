@@ -1,10 +1,14 @@
 // Vertex stage, viewport and widget-texture bindings shared by every pipeline: the built-in
 // fragment entry points (ui.wgsl, scroll_hint.wgsl) and user materials (material.wgsl).
-// `viewport.scale` is the number of physical pixels per logical pixel.
+// `viewport.scale` is the number of physical pixels per logical pixel. `viewport.origin` is
+// the top-left corner, in render-target pixels, of the area the viewport maps to: zero for a
+// window, the region of an embedded renderer otherwise.
 struct Viewport {
     size: vec2<f32>,
     scale: f32,
     _padding: f32,
+    origin: vec2<f32>,
+    _reserved: vec2<f32>,
 }
 
 @group(0) @binding(0) var<uniform> viewport: Viewport;

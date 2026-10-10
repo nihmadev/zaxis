@@ -222,3 +222,60 @@ Checkbox/Slider retain their borrowed lifetimes. Compatibility exports remain.
 Run `cargo run --example themes` to compare actual controls, density, overrides,
 paint hook, selection, focus, overlays and the font weight scale (SemiBold headings,
 Medium captions, Cyrillic and emoji in every weight).
+
+## Glass
+
+An iOS-style glass look for interactive controls: a translucent body over a backdrop that is
+blurred, made more vivid and bent inside a narrow edge band like a convex lens, with a thin
+specular rim lit from the top left. It is one backdrop effect (`BackdropEffect::glass`), so
+it is drawn by the renderer from the control's real rounded shape, not painted from layers.
+
+```rust
+use zaxis::{Button, ButtonVariant, Theme};
+
+ctx.set_theme(Theme::dark().glass(1.0));            // every glass-capable control
+ui.add(Button::new("Play").variant(ButtonVariant::Glass));
+ui.add(Button::new("Buy").variant(ButtonVariant::Solid).glass(1.0)); // tinted glass
+ui.add(Button::new("Flat").glass(0.0));              // opt out of a glass theme
+```
+
+`Theme::glass(strength)` (`Metrics::glass`) sets `SurfaceStyle::glass` on buttons, checkboxes,
+switch and slider thumbs, the segmented plate and its selection, and combo box triggers; tracks
+and wells become faint veils so the backdrop shows through the whole control. Ghost buttons
+stay flat. `SurfaceStyle::glass` sets it for one surface of any `ControlStyle`. A glass surface
+blurs by 10 logical pixels unless `blur` is set, and its fill only tints the glass.
+
+Glass shows only over something drawn behind it (an image, a gradient, other content); over a
+flat window background it is a subtle tinted rim. Limits: radio buttons, text fields, number
+inputs, tab bars and menus stay flat; the lens bends toward content inside the control's own
+bounds and never reads from outside it; there is no chromatic dispersion.
+
+## Dock tokens
+
+`Style::dock` and `ThemeOverrides::dock` contain `DockStyle`; local/builder
+patches merge optional values and nested `SurfaceStyle` / `TabsStyle` fields.
+Unspecified colors inherit the active palette. Density changes the inherited
+spacing/padding and tab metrics.
+
+| Field | Default Tiled / Flat |
+| --- | --- |
+| `preset`, `motion` | `Tiled`, `Snappy` |
+| `gap` | theme spacing (8 px comfortable) / 1 px |
+| `panel_radius` | 10 px / 0 px; arbitrary per-corner radii supported |
+| `surface`, `inactive_border` | theme window surface and border |
+| `padding`, `minimum` | theme spacing; 120 × 80 logical px |
+| `tabs` | inherited tab strip controls and header metrics |
+| `ring_width`, `ring_gap` | 2 px and 1 px / 1 px and 0 px |
+| `ring_active`, `ring_inactive` | accent; muted foreground at 45% alpha when inactive |
+| `ring_glow` | 5 px / 0 px; faint external contour strokes |
+| `ring_gradient` | false; optional six-second rotating two-color contour |
+| `preview_color` | accent; translucent fill and border |
+| `spring` | motion preset; critical damping, mass 1, 0.2 px / 0.8 px/s thresholds |
+
+`DockMotion::Snappy` is 6 Hz; `Smooth` is 4.5 Hz; `Off` skips all Dock motion.
+Global reduced motion also disables motion and the rotating contour. A custom
+`spring` overrides the motion preset's spring, with invalid options falling back
+to the preset. `surface.rounding` supplies the radius unless `panel_radius` is set.
+Surface gradients, borders, opacity, shadows and backdrop blur use the existing
+Appearance painter. The contour uses ordinary gradient-border geometry; no
+custom shader/material is necessary.

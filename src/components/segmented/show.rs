@@ -5,7 +5,7 @@ use std::{
 
 use super::layout::{self, snap, Item, Metrics, Request};
 use super::options::{SegmentOption, SegmentWidth, SegmentedOrientation, SegmentedVariant};
-use super::{input, paint, SegmentedControl};
+use super::{paint, SegmentedControl};
 use crate::{
     components::{
         appearance::{alpha, resolve_control, Appearance},
@@ -13,7 +13,7 @@ use crate::{
         theme::{ControlState, ControlStyle, SurfaceStyle},
         visible_label, HoverStyle, Response, Sense, Tooltip, Ui, Widget,
     },
-    context::invalid_value,
+    context::{invalid_value, FocusAxis},
     AccessOrientation, AccessRole, Border, Color, CornerRadius, Vec2,
 };
 
@@ -113,47 +113,60 @@ impl<T: PartialEq + Hash + Clone> Widget for SegmentedControl<'_, T> {
         let bounds = ui.allocate_space(plan.size);
         let rects = paint::segment_rects(bounds, &plan.widths, &metrics, vertical);
 
-        // Roving focus: only the active segment is a Tab stop. Keys move it before the hit
-        // regions are registered, so the target is focusable in this very pass.
+        // Roving focus: the segments are one focus group, so the group is one Tab stop
+        // that lands on the selected segment (the first enabled one when nothing is
+        // selected) and the arrow keys along the axis, Home and End move focus between
+        // enabled segments without wrapping. Every segment keeps `Sense::FOCUS`: a click
+        // or assistive technology can focus any of them.
         let keys: Vec<_> = options.iter().map(|o| (gid, "segment", o.key())).collect();
         let ids: Vec<_> = keys.iter().map(|k| ui.interact_id(*k)).collect();
         let enabled: Vec<bool> = options.iter().map(|o| enabled_all && o.enabled).collect();
         let selected_idx = options.iter().position(|o| o.value == *selected);
         let mut selection = selected_idx;
         let mut changed = false;
-        let mut focus = ui
+        let entry = selected_idx
+            .filter(|i| enabled[*i])
+            .or_else(|| enabled.iter().position(|e| *e));
+        let focus_group = gid.with("focus");
+        let options_len = options.len();
+        let build = |ui: &mut Ui<'_>| -> Vec<Response> {
+            let responses: Vec<Response> = (0..options_len)
+                .map(|i| {
+                    let allowed = cfg.enabled && options[i].enabled;
+                    let sense = Sense::CLICK | Sense::FOCUS;
+                    ui.add_enabled_ui(allowed, |ui| ui.interact(rects[i], keys[i], sense))
+                })
+                .collect();
+            if let Some(entry) = entry {
+                ui.focus_entry(&responses[entry]);
+            }
+            responses
+        };
+        let responses = if options_len > 1 {
+            let axis = if vertical {
+                FocusAxis::Vertical
+            } else {
+                FocusAxis::Horizontal
+            };
+            ui.focus_scope(focus_group, axis, false, build).0
+        } else {
+            build(ui)
+        };
+        let moved = ui.context.focus_groups.take_moved(focus_group);
+        let focus = moved.and_then(|moved| ids.iter().position(|id| *id == moved));
+        let active = ui
             .context
             .focused()
             .and_then(|f| ids.iter().position(|id| *id == f))
-            .filter(|i| enabled[*i]);
-        if let Some(from) = focus {
-            let to = input::target(&ui.context.input().keys_pressed, vertical, from, &enabled);
-            if let Some(to) = to {
-                focus = Some(to);
-                ui.context.request_focus(ids[to]);
-                if cfg.follow_focus {
-                    *selected = options[to].value.clone();
-                    selection = Some(to);
-                    changed = true;
-                }
+            .filter(|i| enabled[*i])
+            .or(entry);
+        if let Some(to) = focus.filter(|to| cfg.follow_focus && enabled[*to]) {
+            if selected_idx != Some(to) {
+                *selected = options[to].value.clone();
+                selection = Some(to);
+                changed = true;
             }
         }
-        let active = focus.or_else(|| {
-            selected_idx
-                .filter(|i| enabled[*i])
-                .or_else(|| enabled.iter().position(|e| *e))
-        });
-        let responses: Vec<Response> = (0..options.len())
-            .map(|i| {
-                let sense = if active == Some(i) {
-                    Sense::CLICK | Sense::FOCUS
-                } else {
-                    Sense::CLICK
-                };
-                let allowed = cfg.enabled && options[i].enabled;
-                ui.add_enabled_ui(allowed, |ui| ui.interact(rects[i], keys[i], sense))
-            })
-            .collect();
         if !changed {
             let clicked = responses
                 .iter()

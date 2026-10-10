@@ -16,6 +16,10 @@ impl Id {
     pub fn with(self, value: impl Hash) -> Self {
         Self::new((self, value))
     }
+    /// The id with this exact value, for a number that came from `value()`.
+    pub(crate) fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
     pub fn value(self) -> u64 {
         self.0
     }

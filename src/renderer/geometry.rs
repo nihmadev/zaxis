@@ -1,10 +1,10 @@
 //! Mesh validation, persistent buffers, and revision caching.
 
-use super::{RenderError, Renderer};
+use super::{gpu::Gpu, RenderError};
 use crate::{DrawData, Vertex};
 use std::ops::Range;
 
-impl Renderer {
+impl Gpu {
     pub(super) fn prepare_geometry(
         &mut self,
         data: &DrawData,

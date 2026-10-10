@@ -96,6 +96,8 @@ layout, input, repaint scheduling, custom hosts, renderer, and drawing protocol.
 | Fold arbitrary content and browse large hierarchies | [CollapsingHeader](docs/content/docs/components/collapsing-header.mdx), [TreeView](docs/content/docs/components/tree-view.mdx) |
 | Add transitions or a custom spring | [Animation](https://nihmadev.github.io/zaxis/animation/) |
 | Integrate an event loop | [Custom host](https://nihmadev.github.io/zaxis/integration/) |
+| Draw into a host's wgpu pass or texture | [Embedding in a wgpu host](https://nihmadev.github.io/zaxis/embedding/) |
+| Draw an overlay over another process's frames (Vulkan layer, DXGI) | [Overlay in another process](https://nihmadev.github.io/zaxis/hook/) |
 | Find a public type or method | [API index](https://nihmadev.github.io/zaxis/api/) |
 | Build or publish the documentation | [Site setup](https://nihmadev.github.io/zaxis/development/) |
 
@@ -116,6 +118,7 @@ cargo run --example modals
 cargo run --example collapsing_headers
 cargo run --example tree
 cargo run --example integration
+cargo run --release --example embed
 cargo run --example animations
 cargo run --example custom_animation
 ```

@@ -4,6 +4,15 @@ use crate::Vec2;
 /// Built-in vector shapes, tessellated only when their cached description changes.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
+    /// Rounded stroke with a two-color gradient projected at `angle` radians.
+    /// Uses the ordinary antialiased contour; no material or shader is required.
+    GradientBorder {
+        rect: Rect,
+        rounding: CornerRadius,
+        width: f32,
+        gradient: Gradient,
+        angle: f32,
+    },
     Gradient {
         rect: Rect,
         rounding: CornerRadius,

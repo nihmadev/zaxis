@@ -7,6 +7,42 @@ use crate::{
 impl Mesh {
     pub fn shape(&mut self, shape: &Shape, scale: f32) {
         match *shape {
+            Shape::GradientBorder {
+                rect,
+                rounding,
+                width,
+                gradient,
+                angle,
+            } => {
+                if !rect.is_finite() || rect.is_empty() || !width.is_finite() || width <= 0.0 {
+                    return;
+                }
+                let angle = if angle.is_finite() { angle } else { 0.0 };
+                let start = self.vertices.len();
+                self.shape(
+                    &Shape::Rect {
+                        rect,
+                        rounding,
+                        fill: Color::TRANSPARENT,
+                        border: Border::new(width, Color::WHITE),
+                    },
+                    scale,
+                );
+                let (s, c) = angle.sin_cos();
+                let direction = Vec2::new(c, s);
+                let extent = (rect.size().x * c.abs() + rect.size().y * s.abs()).max(1.0);
+                let a = gradient.start.linear();
+                let b = gradient.end.linear();
+                for vertex in &mut self.vertices[start..] {
+                    let t = (0.5
+                        + (Vec2::from_array(vertex.position) - rect.center()).dot(direction)
+                            / extent)
+                        .clamp(0.0, 1.0);
+                    let coverage = vertex.color[3];
+                    vertex.color = std::array::from_fn(|i| a[i] * (1.0 - t) + b[i] * t);
+                    vertex.color[3] *= coverage;
+                }
+            }
             Shape::Gradient {
                 rect,
                 rounding,

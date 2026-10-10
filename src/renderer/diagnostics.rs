@@ -119,20 +119,22 @@ impl Renderer {
     /// Enables CPU stage instrumentation and supported render-pass timestamp queries.
     /// Consume read_render_gpu_time after each present before submitting another frame.
     pub fn set_image_diagnostics(&mut self, enabled: bool) {
-        self.diagnostics.enabled = enabled;
-        self.diagnostics.timestamps = (enabled
+        self.gpu.diagnostics.enabled = enabled;
+        self.gpu.diagnostics.timestamps = (enabled
             && self
+                .gpu
                 .device
                 .features()
                 .contains(wgpu::Features::TIMESTAMP_QUERY))
-        .then(|| Timestamps::new(&self.device));
-        self.diagnostics.render_pending = false;
+        .then(|| Timestamps::new(&self.gpu.device));
+        self.gpu.diagnostics.render_pending = false;
     }
     pub fn take_renderer_timings(&mut self) -> Vec<RendererTiming> {
-        self.diagnostics.timings.drain(..).collect()
+        self.gpu.diagnostics.timings.drain(..).collect()
     }
     pub fn timestamp_queries_supported(&self) -> bool {
-        self.device
+        self.gpu
+            .device
             .features()
             .contains(wgpu::Features::TIMESTAMP_QUERY)
     }
@@ -140,14 +142,15 @@ impl Renderer {
     /// presentation. None when unsupported/disabled or for the multi-pass blur path.
     /// Includes a completion/readback wait; diagnostic serialized use only.
     pub fn read_render_gpu_time(&mut self) -> Result<Option<Duration>, RenderError> {
-        if !self.diagnostics.render_pending {
+        if !self.gpu.diagnostics.render_pending {
             return Ok(None);
         }
-        self.diagnostics.render_pending = false;
-        self.diagnostics
+        self.gpu.diagnostics.render_pending = false;
+        self.gpu
+            .diagnostics
             .timestamps
             .as_ref()
-            .map(|q| q.read(&self.device, &self.queue))
+            .map(|q| q.read(&self.gpu.device, &self.gpu.queue))
             .transpose()
     }
     pub fn diagnostic_image_upload(
@@ -178,7 +181,7 @@ impl Renderer {
             height: image.size[1],
             depth_or_array_layers: 1,
         };
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+        let texture = self.gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("diagnostic explicit-copy texture"),
             size: extent,
             mip_level_count: 1,
@@ -190,9 +193,9 @@ impl Renderer {
         });
         profile.end(RendererStage::CreateTextureCpu, start);
         let _binding = super::textures::binding(
-            &self.device,
-            &self.texture_layout,
-            &self.sampler,
+            &self.gpu.device,
+            &self.gpu.texture_layout,
+            &self.gpu.sampler,
             &texture,
             &mut profile,
         );
@@ -206,6 +209,7 @@ impl Renderer {
             dst[..src.len()].copy_from_slice(src);
         }
         let staging = self
+            .gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("diagnostic staging"),
@@ -214,14 +218,15 @@ impl Renderer {
             });
         profile.end(RendererStage::StagingCpu, start);
         let timestamp = self
+            .gpu
             .device
             .features()
             .contains(
                 wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
             )
-            .then(|| Timestamps::new(&self.device));
+            .then(|| Timestamps::new(&self.gpu.device));
         let start = profile.start();
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         if let Some(q) = &timestamp {
             encoder.write_timestamp(&q.query, 0);
         }
@@ -244,11 +249,11 @@ impl Renderer {
         let command = encoder.finish();
         profile.end(RendererStage::EncodingCpu, start);
         let start = profile.start();
-        self.queue.submit([command]);
+        self.gpu.queue.submit([command]);
         profile.end(RendererStage::SubmitCpu, start);
         self.wait_idle(Duration::from_secs(10))?;
         let gpu_transfer = timestamp
-            .map(|q| q.read(&self.device, &self.queue))
+            .map(|q| q.read(&self.gpu.device, &self.gpu.queue))
             .transpose()?;
         Ok(ImageUploadMeasurement {
             cpu_stages: profile.timings.into_iter().collect(),

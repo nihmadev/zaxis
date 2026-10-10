@@ -198,7 +198,7 @@ impl<'a> CollapsingHeader<'a> {
                 .focused()
                 .is_some_and(|f| state.descendants.contains(&f))
         {
-            if ui.context.popups.current.as_ref().is_some_and(|p| {
+            if ui.context.popups.branch.first().is_some_and(|p| {
                 p.return_focus
                     .is_some_and(|f| state.descendants.contains(&f))
             }) {

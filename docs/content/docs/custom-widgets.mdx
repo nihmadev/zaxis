@@ -1,12 +1,22 @@
 ---
 title: Custom widgets
 icon: PenTool
-description: Write a widget outside the crate with Ui::interact, Sense and the shared Response events.
+description: Write a widget outside the crate with Ui::interact, Sense, owned keys and focus groups.
 ---
 
 A widget is anything that implements [`Widget`](./api.mdx#ui). Composing built-in
 controls needs nothing more. A widget with its own geometry and input uses one extra
 call, `Ui::interact`, which asks for a `Response` for a rectangle you allocated.
+
+For explicit positioning, `ui.at(source, rect, build)` builds an ordinary vertical
+subtree clipped to a local rectangle and leaves the parent cursor unchanged.
+Inside [PanZoom](./components/pan-zoom.mdx), it places Button/TextEdit/Slider and
+application widgets in content coordinates, including negative positions. Paint
+and `interact` accept the same local rectangles. After the complete pass,
+`Context::input_transform(id)` for delivered input, and `Context::visual_transform(id)` maps a widget's layout coordinates to displayed
+logical coordinates; use its inverse for application-specific pointer math.
+`Response::drag_delta` remains in displayed logical pixels. PanZoom's output also
+converts content to screen and back, including deferred placement and ancestor scale.
 
 ```rust
 use zaxis::{vec2, Border, Color, Response, Sense, Shape, Ui, Widget};
@@ -60,10 +70,83 @@ Combine with `|`. A sense only chooses which input the response reports.
 | `Sense::DRAG` | `pressed`, `drag_started`, `dragged`, `drag_delta`, `drag_stopped`; capture continues outside the rectangle |
 | `Sense::FOCUS` | `has_focus`, `focus_visible`, `gained_focus`, `lost_focus`; Tab and presses focus it |
 
-A focused widget has no key handler of its own; read keys from
-`ui.context().input().keys_pressed`, as the [knob example](https://github.com/nihmadev/zaxis/blob/main/examples/custom_widget.rs)
-does. `Response::mark_changed()` reports that the widget changed its value, so `Ui::add`
-and callers see `changed()` like they do for a `Slider`.
+A focused widget gets its keys from `Ui::keys`, below. `Response::mark_changed()` reports
+that the widget changed its value, so `Ui::add` and callers see `changed()` like they do for a
+`Slider`.
+
+## Keys: `Ui::keys(&response, KeyInterest) -> Vec<KeyEvent>`
+
+A focused widget owns the keys it declares. Declare them in every pass, then apply the events
+that arrive, in order, to your model:
+
+```rust
+use zaxis::winit::keyboard::KeyCode;
+use zaxis::{KeyInterest, Mods};
+
+ui.claim_keys(&response, KeyInterest::arrows().repeats());
+ui.claim_keys(&response, KeyInterest::arrows().with_mods(Mods::SHIFT).repeats());
+for key in ui.take_keys(&response) {
+    let step = if key.modifiers.shift_key() { 0.01 } else { 0.05 };
+    match key.code {
+        KeyCode::ArrowUp | KeyCode::ArrowRight => *value += step,
+        _ => *value -= step,
+    }
+}
+```
+
+`ui.keys(&response, interest)` is `claim_keys` and `take_keys` in one. The model stays yours:
+the library keeps the declaration, the events and the focus, never a closure or a value.
+
+* **A claim is ownership.** The dispatcher consumes each matching press on arrival, before the
+  next pass, so Actions, containers and the host do not see it, *even if the widget ignores the
+  event*. A key you do not declare takes the usual path. A claim beats a shortcut on the same
+  key while the widget has focus; a chord in progress, a listening `KeyBox`, an open popup and
+  a modal come first.
+* **Overlays.** A widget written outside the crate opens a popup with `Popup::show` like a
+  built-in one. Built inside another popup it is that popup's child: no registration, and
+  Escape, outside presses and focus restoration follow the [nested popup](./components/popup.mdx#nested-popups)
+  rules. Keys go to the leaf popup only.
+* **Declare in every pass.** Not declaring gives the keys back. A widget that is disabled,
+  hidden, clipped away or removed claims nothing, and events nobody takes lapse after one pass.
+  The region needs `Sense::FOCUS`; a text field, slider or other control with keys of its own
+  keeps them and ignores claims (reported as a usage diagnostic).
+* **Events.** Presses arrive in order and are never merged; repeats only with `.repeats()`,
+  releases only with `.releases()`. Every event has `code` (navigation), `layout` (the printed
+  Latin letter), `physical`, `logical`, `repeat` and the modifiers at that moment. A held key's
+  repeats and release go to the widget that took the press even after focus moved.
+* **Enter and Space** click a focused region. Claim `KeyInterest::activation()` to take them as
+  events instead; do not both handle `clicked()` and the key.
+* **Text.** Typing, IME and editing stay with `TextEdit`; do not claim printable keys to
+  type, and a claimed printable key types nothing.
+
+See [Input](./input.mdx#keys-for-a-widget) for the priority order, limits and overflow.
+
+## Focus groups: several controls, one Tab stop
+
+Controls built inside `FocusGroup::show` share one Tab stop and move focus with the arrow keys;
+a custom widget joins by being built there, with nothing else to register:
+
+```rust
+use zaxis::{AccessRole, FocusGroup, Widget};
+
+FocusGroup::new("panel").label("Panel").role(AccessRole::Toolbar).show(ui, |ui| {
+    ui.horizontal(|ui| {
+        ui.add(zaxis::Button::new("Reset"));
+        ui.add(Swatch(&mut color));      // your Widget with Sense::FOCUS
+        ui.add(zaxis::TextEdit::new(&mut name).id_source("name"));
+    });
+});
+```
+
+Tab and Shift+Tab enter and leave; Left/Right (`.vertical()`: Up/Down) move between controls,
+Home and End jump to the ends, `.wrap(true)` closes the ring. Disabled, hidden, clipped and removed
+controls are skipped, a click focuses any member and makes it the stop, and the group remembers
+it. A text field and a slider are members that keep their own keys; Tab leaves them. A group
+inside a group is one member of the outer one, and `FocusGroup::slot` marks a part that
+navigates itself. The model and the layout stay yours: a toolbar is an ordinary function of
+your application that builds a group, which is how a library toolbar would be written too. See
+[Input](./input.mdx#focus-groups) for the full rules and `examples/custom_widget.rs` for a knob,
+a swatch, a text field and a slider in one panel.
 
 ## Events are one-shot
 
@@ -146,9 +229,11 @@ re-role or hide any widget with `.accessible_label(..)`, `.accessible_descriptio
 
 1. Use stable `id_source` values; scope loops with `Ui::push_id`.
 2. Allocate before interacting; give the widget a nonzero rectangle.
-3. Read events from the returned `Response`; never from `InputState` transitions.
-4. Treat `response.enabled` as the disabled state; do not test your own flag.
-5. Return the response so wrappers (`.tooltip(..)`, `.context_menu(..)`) can attach.
-6. Describe the widget with `Ui::accessible`: a role, a name, and the requests it accepts.
-7. Check the result with the [debug overlay](./diagnostics.mdx#debug-overlay): press F3 in
+3. Read events from the returned `Response` and keys from `Ui::keys`; never from `InputState`
+   transitions.
+4. Build related controls in a `FocusGroup` instead of making each a Tab stop.
+5. Treat `response.enabled` as the disabled state; do not test your own flag.
+6. Return the response so wrappers (`.tooltip(..)`, `.context_menu(..)`) can attach.
+7. Describe the widget with `Ui::accessible`: a role, a name, and the requests it accepts.
+8. Check the result with the [debug overlay](./diagnostics.mdx#debug-overlay): press F3 in
    the custom widget example.

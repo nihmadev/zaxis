@@ -6,12 +6,18 @@ description: Pointer capture, keyboard focus, accumulated input, and event consu
 
 ## Response
 
+[PanZoom](./components/pan-zoom.mdx#input-policy-and-ownership) reserves matching
+wheel zoom synchronously from the last published viewport. Its ordered queue keeps
+each event's anchor/modifiers; raw `InputState::scroll_delta` is not an ownership API.
+Background pan uses shared primary capture; child editing/dragging wins, and ordinary
+wheel keeps Carousel/ScrollArea routing. No camera keyboard shortcuts are installed.
+
 Every `Ui::add` and component convenience method returns a `Response` for that UI pass.
 
 | Field or method | Meaning |
 | --- | --- |
 | `id: Id` | Final scoped widget identity |
-| `rect: Rect` | Allocated rectangle in logical viewport coordinates |
+| `rect: Rect` | Allocated rectangle in the current Ui's layout coordinates; content coordinates inside PanZoom |
 | `hovered: bool` | Pointer lies in the rectangle and clip, with no blocking front window or other capture |
 | `pressed: bool` | This interactive widget owns pointer capture or keyboard activation |
 | `has_focus: bool` | This enabled interactive widget has keyboard focus |
@@ -88,8 +94,152 @@ by ID; multiple activations of the same button between UI passes are not a click
 
 Tab and button activation ignore key repeats. Slider adjustment accepts repeated
 key-press events. Focus traversal follows retained hit-region order after window
-layer ordering; fully clipped controls are skipped. Clicking a passive panel area
-clears widget focus.
+layer ordering; fully clipped controls are skipped. A [focus group](#focus-groups) is one
+region in that order, its Tab stop. Clicking a passive panel area clears widget focus.
+
+### Who gets a key
+
+`Context::on_input` decides the owner of a key the moment the event arrives and reports it in
+`EventResponse::consumed`; no UI pass runs in between. The first of these that wants the key
+takes it:
+
+1. **Held keys.** The autorepeat and release of a key a widget [claimed](#keys-for-a-widget)
+   or a group took stay with that owner, whatever has focus now.
+2. A drag in progress. 3. Escape on a pending chord, and the repeat or release of a key an
+   action took. 4. The leaf of the open popups (Escape closes it, one level per press; Tab closes it and goes
+   on in what remains). 5. Escape for the top
+   modal. 6. Menu navigation of an open menu or a focused combo box, and Escape for
+   middle-button autoscroll. 7. Dock navigation, the focused split boundary and tree, copying
+   selected text.
+8. **Keys the focused widget claimed** with `Ui::keys`: explicit ownership.
+9. The keymap: [actions and chords](./actions.mdx). A focused text field keeps printable keys and
+   its editing shortcuts.
+10. The focused control's own keys: drag value, text field, slider.
+11. **Arrows, Home and End of a focus group** around the focused control.
+12. Tab traversal, Enter as the modal's default action, Enter and Space on a focused button.
+
+A claim sits above the keymap on purpose: a widget that names `Ctrl+S` in `KeyInterest` owns it
+while it has focus, and the *Save* action does not run. A chord already in progress, a `KeyBox`
+that is listening, a popup and a modal come first. A key that nothing in the list wants is
+returned unconsumed and goes on to the host.
+
+## Keys for a widget
+
+`Ui::keys(&response, KeyInterest)` is how a widget written outside the crate gets the keys it
+needs, in order, with the modifiers they had, without reading `InputState`:
+
+```rust
+use zaxis::winit::keyboard::KeyCode;
+use zaxis::{KeyInterest, Sense, Ui, Vec2};
+
+fn knob(ui: &mut Ui<'_>, value: &mut f32) {
+    let rect = ui.allocate_space(Vec2::splat(48.0));
+    let response = ui.interact(rect, "knob", Sense::CLICK | Sense::DRAG | Sense::FOCUS);
+    for key in ui.keys(&response, KeyInterest::arrows().repeats()) {
+        match key.code {
+            KeyCode::ArrowUp | KeyCode::ArrowRight => *value += 0.05,
+            _ => *value -= 0.05,
+        }
+    }
+}
+```
+
+* **Declaring means owning.** Call it in every pass; a declaration lasts until the pass after
+  it and is published with the hit regions. While the widget has focus, each matching press is
+  consumed on arrival, so the widget owns the key even if it ignores the event, and Actions,
+  containers and the host never see it. Stop declaring and the key is given back at once. A key
+  that no declaration names takes the usual path.
+* **Before the first pass, and after the widget is gone,** nothing is claimed.
+* **What counts as a match.** `KeyInterest::keys(&[..])`, `arrows()`, `navigation()`,
+  `activation()`. Modifiers match exactly (`with_mods`; `Mods::PRIMARY` is Command or Control);
+  `any_mods()` matches all. Shift+Arrow is not an `arrows()` claim, and neither is AltGr, which
+  some platforms report as Ctrl+Alt. Letters match the printed Latin letter, as shortcuts do, so
+  `Ctrl+Z` works on a Russian or AZERTY layout; `by_position()` matches the key's place instead.
+* **Who may claim.** Only the focused widget, and only when its region is published, takes
+  focus, is not clipped away, is in the layer that may take keys (the leaf popup, else the top
+  modal, else any) and is not a control that keeps its keys itself: a text field, slider, drag
+  value, combo box, tree or split handle ignores claims and the claim is reported as a usage
+  [diagnostic](./diagnostics.mdx). A widget under an open popup or modal gets nothing.
+* **Events.** Each press is its own `KeyEvent` in arrival order: three equal presses between two
+  passes are three events. An event carries `code`, `layout`, `physical`, `logical`, `state`,
+  `repeat`, `text` and the modifiers held *when it arrived*. It is delivered once, to the widget
+  that owned the key when it arrived, even if focus moved before the pass, and lapses at the end
+  of the first pass that follows. `Ui::take_keys` drains, `Ui::claim_keys` declares, and
+  `Ui::keys` is both.
+* **Autorepeat** is owned and consumed, but delivered only with `.repeats()`; Actions and
+  activation never fire on a repeat. **The release** of a claimed key is always owned and
+  consumed, delivered with `.releases()`, also after focus moved or the widget vanished.
+* **Enter and Space.** A claim on them replaces the click a focused region raises; without a
+  claim the click is unchanged. A claimed printable key types no text.
+* **`InputState`.** A claimed key updates `keys_down`, `keys_pressed` and `keys_released` like
+  any other consumed key, so a held key stays accurate and an old reader of `keys_pressed`
+  keeps working. Do not read both for one key.
+* **Limits.** A widget has at most 64 claims. The queue holds 256 events per widget and 1024 in
+  all. Beyond that new presses and repeats are dropped (`InputStats::key_events_dropped`, one
+  diagnostic per overflow), the dropped press's repeats and release are still consumed and never
+  queued, and releases of delivered presses are always kept: a key is never half delivered, and
+  no key stays held. A lost window focus, a modal opening or closing and a popup closing drop
+  every queued event and every held key's owner.
+
+## Focus groups
+
+`FocusGroup::new(id_source).horizontal().wrap(false).label("Tools").show(ui, |ui| ..)` makes
+the controls built in the closure one Tab stop and gives them arrow-key navigation:
+
+```rust
+use zaxis::{AccessRole, FocusGroup, Ui};
+
+fn toolbar(ui: &mut Ui<'_>) {
+    FocusGroup::new("tools").label("Tools").role(AccessRole::Toolbar).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.button("Cut");
+            ui.button("Copy");
+            ui.button("Paste");
+        });
+    });
+}
+```
+
+* **One stop.** Tab and Shift+Tab enter and leave the group. Entering lands on the member that
+  has focus, else the one named with `Ui::focus_entry`, else the member focus was last on, else
+  the first. Controls outside groups keep their Tab order.
+* **Moving.** Along the axis (`horizontal`, `vertical`, `FocusAxis::Both`) the arrows move focus
+  to the previous or next member; Home and End jump to the first and last. `wrap(true)`
+  continues at the other end; by default the key stops at an end, and stays owned by the group.
+  Focus moves; nothing is selected and nothing is called. Modified arrows are not navigation.
+  A held arrow keeps stepping.
+* **Who is a member.** Every region that takes focus and is built in the closure, in its layer:
+  `Button`, `Ui::interact` with `Sense::FOCUS`, other widgets. A region that is disabled,
+  hidden, fully clipped away or gone is not a member, so it is skipped and cannot be the stop.
+  Content in another layer (a popup, a window) does not join. A click or a request from
+  assistive technology focuses any member and makes it the stop.
+* **Memory.** The group remembers its last member. When it goes away the stop passes to the
+  member now at its position, or the last. An empty group has no stop and no state, and a group
+  that is not built is forgotten.
+* **Controls with keys of their own.** A text field, slider or other control that uses arrows is a
+  member: its neighbours move focus onto it, it keeps its keys while focused (so the group's
+  arrows do not move out of it), and Tab leaves the group. A custom widget does the same with
+  `Ui::keys`: its claim wins over the group's key.
+* **Nested groups.** A group inside a group is one member of the outer one. The innermost group
+  whose axis uses the key moves focus; at its end an arrow goes on to the outer group, which
+  treats the whole inner group as one member, so a key never moves two levels. Home and End stay
+  with the innermost group. `FocusGroup::slot(id_source)` (`FocusAxis::None`) is for a part that
+  navigates itself, such as a tab strip or a list: the outer arrows move onto it and around it,
+  and while focus is inside no group acts on the arrows, so a key is never handled twice.
+* **Events.** The group's `Response` reports `has_focus`, `focus_visible` and one-shot
+  `gained_focus` / `lost_focus`. `FocusGroupOutput::navigated()` names the member the arrows
+  moved focus to since the last pass, for a control that selects as focus moves
+  (`RadioGroup` and `SegmentedControl` do), and `stop()` the region Tab lands on.
+* **`InputState`.** The press that moved focus is held but not left in `keys_pressed`: the
+  control that now has focus must not act on a key that took it there.
+* **Published routing.** Navigation reads the groups the last pass published, so a second key that
+  arrives before the next redraw is addressed to the member the first one reached.
+  The group's own axis and `wrap` take effect from the pass that built them.
+
+`RadioGroup` and `SegmentedControl` are built on this: each option stays focusable by click and by
+assistive technology, Tab lands on the selected option, and arrows, Home and End are the group's.
+What stays with `RadioGroup` is the rule of a grid layout: Up and Down move along a column, which
+a flat order cannot say, through `Ui::keys`.
 
 ## InputState
 
@@ -113,6 +263,30 @@ Persistent pointer, held-key, and modifier state survive ordinary passes. Readin
 input after `run` cannot recover the cleared transitions. Text accumulation does not
 replace [TextEdit](./components/text-edit.mdx), which owns editing and IME composition state.
 
+## Input without a window
+
+`Context::on_input(InputEvent)` is the one entry point for input. `on_window_event` converts a
+winit event with `InputEvent::from_window_event` and calls it, so the runner and a host that has
+no winit window (an overlay inside another process, a test, an engine with its own events) behave
+identically. Positions and sizes are physical pixels of the viewport; the context divides by its
+scale factor.
+
+| `InputEvent` | Meaning |
+| --- | --- |
+| `PointerMoved { x, y }`, `PointerLeft` | Pointer position, in physical pixels |
+| `Button { button, state }` | `MouseButton` and `ElementState` |
+| `Wheel(WheelDelta::Lines(v) \| Pixels(v))` | Notches (multiplied by the line height) or pixels (divided by the scale) |
+| `Key(KeyInput { physical, logical, state, repeat, text })` | `physical` is the scan-code key, `logical` the meaning with the layout (a numpad key with NumLock off is an arrow), `text` what the press types |
+| `Modifiers(ModifiersState)` | Send it when the modifiers change, before the key that needs them |
+| `Ime(ImeEvent::Preedit \| Commit \| Disabled)` | Input method composition |
+| `Focus(bool)` | Losing focus releases held keys and buttons, closes popups and cancels drags |
+| `Resized { width, height }`, `ScaleFactor(f64)` | Viewport size, and DPI with the size kept |
+| `FileHovered`, `FileDropped`, `FileHoverCancelled` | Files dragged in |
+
+The key vocabulary is winit's (`KeyCode`, `Key`, `MouseButton`, `ElementState`,
+`ModifiersState`): plain data enums that need no window. After a pass, `cursor_icon()` and
+`ime_cursor_area()` say which cursor to show and where the input method's window belongs.
+
 ## EventResponse
 
 Custom hosts call `context.on_window_event(&event)` and receive:
@@ -122,6 +296,19 @@ Custom hosts call `context.on_window_event(&event)` and receive:
 | `repaint: bool` | Request a native redraw |
 | `consumed: bool` | The UI handled the event; use this to gate other host input handlers |
 
+`consumed` is final when `on_input` returns, and a key is never taken later. A claimed key, an
+arrow of a focus group and the stroke of an action are decided right there from what the last
+finished pass published; `Widget::ui` only applies events the dispatcher already addressed to
+it. A host (an overlay, an embedded renderer, the browser key policy) can therefore keep the
+key from the application beneath at once. Before the first pass, or for a widget that stopped
+declaring, nothing is claimed.
+
 Consumed and repaint are independent. Pointer motion outside all panels can request
 a redraw without being consumed. Text and IME commits may accumulate without being
 consumed. For event routing, viewport updates, and deadlines, use [Custom host](./integration.mdx).
+
+## Keys and commands
+
+Keyboard input is routed in a fixed order, and shortcuts are a registry of their own: see
+[Actions and keymap](./actions.mdx) for where the keymap sits in that order, chords, contexts,
+layouts (letters by the Latin letter, physical key on a non-Latin layout) and key capture.

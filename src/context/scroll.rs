@@ -309,9 +309,10 @@ impl Context {
                 let s = &self.scrolling.states[id];
                 s.window == window && s.enabled && s.clip.contains(pointer)
             });
-        self.route_carousel_wheel(pointer, window, delta, target)
+        self.route_camera_wheel(pointer, window, delta)
+            || self.route_carousel_wheel(pointer, window, delta, target)
             || target.is_some_and(|id| self.scroll_from(id, delta, false))
-            || self.popups.current.is_some()
+            || self.popups.is_active()
             || self.modal_active()
     }
     pub(crate) fn scroll_from(&mut self, id: Id, mut delta: Vec2, middle: bool) -> bool {
@@ -350,19 +351,22 @@ impl Context {
                 }
             }
             current = state.parent;
-        }
-        if changed {
-            self.invalidate_scroll_hits(window);
-            if !self.in_pass {
-                self.request_repaint();
+            if old != state.offset {
+                self.invalidate_scroll_hits(window, id);
             }
+        }
+        if changed && !self.in_pass {
+            self.request_repaint();
         }
         changed
     }
-    pub(super) fn invalidate_scroll_hits(&mut self, window: Id) {
+    pub(super) fn invalidate_scroll_hits(&mut self, window: Id, area: Id) {
         // Input can arrive in bursts before redraw. Never activate stale content geometry.
         self.interaction.previous_hits.retain(|h| {
             h.window != window
+                || self
+                    .camera_routing
+                    .stationary_in_scroll(h.id, area, &self.scrolling.states)
                 || matches!(
                     h.action,
                     HitAction::Block
@@ -391,7 +395,7 @@ impl Context {
             .clamp(0.0, max);
         let window = s.window;
         if old != s.offset {
-            self.invalidate_scroll_hits(window);
+            self.invalidate_scroll_hits(window, id);
             self.request_repaint();
         }
     }

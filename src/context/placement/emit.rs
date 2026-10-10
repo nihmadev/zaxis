@@ -2,7 +2,7 @@
 //! offset (content of the open popup by the popup's own shift), meets the placed region,
 //! and is handed on to the enclosing placement, the scroll queues or the frame.
 
-use super::{portal::Portal, Placement};
+use super::{portal::Portals, Placement};
 use crate::{
     context::{scroll::PendingPaint, Context, HitRegion},
     Rect, Vec2,
@@ -12,15 +12,15 @@ use std::collections::HashSet;
 impl Context {
     pub(crate) fn place(&mut self, p: Placement, delta: Vec2, clip: Rect) {
         let viewport = self.viewport();
-        let portal = self.move_portal(&p, delta);
-        self.move_scroll_content(&p, delta, clip, viewport, portal);
-        self.place_ime(&p, delta, clip, viewport, portal);
+        let portals = self.move_portals(&p, delta);
+        self.move_scroll_content(&p, delta, clip, viewport, &portals);
+        self.place_ime(&p, delta, clip, viewport, &portals);
         self.place_targets(&p, delta);
         let (outer, clipped) = (p.outer_clip(clip, viewport), p.clipped_by());
         let Placement { paints, hits, .. } = p;
         let hit_ids: HashSet<_> = hits.iter().map(|(hit, _)| hit.id).collect();
         for mut paint in paints {
-            let delta = Portal::shift(portal, paint.layer, delta);
+            let delta = portals.shift(paint.layer, delta);
             // A paint without a region of its own still reports where it is displayed.
             if delta != Vec2::ZERO && !hit_ids.contains(&paint.id) {
                 self.visuals.translate(paint.id, delta);
@@ -33,7 +33,7 @@ impl Context {
         }
         let mut translated = HashSet::new();
         for (mut hit, scope) in hits {
-            let delta = Portal::hit_shift(portal, hit.window, hit.id, delta);
+            let delta = portals.hit_shift(hit.window, hit.id, delta);
             if delta != Vec2::ZERO && translated.insert(hit.id) {
                 self.visuals.translate(hit.id, delta);
             }
@@ -55,32 +55,32 @@ impl Context {
         delta: Vec2,
         clip: Rect,
         viewport: Rect,
-        portal: Option<Portal>,
+        portals: &Portals,
     ) {
         let (outer, clipped) = (p.outer_clip(clip, viewport), p.clipped_by());
         for pending in &mut self.scrolling.pending[p.paints_range.clone()] {
-            if !Portal::moves(portal, p, pending.layer) {
+            if !portals.moves(p, pending.layer) {
                 continue;
             }
-            pending.translate(Portal::shift(portal, pending.layer, delta));
+            pending.translate(portals.shift(pending.layer, delta));
             if clipped(Some(pending.scope)) {
                 pending.clip = pending.clip.intersect(outer(pending.layer));
             }
         }
         for (hit, scope) in &mut self.scrolling.hits[p.hits_range.clone()] {
-            if !Portal::moves(portal, p, hit.window) {
+            if !portals.moves(p, hit.window) {
                 continue;
             }
-            hit.translate(Portal::shift(portal, hit.window, delta));
+            hit.translate(portals.shift(hit.window, delta));
             if clipped(Some(*scope)) {
                 hit.clip = hit.clip.intersect(outer(hit.window));
             }
         }
         for scope in &mut self.scrolling.scopes[p.scopes_range.clone()] {
-            if !Portal::moves(portal, p, scope.window) {
+            if !portals.moves(p, scope.window) {
                 continue;
             }
-            scope.translate(Portal::shift(portal, scope.window, delta));
+            scope.translate(portals.shift(scope.window, delta));
             if clipped(scope.parent) {
                 scope.outer_clip = scope.outer_clip.intersect(outer(scope.window));
             }
@@ -95,23 +95,17 @@ impl Context {
         delta: Vec2,
         clip: Rect,
         viewport: Rect,
-        portal: Option<Portal>,
+        portals: &Portals,
     ) {
-        let Some((scope, rect)) = p.ime else {
+        let Some((window, scope, rect)) = p.ime else {
             return;
         };
-        let window = scope.map_or(p.window, |scope| self.scrolling.scopes[scope].window);
-        let mut rect = rect.translate(Portal::shift(portal, window, delta));
+        let mut rect = rect.translate(portals.shift(window, delta));
         if p.clipped_by()(scope) {
             rect = rect.intersect(p.outer_clip(clip, viewport)(window));
         }
-        if let Some(parent) = self
-            .placements
-            .stack
-            .last_mut()
-            .filter(|parent| parent.window == p.window)
-        {
-            parent.ime = Some((scope, rect));
+        if let Some(parent) = self.collecting(window) {
+            parent.ime = Some((window, scope, rect));
         } else if let Some(scope) = scope {
             self.scrolling.ime = Some((scope, rect));
         } else {
@@ -153,8 +147,8 @@ impl Context {
             self.paint(paint.id, paint.layer, paint.clip, paint.paint);
             if let Some(material) = paint.material {
                 self.mark_material(paint.id, material, paint.blur);
-            } else if let Some(radius) = paint.blur {
-                self.mark_blur(paint.id, radius);
+            } else if let Some(sigma) = paint.blur {
+                self.mark_blur(paint.id, sigma);
             }
         }
     }

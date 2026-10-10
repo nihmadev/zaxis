@@ -52,7 +52,9 @@ Tab focuses the trigger. Up/Down, Enter or Space opens the list, initially
 revealing the selected enabled option. Up/Down skips disabled options; Home/End
 selects the first/last active candidate; Page Up/Down moves by `visible_rows`.
 Enter selects the active option. Escape cancels and returns focus to the trigger.
-Tab closes the popup and continues normal focus traversal. Pointer selection
+Tab closes the popup and continues normal focus traversal. A combo box built inside a
+[Popup](./popup.mdx) opens its list as a child of it: choosing, Escape and Tab close the
+list and leave the parent open. Pointer selection
 also returns focus to the trigger. Navigation scrolls the active row into view.
 
 `filterable(true)` uses the existing `TextEdit`, including Unicode editing,

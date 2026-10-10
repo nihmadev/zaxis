@@ -1,9 +1,12 @@
 //! Logical viewport uniforms and DPI-aware physical clipping.
 
-use super::{RenderError, Renderer};
+use super::{gpu::Gpu, RenderError};
 use crate::{DrawData, Rect};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
+
+/// Bytes of the viewport uniform: logical size, scale, padding, region origin, reserved.
+pub const UNIFORM_BYTES: u64 = 32;
 
 pub fn create_bindings(
     device: &wgpu::Device,
@@ -22,7 +25,7 @@ pub(super) fn create_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
-                min_binding_size: wgpu::BufferSize::new(16),
+                min_binding_size: wgpu::BufferSize::new(UNIFORM_BYTES),
             },
             count: None,
         }],
@@ -36,7 +39,7 @@ pub(super) fn create_uniform(
 ) -> (wgpu::Buffer, wgpu::BindGroup) {
     let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("zaxis viewport"),
-        contents: bytemuck::cast_slice(&[1.0_f32, 1.0, 0.0, 0.0]),
+        contents: bytemuck::cast_slice(&[1.0_f32, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
     let viewport_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -69,6 +72,11 @@ pub(super) fn validate(data: &DrawData) -> Result<(), RenderError> {
             "blur sigma must be finite and in (0, 64]",
         ));
     }
+    if data.commands.iter().filter(|c| c.blur.is_some()).count() > super::blur::plan::MAX_EFFECTS {
+        return Err(RenderError::InvalidDrawData(
+            "too many backdrop effects in one frame",
+        ));
+    }
     if !data.logical_size.is_finite()
         || data.logical_size.min_element() <= 0.0
         || !data.scale_factor.is_finite()
@@ -81,12 +89,18 @@ pub(super) fn validate(data: &DrawData) -> Result<(), RenderError> {
     Ok(())
 }
 
-impl Renderer {
-    pub(super) fn prepare_viewport(&mut self, data: &DrawData) {
+impl Gpu {
+    /// Write the uniform for `data` drawn into the area of the target that starts at
+    /// `origin` (physical pixels); skipped when it already holds these values.
+    pub(super) fn prepare_viewport(&mut self, data: &DrawData, origin: [u32; 2]) {
         let viewport = [
             data.logical_size.x,
             data.logical_size.y,
             data.scale_factor,
+            0.0,
+            origin[0] as f32,
+            origin[1] as f32,
+            0.0,
             0.0,
         ];
         if self.viewport_value != viewport {

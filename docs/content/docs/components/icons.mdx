@@ -33,6 +33,27 @@ Names starting with a digit get a leading underscore. Lucide renames icons betwe
 Look names up on [lucide.dev/icons](https://lucide.dev/icons).
 
 `Icon::name()` returns the Lucide name and `Icon::svg()` the UTF-8 SVG bytes.
+`Icon::svg_str()` borrows the same document as static UTF-8 text.
+
+## Using z-icons without zaxis
+
+`z-icons` is an independent `no_std` crate with no runtime dependencies. Applications can
+depend on it directly and pass SVG bytes or text to their own renderer. See its
+[`README`](https://github.com/nihmadev/zaxis/blob/main/crates/z-icons/README.md) for
+installation, custom icons, allocation-free output and the standalone export example.
+
+```rust
+let svg = z_icons::USER.render().color("#2563eb").size(32, 32).to_string();
+// Use svg.as_bytes() with your application's SVG loader.
+```
+
+`render()` defaults to `currentColor` for inline SVG and can set color, intrinsic dimensions
+and stroke width. Use an explicit color for external images. Raw `svg()` retains white
+strokes for tinting, so the existing zaxis integration is unchanged.
+
+For runtime discovery, enable the `z-icons` feature `catalog`: `z_icons::get("user")`
+returns an icon by its exact name and `z_icons::all()` lists the sorted set. Using the
+catalog retains all bundled SVG data; static constants need no feature.
 
 ## Size and color
 
@@ -44,8 +65,8 @@ as for any SVG. Without `.size(...)` an icon is 24 × 24.
 ## Binary size
 
 Every icon is a separate `static`, so the linker drops those you do not reference.
-There is no list of all icons in the crate for the same reason. Only the SVG sources you
-use are embedded; parsing and rasterization happen at run time through the image cache.
+The default build has no catalog referencing all icons. Only the SVG sources you use need
+to be embedded; parsing and rasterization in zaxis happen at run time through the image cache.
 
 ## Custom icons
 

@@ -5,7 +5,10 @@ description: Connect Context and Renderer to a winit ApplicationHandler without 
 ---
 
 Use a custom host when you already own the event loop, need runtime presentation
-switching, or construct the context with custom fonts. The built-in runner
+switching, or construct the context with custom fonts. When the application also owns
+the GPU device, the swapchain and the frame (a game engine, an editor), draw into its
+pass or texture instead: see [Embedding in a wgpu host](./embedding.mdx). To draw inside a process
+you did not write, over the frames it presents, see [Overlay in another process](./hook.mdx). The built-in runner
 also accepts a font family through `RunOptions::with_font_family`. The complete runnable
 reference is [examples/integration.rs](https://github.com/nihmadev/zaxis/blob/main/examples/integration.rs).
 
@@ -45,6 +48,17 @@ if they must survive suspension.
 For matching native `WindowId`, forward events to `Context::on_window_event` before
 your host-specific handling. Request native redraw when `EventResponse::repaint` is
 true. Use `consumed` to decide whether other application handlers should process input.
+
+`consumed` is decided inside `on_input` / `on_window_event`, before the next pass, from the key
+claims, focus groups and hit regions the last finished pass published: a key a focused widget
+claimed with `Ui::keys`, an arrow of a focus group and an action's stroke are consumed right
+there, with no UI pass to wait for, so a host can withhold the key from the application beneath
+at once (the browser key policy and `z-hook` do the same with the figure they get back).
+Run the first pass before forwarding keys; until then nothing is claimed and the key is
+returned unconsumed. Losing window focus (`Focus(false)`) releases every held key and drops
+queued events and key owners, so a release that never arrives leaves nothing stuck. Contexts
+are independent: separate windows keep separate claims, groups and queues. Counters of all
+of this are in `Context::input_stats()`.
 
 After events and UI passes, apply the native cursor hint:
 `window.set_cursor(context.cursor_icon())`. It uses the same clipped hit regions

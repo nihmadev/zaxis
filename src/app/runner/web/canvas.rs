@@ -2,7 +2,10 @@
 //! the graphics API, and keeping the browser's own reactions away from the UI.
 
 use super::CONSUMED;
-use crate::app::{browser::blocks_browser_default, RunError, WebBackend, WebOptions};
+use crate::app::{
+    browser::{blocks_browser_default, claims_shortcut},
+    RunError, WebBackend, WebOptions,
+};
 use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::{Document, Event, HtmlCanvasElement, KeyboardEvent};
 
@@ -12,6 +15,8 @@ pub(super) struct Page {
     /// The runner made the canvas cover the whole browser window, so nothing else on the
     /// page can scroll under the pointer.
     covers_window: bool,
+    /// Shortcuts the application claimed from the browser.
+    claimed: Vec<String>,
 }
 
 fn error(message: impl Into<String>) -> RunError {
@@ -40,6 +45,7 @@ pub(super) fn acquire(options: &WebOptions) -> Result<Page, RunError> {
         return Ok(Page {
             canvas,
             covers_window: false,
+            claimed: options.claimed_shortcuts.clone(),
         });
     }
     let host = match &options.container_id {
@@ -71,6 +77,7 @@ pub(super) fn acquire(options: &WebOptions) -> Result<Page, RunError> {
     Ok(Page {
         canvas,
         covers_window,
+        claimed: options.claimed_shortcuts.clone(),
     })
 }
 
@@ -89,16 +96,24 @@ pub(super) fn install(page: &Page) {
     }
     let _ = canvas.focus();
     listen(canvas, "contextmenu", |event| event.prevent_default());
-    listen(canvas, "keydown", |event| {
+    let claimed = page.claimed.clone();
+    listen(canvas, "keydown", move |event| {
         let key: KeyboardEvent = event.unchecked_into();
         let consumed = CONSUMED.with(|consumed| consumed.get());
+        let modifiers = (
+            key.ctrl_key(),
+            key.meta_key(),
+            key.alt_key(),
+            key.shift_key(),
+        );
         if blocks_browser_default(
             &key.key(),
             key.ctrl_key(),
             key.meta_key(),
             key.alt_key(),
             consumed,
-        ) {
+        ) || claims_shortcut(&claimed, &key.key(), modifiers, consumed)
+        {
             key.prevent_default();
         }
     });

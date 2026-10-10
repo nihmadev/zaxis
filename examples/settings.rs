@@ -1,8 +1,31 @@
+use zaxis::winit::keyboard::KeyCode;
 use zaxis::{
     vec2, App, Border, Button, Card, Checkbox, CloseRequested, Color, ColorPicker, ColorPickerType,
     Confirm, Confirmation, Context, Frame, Padding, PresentationMode, Root, RunOptions, Shape,
     Slider, Widget,
 };
+use zaxis::{Action, Actions, Mods};
+
+/// Apply, Cancel and Restore are actions: the buttons and the keys run the same commands.
+#[derive(Clone, Copy, Debug, Hash)]
+enum Command {
+    Apply,
+    Cancel,
+    Restore,
+}
+
+fn commands() -> Actions {
+    Actions::new()
+        .register(Action::new(Command::Apply, "Apply").shortcut(Mods::PRIMARY.key(KeyCode::KeyS)))
+        .register(
+            Action::new(Command::Cancel, "Cancel changes")
+                .shortcut(Mods::PRIMARY.key(KeyCode::KeyZ)),
+        )
+        .register(
+            Action::new(Command::Restore, "Restore defaults")
+                .shortcut((Mods::PRIMARY | Mods::SHIFT).key(KeyCode::KeyR)),
+        )
+}
 
 #[path = "settings/chrome.rs"]
 mod chrome;
@@ -208,6 +231,12 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
         });
     }
     let before_frame = model.draft.clone();
+    if context.action_registry().is_empty() {
+        context.set_actions(commands());
+    }
+    let dirty = model.dirty();
+    context.actions().set_enabled(Command::Apply, dirty);
+    context.actions().set_enabled(Command::Cancel, dirty);
     Root::new()
         .padding(Padding {
             top: zaxis::TitleBar::HEIGHT + 12.0,
@@ -323,19 +352,21 @@ fn show_ui(context: &mut Context, model: &mut SettingsModel) {
             ui.add_space(8.0);
             ui.separator();
             ui.horizontal_aligned(zaxis::Align::Center, |ui| {
-                let restore = Button::new("Restore defaults")
-                    .tooltip("Restore the default values. Apply to commit the changes.");
-                if ui.add(restore).clicked() {
-                    model.reset();
-                }
+                ui.add(Button::action(Command::Restore));
                 ui.spacer();
-                if ui.add(Button::new("Cancel changes").enabled(model.dirty())).clicked() {
-                    model.cancel();
-                }
-                if ui.add(Button::new("Apply").enabled(model.dirty())).clicked() {
-                    model.apply();
-                }
+                ui.add(Button::action(Command::Cancel));
+                ui.add(Button::action(Command::Apply));
             });
+            let mut actions = ui.actions();
+            if actions.triggered(Command::Restore) {
+                model.reset();
+            }
+            if actions.triggered(Command::Cancel) {
+                model.cancel();
+            }
+            if actions.triggered(Command::Apply) {
+                model.apply();
+            }
             ui.muted(if model.dirty() {
                 "You have unapplied changes."
             } else {

@@ -9,16 +9,20 @@ description: Exported types and method groups with direct links to their contrac
 | Types / functions | Contract |
 | --- | --- |
 | `run`, `run_with_options`, `App`, `Frame`, `RunOptions`, `RunError` | [Desktop runner](./app.mdx) |
-| `Context`, `EventResponse`, `InputState` | [Context below](#context), [Input](./input.mdx), [Custom host](./integration.mdx) |
+| `Context`, `EventResponse`, `InputState`, `InputStats` | [Context below](#context), [Input](./input.mdx), [Custom host](./integration.mdx) |
+| `KeyInterest`, `KeyEvent` | Keys a focused widget owns and the events it receives: [Keys for a widget](./input.mdx#keys-for-a-widget), [Custom widgets](./custom-widgets.mdx#keys-uikeysresponse-keyinterest--veckeyevent) |
+| `FocusGroup`, `FocusGroupOutput`, `FocusAxis` | One Tab stop and arrow-key navigation for several controls: [Focus groups](./input.mdx#focus-groups) |
 | `Diagnostic`, `DiagnosticKind`, `DebugOverlay` | [Diagnostics](./diagnostics.mdx) |
 | `Id` | [IDs and retained state](./ids.mdx) |
 | `Ui`, `Widget`, `Response`, `Sense` | [Ui below](#ui), [Components](./components/index.mdx), [Input](./input.mdx), [Custom widgets](./custom-widgets.mdx) |
 | `Field`, `Validation`, `SemanticStatus` | [Field and validation](./components/field.mdx) |
+| `Dock`, `DockState`, `DockNode`, `DockChild`, `DockFloat`, `PanelId`, `DockViewer`, `DockOutput`, `DockPanelOutput`, `DockEvent`, `DockSide`, `DockDropZone`, `DockStyle`, `DockPreset`, `DockMotion`, `DockActions`, `DockError`, `DockIssue` | [IDE panel workspace](./components/dock.mdx) |
 | `Window` | [Panel builders and geometry](./components/window.mdx) |
 | `Grid`, `GridUi`, `GridRow`, `GridStyle`, `GridOutput`, `Column`, `ColumnWidth`, `Align` | [Shared column layout](./components/grid.mdx) |
 | `Table`, `TableBody`, `TableStyle`, `TableOutput`, `SortRequest`, `SortDirection` | [Data table composition](./components/table.mdx) |
 | `ScrollArea`, `ScrollAreaOutput`, `ScrollStyle` | [Scroll viewports and virtualization](./components/scroll-area.mdx) |
-| `Popup`, `PopupOutput` | [Overlay layers and dismissal](./components/popup.mdx) |
+| `PanZoom`, `PanZoomState`, `PanZoomOutput`, `ZoomWheel` | [Application camera and local content](./components/pan-zoom.mdx) |
+| `Popup`, `PopupOutput`, `MAX_POPUP_DEPTH` | [Overlay layers and dismissal](./components/popup.mdx) |
 | `Modal`, `ModalOutput`, `ModalAnchor`, `ModalStyle`, `CloseReason`, `Dialog`, `DialogAction`, `DialogOutput`, `Confirm`, `Confirmation` | [Modal dialogs, confirmations and sheets](./components/modal.mdx) |
 | `ComboBox`, `ComboBoxOption`, `ComboBoxStyle` | [Selection and filtering](./components/combo-box.mdx) |
 | `Tooltip`, `TooltipWidget`, `ContextMenu`, `ContextMenuWidget` | [Tooltip](./components/tooltip.mdx), [ContextMenu](./components/context-menu.mdx) |
@@ -39,6 +43,7 @@ description: Exported types and method groups with direct links to their contrac
 | `DrawData`, `GeometryUpdate`, `DrawCommand`, `Vertex`, `TextureId`, `TextureImage` | [Drawing protocol](./protocol.mdx) |
 | `Material`, `MaterialId`, `MaterialPaint`, `MaterialError`, `MaterialErrorKind`, `ParamKind`, `ParamLayout`, `ParamValue`, `Params`, `MaterialDraw`, `MaterialSource`, `MAX_MATERIALS`, `MAX_UNIFORM_BYTES`, `MAX_PARAM_BYTES`, `FRAME_BYTES` | [Materials](./materials.mdx) |
 | `Renderer`, `RenderError`, `RenderStatus`, `PresentationMode` | [Renderer](./renderer.mdx) |
+| `EmbeddedRenderer`, `EmbedOptions`, `EmbedAlpha`, `EmbedColorSpace`, `EmbedViewport`, `EmbedLoad`, `PhysicalRect`, `RecordReport`, `EmbedError` | [Embedding in a wgpu host](./embedding.mdx) |
 | `CacheStats`, `RendererStats` | [Performance counters](./performance.mdx#counters) |
 | `Vec2`, `vec2` | glam two-dimensional vectors |
 | `winit`, `wgpu` | Integration-crate re-exports |
@@ -58,11 +63,12 @@ One context holds UI state for one native viewport.
 | `sample_animation`, `animation_status`, `pause_animation`, `resume_animation`, `cancel_animation`, `finish_animation`, `restart_animation`, `restart_animation_with` | Animation sampling and controls |
 | `transition_smooth` | Velocity-preserving property transition |
 | `set_animation_rate`, `reverse_animation`, `seek_animation`, `animation_elapsed`, `animation_rate`, `animation_duration` | Playback rate, direction and scrubbing |
-| `on_window_event(&WindowEvent)` | `EventResponse`; process native input immediately |
-| `on_key_event(KeyCode, ElementState, bool)` | `EventResponse`; physical key bridge, with repeat flag; text/modifiers supplied separately |
+| `on_window_event(&WindowEvent)` | `EventResponse`; process native input immediately (converts with `InputEvent::from_window_event` and calls `on_input`) |
+| `on_input(InputEvent)` | `EventResponse`; the one input entry point, with no window or event loop: `PointerMoved`, `Button`, `Wheel`, `Key`, `Modifiers`, `Ime`, `Focus`, `Resized`, `ScaleFactor`, file drop; see [Input](./input.mdx#input-without-a-window) |
+| `on_key_event(KeyCode, ElementState, bool)` | `EventResponse`; physical key bridge, with repeat flag; text/modifiers supplied separately; the event's `logical` key is unidentified |
 | `sync_ime(&Window)` | Enable and position native IME after a custom host UI pass |
 | `ime_cursor_area()` | Optional logical composition window anchor |
-| `request_focus(Id)`, `close_popup()` | Move widget focus; close overlay and restore focus |
+| `request_focus(Id)`, `close_popup()`, `close_popup_branch()` | Move widget focus; close the leaf popup, or the whole branch of nested popups, and restore focus |
 | `diagnostics()`, `set_diagnostic_handler(..)`, `set_debug_overlay(DebugOverlay)`, `debug_overlay()` | [Usage diagnostics and the debug overlay](./diagnostics.mdx) |
 | `on_text_event(&str)` | `EventResponse`; committed text bridge for TextEdit and editable color fields |
 | `input()` | `&InputState`; read accumulated input during the callback (idle outside an open modal) |
@@ -78,6 +84,7 @@ One context holds UI state for one native viewport.
 | `next_repaint()` | `Option<Instant>` |
 | `wants_animation_frame()` | Continuous visible motion; Vsync hosts request the next presented frame |
 | `cache_stats()` | `CacheStats` snapshot |
+| `input_stats()` | `InputStats`: key claims, events waiting, held keys owned, events dropped, focus groups and members; bounded counters for profiling and tests |
 
 `set_viewport` substitutes 1 for a nonpositive or nonfinite input scale. Use ordinary
 finite positive DPI values; renderable logical viewport and scale are validated by
@@ -92,6 +99,8 @@ Created by `Window::show`; construction fields are private.
 | --- | --- |
 | `add(impl Widget)` | `Response`; apply automatic follow-up repaint |
 | `interact(Rect, impl Hash, Sense)` | `Response` for custom geometry through the shared hit path; see [Custom widgets](./custom-widgets.mdx) |
+| `keys(&Response, KeyInterest)` | `Vec<KeyEvent>`; own these keys while the widget has focus and take its events (`claim_keys` declares, `take_keys` takes) |
+| `focus_entry(&Response)` | Inside a `FocusGroup`: the item Tab lands on from outside |
 | `add_enabled_ui(bool, build)` | Closure result; the one way to disable a group (`.enabled(bool)` for one control) |
 | `add_enabled(bool, impl Widget)` | Deprecated; use `add_enabled_ui` or `.enabled` |
 | `is_enabled()` | `bool`; effective enabled state |
@@ -163,3 +172,10 @@ cargo doc --no-deps --open
 
 Scroll containers also expose `Ui::scroll_vertical`, `Ui::scroll_to_rect`,
 `Ui::scroll_to_response`, and `Ui::available_height`. See [ScrollArea](./components/scroll-area.mdx).
+
+## Dock
+
+`Ui::dock(&mut DockState, viewer)` and `Dock::new(id_source, &mut state)` build
+application-owned panel trees. Builder options: `style`, `size`, `name`, `actions`
+and `show`. See [Dock](./components/dock.mdx) for model operations, output,
+floating windows and the versioned `save` / `load` format.

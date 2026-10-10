@@ -45,7 +45,8 @@ binding and toggles its own flags in response to `selected`.
 
 ## Limitations
 
-- One menu bar is open at a time (it uses the context's single popup).
+- One menu bar is open at a time; a menu bar inside a popup is a child popup of it, and its
+  cascading panels belong to that menu's popup (they move and close with it).
 - Submenus open immediately on hover, without a delay or a pointer-direction tolerance.
 - No icons, radio groups or custom widgets inside rows; no Alt-key mnemonics or `F10`
   focus; no OS-native menu bar.
@@ -57,3 +58,11 @@ and accepts `Click`, `Expand` and `Collapse`. An open panel is a `Menu` layer of
 items; the row highlighted by the keyboard is its active descendant. The compact form is a
 `Button` named "Menu" (English, not changeable).
 See [Accessibility](../accessibility.mdx#roles-states-and-requests).
+
+## Actions
+
+`MenuItem::action(id)` takes caption, shortcut (written per platform with `Kbd`), enabled and
+checked state from the action registry and raises the action's event when chosen, instead of
+being reported in `selected`. `.shortcut(String)` still works as display-only text for items
+that are not actions. `ContextMenuItem::action(id)` does the same. See
+[Actions and keymap](../actions.mdx).

@@ -14,6 +14,43 @@ pub struct WindowState {
 }
 
 impl Context {
+    pub(crate) fn forget_window(&mut self, id: Id) {
+        self.windows.remove(&id);
+        self.layers.retain(|layer| *layer != id);
+        self.visible_windows.remove(&id);
+    }
+    /// Publish an animated content frame before Window paints its resize grip.
+    pub(crate) fn set_window_displayed_bounds(&mut self, id: Id, rect: Rect) {
+        let clip = rect.intersect(self.viewport());
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.displayed_rect = rect;
+        }
+        if let Some(hit) =
+            self.interaction.hits.iter_mut().find(|hit| {
+                hit.id == id && hit.window == id && hit.action == super::HitAction::Block
+            })
+        {
+            hit.rect = rect;
+            hit.clip = clip;
+        }
+    }
+    /// Apply an owner's saved order while preserving unrelated layer positions.
+    pub(crate) fn order_windows(&mut self, ids: &[Id]) {
+        let known: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.layers.contains(id))
+            .collect();
+        let mut ordered = known.iter();
+        for layer in &mut self.layers {
+            if known.contains(layer) {
+                if let Some(next) = ordered.next() {
+                    *layer = *next;
+                }
+            }
+        }
+        self.stack_on_top();
+    }
     pub(crate) fn root_state(&mut self, id: Id) {
         let rect = self.viewport();
         self.windows.insert(
@@ -113,8 +150,14 @@ impl Context {
         }
     }
 
-    pub(super) fn top_window(&self, pointer: Vec2) -> Option<Id> {
-        if let Some(popup) = &self.popups.current {
+    pub(crate) fn window_moving(&self, id: Id) -> bool {
+        self.interaction
+            .capture
+            .is_some_and(|c| c.hit.window == id && c.hit.action == super::HitAction::Move)
+    }
+
+    pub(crate) fn top_window(&self, pointer: Vec2) -> Option<Id> {
+        if let Some(popup) = self.popups.top() {
             if self.viewport().contains(pointer) {
                 if let Some((layer, _)) =
                     popup.extra.iter().rev().find(|(_, r)| r.contains(pointer))

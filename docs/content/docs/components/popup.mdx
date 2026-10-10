@@ -6,8 +6,9 @@ description: Anchored overlay layers with viewport placement, dismissal and focu
 
 `Popup` is a general overlay container with its own paint and input layer.
 It does not create a `Window`, allocate parent layout space or inherit the
-parent's clip. One popup owns input at a time; opening another dismisses the
-previous one.
+parent's clip. The popup that was opened last owns input; a popup opened from
+inside another keeps its parent open (see [Nested popups](#nested-popups)),
+while opening an independent one replaces the whole open branch.
 
 ```rust
 use zaxis::{Popup, vec2};
@@ -49,6 +50,97 @@ from receiving pointer presses and scrolling. Outside presses consume the
 gesture before dismissal. Escape restores the requested focus (or the focus
 held before opening); Tab dismisses and resumes ordinary focus traversal.
 Losing native focus or omitting the popup/owner from a pass removes its hits.
+
+## Nested popups
+
+A popup built inside another popup's closure is its child, with no extra setting: the
+nesting follows the Ui it is built in. `ComboBox`, `ContextMenu` and `KeyBox` panels
+built inside a popup nest the same way, and so does a `Popup` inside an `ScrollArea`,
+`Grid` or `Table` cell or `Ui::visual` that sits inside the popup.
+
+```rust
+use zaxis::{Popup, vec2};
+
+Popup::new("editor", trigger.rect).size(vec2(280.0, 190.0)).show(ui, &mut open, |ui| {
+    ui.add(ComboBox::new(&mut mode, &modes));            // its list is a child
+    let more = ui.button("Advanced");
+    if more.clicked() { advanced = !advanced; }
+    Popup::new("advanced", more.rect).show(ui, &mut advanced, |ui| {
+        ui.add(Slider::new(&mut gain, 0.0..=1.0));
+    });
+});
+if !open { advanced = false; } // flags of children belong to the application
+```
+
+`examples/nested_popups.rs` is the complete version.
+
+**Opening.** A popup opens below the popup it was built in, as a child, a grandchild and so on
+up to [`MAX_POPUP_DEPTH`](#depth) levels. Opening it closes whatever was open at its level
+and below: another child of the same parent replaces its sibling; an independent popup
+(built outside every popup) replaces the whole branch. Nothing closes its ancestors.
+
+**Closing, by what is closed.**
+
+| Cause | Closes |
+| --- | --- |
+| `open` set to `false` by the application, or the popup not built | that popup and its descendants |
+| `Context::close_popup()` | the leaf only; its ancestors stay |
+| `Context::close_popup_branch()` | root and every descendant, one focus restore |
+| Escape | the leaf only |
+| Tab | the leaf only; focus traversal goes on among what remains |
+| a press (primary or secondary) outside the whole branch | the whole branch |
+| a press inside an ancestor, outside the popups opened from it | those popups |
+| native focus lost, a `Modal` opening | the whole branch, without restoring focus |
+| a popup or its owner not built in a pass | it and its descendants; a missing leaf keeps its ancestors |
+
+A press inside the leaf (or an extra panel of a menu, or the trigger proxy of a popup that
+has one) is an ordinary press for the control under it. A dismissing press is consumed whole:
+its release is not a click below, and the next press works on the ancestor. A secondary press
+follows the same targeting: inside the leaf it reaches the control (so a context menu can
+open from a popup), elsewhere it closes what it landed outside of.
+
+**Escape** closes one level per press. The autorepeat and the release of the press that
+closed a level belong to it and do not reach the level below, so holding Escape closes one
+level. Keys and presses that arrive between two redraws are routed at once and never reach a
+layer that is already closed.
+
+**Focus.** Each level remembers the focus it had when it opened (`return_focus` overrides it).
+Closing a level restores that focus once; when it is gone, disabled or clipped away, the
+trigger of the parent popup takes it, and otherwise focus settles by the usual rules.
+Closing a whole branch restores the focus of the root's trigger only, never of the
+intermediate ones.
+
+**The `open` flag of a child.** A popup closed from outside tells its builder once: the next
+time `show` runs, `open` is set to `false` and stays so (no reopening on the next pass). A
+popup that closed because its parent closed is told when the parent is shown again, so a
+flag kept by the application is reset in time; keep such flags in step with the parent anyway
+(`if !open { advanced = false; }`). The dismissal of a popup closed by its own `open` flag is
+never reported back.
+
+**Placement.** A child is fitted to the viewport against its own anchor after its parent
+moved, and may open upward. Popups inside `Grid`, `Table`, `ScrollArea` and `Ui::visual`, or
+in a `Window` that is moved, follow their anchors as before, at every level, together with
+extra panels of cascading menus. The full-viewport blocker of each level stays put.
+
+**Modal.** A popup built inside the top `Modal`, and its children, work as usual; a popup
+built outside the top modal is refused while it is open. The popup branch is separate from
+the modal stack: closing a popup never closes the modal, and Escape reaches the leaf popup
+first, then the modal.
+
+### Depth
+
+`zaxis::MAX_POPUP_DEPTH` (6) levels can be open at once. A deeper popup is not opened: its
+`open` flag is set to `false` and an `InvalidUsage` [diagnostic](../diagnostics.mdx) is
+reported; nothing below it is dropped. A popup built inside itself or inside a popup it
+opened is refused the same way.
+
+### Limitations
+
+- A popup built outside the closure of its parent is an independent root, even if its anchor
+  lies inside the parent.
+- While a branch is open, the pointer and keys belong to its leaf; hover and the wheel over
+  an ancestor are not routed to the ancestor's controls.
+- Actions and chords do not run while a popup is open.
 
 ## Accessibility
 

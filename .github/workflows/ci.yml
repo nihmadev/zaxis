@@ -10,6 +10,18 @@ permissions:
   contents: read
 
 jobs:
+  icons:
+    name: Standalone z-icons / Rust 1.90
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.90.0'
+      - run: cargo check -p z-icons --lib --no-default-features --locked
+      - run: cargo test -p z-icons --all-features --locked
+      - run: cargo package -p z-icons --locked
+
   clippy:
     runs-on: ubuntu-latest
     steps:

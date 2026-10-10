@@ -15,6 +15,8 @@ description: Stable identity for windows, changing captions, repeated controls, 
 | `DragSource`, `DropTarget` | UI scope, kind and the application `Id` passed in; results report that `Id` unchanged |
 | `Slider` | UI scope, construction call site, and occurrence at that site; optional `id_source` override |
 | `Text`, `Separator`, shapes, rows | UI scope, element kind, and allocation sequence |
+| `Ui::interact` region | UI scope and the `id_source` you pass; `Response::id` is that id |
+| `FocusGroup` | UI scope and its `id_source`; the closure runs in a scope of that id, so the same captions in two groups differ |
 
 An ID identifies retained focus, pointer capture, and cached geometry. Window IDs
 also retain position, size, and layer order. IDs are hashes for runtime identity;
@@ -76,6 +78,16 @@ closure's return value.
 Explicit `id_source` still inherits the surrounding scope. Moving a control to a
 different window, row, or `push_id` scope changes its final ID.
 
+## Keys and focus groups are bound to ids
+
+A key claim (`Ui::keys`) belongs to the `Response::id` it was made for, and the events it
+produces are addressed to that id: two widgets with the same claims and different scoped ids
+never get each other's keys, and a widget whose id changes loses the events queued under the old
+one. A focus group remembers the member that had focus by its id, so reordering, relabelling
+and rebuilding in another order keep the stop, while a member whose id changes is a new member.
+Give members of a group stable ids as for any retained state, and scope repeated controls
+with `Ui::push_id`. Two groups with one id in a pass are reported as an `IdCollision`.
+
 ## Id methods
 
 | Method | Result |
@@ -88,7 +100,9 @@ different window, row, or `push_id` scope changes its final ID.
 
 An omitted widget loses cached paint geometry at the end of that pass. Focus and
 capture are cleared when their matching interactive hit region disappears or changes
-kind. Omitted window geometry remains in the context; reopening the same window ID
+kind. Key claims, queued key events and a focus group's memory of its last member belong to
+the pass that built them: a widget or group that is not built in a pass loses them at its end.
+Omitted window geometry remains in the context; reopening the same window ID
 restores its position and size.
 
 Painting the same ID twice in one pass does not panic: both elements are drawn (the

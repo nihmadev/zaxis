@@ -34,8 +34,7 @@ impl Context {
             Some(pointer) => Some(self.top_window(pointer)?),
             None => self
                 .popups
-                .current
-                .as_ref()
+                .top()
                 .map(|popup| popup.id)
                 .or_else(|| self.top_modal_id()),
         };

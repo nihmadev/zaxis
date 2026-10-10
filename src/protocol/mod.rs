@@ -46,7 +46,7 @@ mod material;
 mod texture;
 mod vertex;
 
-pub use draw_command::DrawCommand;
+pub use draw_command::{DrawCommand, MAX_BACKDROP_SIGMA};
 pub(crate) use draw_data::next_source;
 pub use draw_data::{DrawData, GeometryUpdate};
 pub use material::{MaterialDraw, MaterialId, MaterialSource};

@@ -1,0 +1,178 @@
+---
+title: PanZoom
+icon: Move
+description: An application-owned camera, a fixed viewport, and local placement of ordinary controls.
+---
+
+`PanZoom` is a small container for an application's image, diagram, plot or editor.
+The application supplies its objects, culling and model. The container supplies a
+camera, a rectangular viewport and the existing input/placement/paint pipeline.
+
+```rust
+use zaxis::{vec2, PanZoom, PanZoomState, Rect, TextEdit};
+
+// Persist these in the application, outside the UI callback.
+let mut camera = PanZoomState::default();
+let mut title = String::from("Study");
+let mut applied = String::new();
+
+let output = PanZoom::new("study", vec2(600.0, 400.0))
+    .scale_limits(0.1..=8.0)
+    .show(ui, &mut camera, |ui, visible| {
+        let panel = Rect::from_min_size(vec2(-40.0, -20.0), vec2(180.0, 90.0));
+        if !panel.intersect(visible).is_empty() {
+            Some(ui.at("panel", panel, |ui| {
+                ui.add(TextEdit::new(&mut title).width(160.0));
+                if ui.button("Apply").clicked() { applied.clone_from(&title); }
+            }))
+        } else {
+            None
+        }
+    });
+```
+
+Both closures execute once per pass. `Ui::at(source, rect, build)` places an ordinary
+vertical `Ui` at `rect.min`, clips it to `rect`, and leaves the parent cursor alone.
+It works outside PanZoom too. Inside the camera, both `rect` and every descendant
+`Response::rect` are **content coordinates**. Negative positions are supported.
+Use stable sources and model IDs rather than labels or indexes in reordered data.
+
+Paint a vector object with `ui.paint(Shape::rect(local_rect, fill))` and interact
+with it using `ui.interact(local_rect, source, sense)`. Place an `Image`, Button,
+TextEdit, Slider, ScrollArea or another PanZoom through `ui.at`. The parent layout
+allocates only the viewport size, regardless of scene extent. `visible` is the full
+viewport in content units; it is conservative when an ancestor clips it. There is
+no automatic spatial index: the application decides which objects to build.
+
+## Camera and coordinate systems
+
+`PanZoomState` contains public `scale: f32` and `translation: Vec2`. Application
+edits are observed on the next pass without a setter or cache invalidation.
+
+```text
+parent_layout_point = viewport.min + translation + local_point * scale
+displayed_logical_point = ancestor_transform(parent_layout_point)
+physical_point = displayed_logical_point * Context::scale_factor()
+```
+
+Translation is in **logical viewport units before ancestor visual transforms**,
+not content units and not physical pixels. Scale is positive and dimensionless.
+An outer scale of two therefore divides a captured screen pan delta by two;
+the camera's own zoom never divides or multiplies pan displacement.
+`Response::drag_delta()` retains its existing displayed logical pixel units.
+
+`local_to_viewport` and `viewport_to_local` on the state convert between content
+and viewport-relative logical coordinates. The output's `transform(context)`,
+`local_to_screen(context, point)`, `screen_to_local(context, point)` and
+`displayed_viewport(context)` include ancestor visual, Grid/Table placement and
+scroll corrections. Use them after `Context::run`, or after all enclosing
+placements finish. `Context::visual_transform(id)` provides the same general
+layout-to-display mapping for external custom widgets. During the content callback,
+use `Context::input_transform(id)` for the geometry that owned the delivered input:
+`input_transform(id).inverse().vector(response.drag_delta())` converts a screen drag
+to content units, even at minimum zoom and inside deferred layout. The current pass
+transform is not complete until enclosing placements close. An output describes its
+own pass; rebuild it after camera or layout changes before using it for input.
+
+| Output | Units / meaning |
+| --- | --- |
+| `inner` | Result of the content closure |
+| `response` | Viewport response; rect is parent-layout logical coordinates |
+| `viewport` | Allocation in parent-layout logical coordinates before ancestor placement |
+| `visible` | Full viewport mapped back into content coordinates |
+| `camera` | Snapshot of the application camera used by this pass |
+| `changed` | Real final camera change, including external edits since the last published pass and normalization |
+| `panned`, `zoomed` | At least one routed pan/zoom actually changed the camera in this pass |
+
+`reset()` deterministically restores scale one and translation zero. On `show`,
+the configured limits clamp the result. `zoom_at(absolute_scale, anchor, limits)`
+keeps the content point under `anchor` fixed; its anchor is viewport-relative,
+before ancestor transforms. `fit(content_rect, viewport_size, padding, limits)`
+centers a content rectangle and chooses the smaller width/height scale, respecting
+the limits. Padding and viewport size are logical viewport units. Empty rectangles,
+empty viewports or padding that leaves no room return false without changing the camera.
+
+```rust
+camera.reset();
+camera.zoom_at(camera.scale * 1.25, viewport_size * 0.5, 0.1..=8.0);
+camera.fit(content_bounds, viewport_size, 24.0, 0.1..=8.0);
+```
+
+Use these methods from ordinary Button handlers or Actions. There are no camera
+keyboard shortcuts to compete with TextEdit or Space activation.
+
+## Input policy and ownership
+
+Defaults are primary drag of the **background** and Ctrl+vertical wheel on
+Windows/Linux or Cmd+vertical wheel on macOS. Shift/Alt combinations and wheel
+without the primary modifier retain normal routing. `zoom_wheel(ZoomWheel::Unmodified)`
+explicitly reserves plain vertical wheel; `Disabled` turns wheel zoom off.
+`pan_drag(false)` turns background dragging off; `enabled(false)` also disables
+child controls. No middle drag is installed: middle click and autoscroll keep their
+existing meanings. Touch/pinch, rotation and inertia are not provided.
+
+Ownership is determined synchronously in `Context::on_input` from the last published
+declarations and displayed geometry. Hosts, the browser runner and z-hook receive
+`EventResponse::consumed` before another pass. The next pass drains ordered input
+into the application's camera. Every zoom records its own pointer position and
+modifiers: two events at different anchors before redraw remain distinct.
+Adjacent captured pan deltas may combine without crossing a zoom event.
+
+- An open Popup/Modal and the top window retain layer priority.
+- A matching zoom reservation chooses the innermost enabled PanZoom under the pointer,
+  including over its nested ScrollArea. The outer camera and ScrollArea do not also move.
+- Ordinary wheel retains Carousel's existing axis/nested-scroll policy, then the
+  deepest ScrollArea and its parent chain. Unused input returns to the host, except
+  the existing popup/modal blocker. A reserved zoom remains consumed at a scale limit.
+- Buttons, Slider drags, TextEdit selection and custom drag-sensing regions built
+  inside the scene win over the background. DragSource also keeps its source gesture.
+- Background pan uses the shared primary capture and drag threshold. It continues
+  outside the viewport until release or cancellation. Response deltas keep their units.
+
+The ordered queue permits 256 wheel events between passes and a reserved captured-pan
+slot. An overflow is diagnosed and extra wheel events return to normal scroll/host
+routing. Hidden, fully clipped and removed owners are unpublished; disabled content
+receives no new gestures. Focus loss cancels capture and drops queued camera input.
+Resize and DPI events cancel queued camera input/capture until fresh geometry is published.
+Scrolling a descendant preserves the stationary camera viewport for subsequent input
+in the same burst; scrolling an ancestor invalidates that moved viewport until redraw.
+Unclaimed queues are discarded at pass end. Stable Ids retain the application camera
+through sibling reorder; different Contexts have independent transient routing.
+Camera changes request a follow-up pass; idle cameras have no animation or repaint timer.
+
+## Paint, text, images and portals
+
+The viewport clip stays fixed; content paint, input regions, descendant clips, scroll
+scopes, selection, caret/IME and accessibility geometry follow one composed transform.
+Popup anchors follow the scene, while the panel fits the logical screen viewport
+and its blocker stays fixed. Popup panels can leave the camera's clip.
+Rotated ancestor `Ui::visual` content keeps the existing inert policy.
+
+Text shaping and measurement stay in content units. Glyphs are rasterized at the
+displayed DPI/visual scale in quarter-step resolution buckets, capped at 32 physical
+pixels per content unit; zoom is not merely stretching the original small glyph atlas. Above the
+raster resolution cap, texture filtering enlarges the retained raster and can soften
+text. Image requests already include composed scale and DPI. SVG sources can rerasterize
+at that demand within ImageLimits; raster photographs cannot gain missing source detail.
+There is no camera-specific renderer, atlas, decoder or image cache.
+
+Coordinates in state/explicit regions are limited to +/-1,000,000; scale limits must
+satisfy `0.0001 <= min <= max <= 64` (default `0.1..=8`). Invalid limits use the default;
+NaN/Infinity camera values reset their invalid part, and finite excessive camera values
+clamp. Invalid positioned rects and fit arguments are diagnosed and ignored. These are
+practical f32 limits, not a precision guarantee for enormous scenes or extreme nesting.
+
+## Accessibility and example
+
+The viewport is a named Group (`accessible_label`, default “Pan and zoom”), with a
+gesture description. Children keep their roles, names, focus and requests. Decorations
+are absent from the tree. Applications expose reset/fit/zoom with named ordinary
+buttons or their own `Ui::accessible` actions; the camera adds no keyboard or AT command
+registry. It works without AccessKit.
+
+Run `cargo run --release --example pan_zoom`: draggable objects, a switchable SVG
+landscape, real TextEdit/Slider/Button controls in local rectangles, a nested ScrollArea,
+Popup, reset/fit/zoom and disabled mode. `-- --smoke-test` uses the standard native runner,
+sends camera gestures through `Context::on_input` and checks the resulting camera.
+The existing performance harness contains `pan_zoom_*` cases for idle, pan, zoom,
+wheel bursts, nested controls, model updates and mount/unmount, with application culling.

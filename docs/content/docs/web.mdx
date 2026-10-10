@@ -164,6 +164,11 @@ The page keeps what belongs to the browser and the UI takes what it uses:
 | Ctrl/Cmd+C, X and V, so the clipboard events fire | Typing, including `/` and `'`; Ctrl/Cmd+A |
 | | Any key the UI reports as consumed |
 
+A key that a widget claimed with `Ui::keys`, or that a [focus group](./input.mdx#focus-groups)
+used for navigation, is consumed when the event arrives, so it falls under the last row;
+a command combination such as Ctrl+S still needs its stroke in `WebOptions::claimed_shortcuts`.
+This has not been run in a browser.
+
 The browser's context menu is suppressed over the canvas, and `touch-action: none` keeps
 touch drags for the UI. The wheel is taken when the canvas covers the window, or when the UI
 scrolled with it; a canvas inside a page lets the page scroll otherwise.
@@ -210,6 +215,13 @@ from `zaxis::Instant`: `std::time::Instant` on native targets (the public signat
 | Suspension | A page is never suspended the way a mobile window is; the runner does not recreate its window |
 | Cursor | The UI's cursor icon becomes the canvas's CSS `cursor` |
 | Accessibility | Not supported. A canvas has no accessibility tree of its own, the runner creates no AccessKit adapter and nothing is collected; `RunOptions::with_accessibility` has no effect. See [Accessibility](./accessibility.mdx#platforms) |
+
+## Embedding
+
+`EmbeddedRenderer` compiles for `wasm32-unknown-unknown` and needs no window, but it was not run in a
+browser. Its wgpu resources are not `Send` there, and the backdrop filter keeps its intermediate
+textures in the target format unless the adapter says `Rgba16Float` is renderable and filterable
+(`new_with_adapter`). See [Embedding](./embedding.mdx).
 
 ## Checks
 

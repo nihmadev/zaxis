@@ -51,8 +51,7 @@ pub(super) fn apply<T: Clone + PartialEq>(
         state.open = false;
     }
     if !state.open && ui.context.popup_open(trigger.popup) {
-        ui.context.dismiss_popup(true);
-        ui.context.take_popup_dismissal(trigger.popup);
+        ui.context.close_popup_of_builder(trigger.popup);
         trigger.animate_closed(ui);
     }
     changed

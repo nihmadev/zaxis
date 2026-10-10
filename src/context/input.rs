@@ -36,6 +36,12 @@ impl InputState {
         }
     }
 
+    /// A key the dispatcher itself acted on (group navigation moved focus): it stays held,
+    /// but the control that now has focus must not read the same press and act on it too.
+    pub(super) fn unpress(&mut self, code: KeyCode) {
+        self.keys_pressed.remove(&code);
+    }
+
     pub(super) fn finish_frame(&mut self) {
         self.primary_pressed = false;
         self.secondary_pressed = false;
@@ -53,4 +59,36 @@ impl InputState {
 pub struct EventResponse {
     pub consumed: bool,
     pub repaint: bool,
+}
+
+/// Counters of keys addressed to widgets and of focus groups, for profiling and tests.
+/// Every figure is bounded: the queue, the held keys and the declarations do not grow
+/// with the time since the last pass or with the number of widgets ever seen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InputStats {
+    /// Widgets whose key claims the last pass published.
+    pub key_claims: usize,
+    /// Events queued for their owners until the next pass.
+    pub key_events_pending: usize,
+    /// Keys held down whose release an owner will take.
+    pub keys_owned: usize,
+    /// Events dropped because the queue was full, since the context was made.
+    pub key_events_dropped: u64,
+    /// Focus groups the last pass published.
+    pub focus_groups: usize,
+    /// Regions and nested groups that belong to those groups.
+    pub focus_group_members: usize,
+}
+
+impl super::Context {
+    pub fn input_stats(&self) -> InputStats {
+        InputStats {
+            key_claims: self.keys.declared(),
+            key_events_pending: self.keys.pending(),
+            keys_owned: self.keys.owned(),
+            key_events_dropped: self.keys.dropped(),
+            focus_groups: self.focus_groups.len(),
+            focus_group_members: self.focus_groups.members(),
+        }
+    }
 }

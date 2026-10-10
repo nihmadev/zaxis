@@ -1,6 +1,6 @@
 //! Child UIs pinned to a rectangle, for content that is drawn at a place of the carousel's
 //! choosing instead of at the layout cursor.
-use crate::{components::Ui, layout::LayoutCursor, Align, Id, Layout, Padding, Rect, Vec2};
+use crate::{components::Ui, Id, Padding, Rect, Vec2};
 
 /// Run `build` in a vertical layout that starts at `rect.min`, with paint and hits clipped
 /// to `clip`. The UI is disabled when `enabled` is false: its controls show but do not act.
@@ -12,25 +12,7 @@ pub(super) fn with_region<R>(
     enabled: bool,
     build: impl FnOnce(&mut Ui<'_>) -> R,
 ) -> R {
-    let spacing = ui.style().spacing.max(0.0);
-    let mut child = Ui {
-        context: &mut *ui.context,
-        window: ui.window,
-        scope,
-        sequence: 0,
-        clip,
-        layout: LayoutCursor::new(rect, Layout::Vertical, spacing),
-        enabled: ui.enabled && enabled,
-        backdrop_blur: ui.backdrop_blur,
-        hover_style: ui.hover_style,
-        flow: None,
-        local_style: ui.local_style.clone(),
-        local_style_revision: ui.local_style_revision,
-    };
-    child.begin_layout(Align::Start);
-    let result = build(&mut child);
-    child.finish_layout();
-    result
+    ui.region(scope, rect, clip, enabled, build)
 }
 
 /// The part of `bounds` that content may use. It is inset by `padding` and, on each side,

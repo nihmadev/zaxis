@@ -1,27 +1,37 @@
 //! wgpu backend with persistent buffers, texture versioning, and surface recovery.
 
 mod adapter;
-mod blur;
+mod backdrop;
+#[doc(hidden)]
+pub mod blur;
 mod diagnostics;
+mod draw;
+mod embed;
 mod error;
 mod frame;
 mod geometry;
+mod gpu;
 mod init;
 #[doc(hidden)]
 pub mod materials;
 #[doc(hidden)]
 pub mod pipeline;
+mod pipeline_cache;
 mod surface;
 #[doc(hidden)]
 pub mod textures;
 #[doc(hidden)]
 pub mod viewport;
 
-use std::sync::{Arc, Mutex, OnceLock};
-use textures::TextureStore;
+use gpu::Gpu;
+use std::sync::Arc;
 use winit::{dpi::PhysicalSize, window::Window};
 
 pub use diagnostics::{ImageUploadMeasurement, RendererStage, RendererTiming};
+pub use embed::{
+    EmbedAlpha, EmbedColorSpace, EmbedError, EmbedLoad, EmbedOptions, EmbedViewport,
+    EmbeddedRenderer, PhysicalRect, RecordReport,
+};
 pub use error::RenderError;
 
 /// Choose between synchronized presentation and the lowest available latency.
@@ -73,6 +83,18 @@ pub struct RendererStats {
     pub material_pipeline_failures: u64,
     /// Bytes of material uniform blocks written to the GPU by this renderer.
     pub material_uniform_bytes: u64,
+    /// Backdrop effect commands drawn, summed over presented frames.
+    pub blur_effects: u64,
+    /// Groups of effects whose filter passes were shared, summed over frames.
+    pub blur_batches: u64,
+    /// Groups whose backdrop was unchanged and whose filtered result was reused.
+    pub blur_batches_reused: u64,
+    /// Render passes and canvas copies of the backdrop filter (not the scene itself).
+    pub blur_passes: u64,
+    /// Texels written by those passes and copies.
+    pub blur_pixels: u64,
+    /// Estimate of the bytes of the filter's textures and buffers now: zero when freed.
+    pub blur_target_bytes: u64,
 }
 
 /// A renderer bound to one winit window. Owning an `Arc<Window>` makes surface
@@ -81,43 +103,22 @@ pub struct RendererStats {
 /// Further windows get their own renderer through [`Renderer::create_sibling`]. Siblings
 /// share the device, queue, pipelines and the GPU texture store (glyph atlas pages and
 /// images); each keeps its own surface, uniform, geometry buffers and blur targets.
+///
+/// Everything that belongs to the device rather than the window (buffers, textures,
+/// pipelines, counters) lives in a part the window-less
+/// [`EmbeddedRenderer`] uses as well; this type adds the surface, its configuration and
+/// recovery.
 pub struct Renderer {
+    gpu: Gpu,
     surface: wgpu::Surface<'static>,
     window: Arc<Window>,
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     presentation_mode: PresentationMode,
     attachment_format: wgpu::TextureFormat,
     physical_size: PhysicalSize<u32>,
-    pipeline: wgpu::RenderPipeline,
-    image_pipeline: wgpu::RenderPipeline,
-    scroll_hint_pipeline: wgpu::RenderPipeline,
-    backdrop_pipeline: wgpu::RenderPipeline,
-    blur: Option<blur::BlurRenderer>,
-    blur_pipelines: Arc<OnceLock<Arc<blur::BlurPipelines>>>,
-    materials: Arc<Mutex<materials::MaterialPipelines>>,
-    material_uniforms: materials::MaterialUniforms,
-    material_errors: Vec<String>,
-    uniform: wgpu::Buffer,
-    viewport_layout: wgpu::BindGroupLayout,
-    viewport_group: wgpu::BindGroup,
-    texture_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-    nearest_sampler: wgpu::Sampler,
-    store: Arc<Mutex<TextureStore>>,
-    vertices: wgpu::Buffer,
-    indices: wgpu::Buffer,
-    vertex_capacity: u64,
-    index_capacity: u64,
-    uploaded: Option<(u64, u64)>,
-    uploaded_sizes: [usize; 2],
-    viewport_value: [f32; 4],
-    device_lost: Arc<Mutex<Option<String>>>,
-    stats: RendererStats,
-    diagnostics: diagnostics::Diagnostics,
+    pipelines: Arc<pipeline::PipelineSet>,
 }
 
 impl Renderer {
@@ -134,12 +135,12 @@ impl Renderer {
         self.presentation_mode = mode;
         mode.apply(&mut self.config);
         if self.physical_size.width > 0 && self.physical_size.height > 0 {
-            self.surface.configure(&self.device, &self.config);
+            self.surface.configure(&self.gpu.device, &self.config);
         }
     }
 
     pub fn stats(&self) -> RendererStats {
-        self.stats
+        self.gpu.stats
     }
     pub fn adapter_info(&self) -> wgpu::AdapterInfo {
         self.adapter.get_info()
@@ -155,7 +156,8 @@ impl Renderer {
     /// This serializes CPU/GPU execution and should not be used in a normal frame loop.
     /// Completion does not mean the compositor has displayed the frame.
     pub fn wait_idle(&self, timeout: std::time::Duration) -> Result<(), RenderError> {
-        self.device
+        self.gpu
+            .device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: Some(timeout),
@@ -163,13 +165,8 @@ impl Renderer {
             .map_err(|error| {
                 RenderError::Validation(format!("waiting for GPU completion: {error}"))
             })?;
-        if let Some(message) = self
-            .device_lost
-            .lock()
-            .expect("device callback mutex")
-            .as_ref()
-        {
-            return Err(RenderError::DeviceLost(message.clone()));
+        if let Some(message) = self.gpu.lost() {
+            return Err(RenderError::DeviceLost(message));
         }
         Ok(())
     }

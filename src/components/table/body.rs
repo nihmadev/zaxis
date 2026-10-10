@@ -63,6 +63,7 @@ impl<'a, 'ctx> TableBody<'a, 'ctx> {
                 });
         }
         let id = self.setup.id.with(("selection", row));
+        self.ui.context.reserve_hit_order(id);
         // The header is row zero. A click request is the click that selects the row.
         let line = self.index.saturating_add(1).min(u32::MAX as usize) as u32;
         let (selectable, chosen) = (self.setup.selectable, self.setup.selected == Some(row));

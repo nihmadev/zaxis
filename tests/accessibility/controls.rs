@@ -1,7 +1,9 @@
 //! Single-value controls: switches, radio groups, tabs, disclosures, numbers, key and
 //! color pickers, and the field that labels them.
 
+mod dock;
 mod field;
+mod focus_group;
 mod numbers;
 mod pickers;
 mod tabs;

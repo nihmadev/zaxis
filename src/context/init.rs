@@ -104,8 +104,12 @@ impl Context {
             splits: Default::default(),
             containers: Default::default(),
             carousel_wheel: Default::default(),
+            camera_routing: Default::default(),
             selection: Default::default(),
             key_capture: Default::default(),
+            actions: Default::default(),
+            keys: Default::default(),
+            focus_groups: Default::default(),
             a11y: Default::default(),
         }
     }

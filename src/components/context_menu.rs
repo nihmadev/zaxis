@@ -9,6 +9,7 @@ use crate::{
 };
 
 mod access;
+mod actions;
 mod cache;
 pub(in crate::components) mod paint;
 
@@ -26,6 +27,8 @@ pub struct ContextMenuItem {
     pub checked: bool,
     /// Draws a chevron; set by cascading menus whose item opens a submenu.
     pub(crate) submenu: bool,
+    /// Bound to a registered action: see [`ContextMenuItem::action`].
+    pub(crate) action: bool,
 }
 
 impl ContextMenuItem {
@@ -40,7 +43,18 @@ impl ContextMenuItem {
             enabled: true,
             checked: false,
             submenu: false,
+            action: false,
         }
+    }
+    /// A row that runs a registered action. Its caption, shortcut, enabled and checked
+    /// state come from the registry on every pass; choosing it raises the action's event
+    /// (`ui.actions().triggered(id)`) and is not reported as `selected`. Pass the value the
+    /// action was declared with.
+    pub fn action(id: impl Hash) -> Self {
+        let mut item = Self::new("", "");
+        item.id = Some(crate::actions::action_id(id));
+        item.action = true;
+        item
     }
     pub fn separator() -> Self {
         Self {
@@ -53,6 +67,7 @@ impl ContextMenuItem {
             enabled: false,
             checked: false,
             submenu: false,
+            action: false,
         }
     }
     /// A font glyph or short symbol, in a dedicated aligned icon column.
@@ -183,7 +198,24 @@ impl<'a> ContextMenu<'a> {
     /// Attach after building the target, in the same UI scope. Works with passive
     /// text as well as controls, and follows deferred layout and scroll clipping.
     /// Action IDs must be unique within this menu.
-    pub fn show(mut self, ui: &mut Ui<'_>, target: Response) -> ContextMenuOutput {
+    pub fn show(self, ui: &mut Ui<'_>, target: Response) -> ContextMenuOutput {
+        if !actions::any(self.items) {
+            return self.show_items(ui, target);
+        }
+        let items = actions::resolve(ui, self.items);
+        let menu = ContextMenu {
+            source: self.source,
+            items: &items,
+            style: self.style,
+            position: self.position,
+            target: self.target,
+        };
+        let mut output = menu.show_items(ui, target);
+        actions::raise(ui, &items, &mut output.selected);
+        output
+    }
+
+    fn show_items(mut self, ui: &mut Ui<'_>, target: Response) -> ContextMenuOutput {
         self.style.normalize();
         let style = &self.style;
         let id = ui.scope.with(("context-menu", self.source, target.id));

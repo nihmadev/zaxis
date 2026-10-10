@@ -78,18 +78,28 @@ impl Visuals {
 }
 
 impl Context {
+    /// Layout → displayed logical coordinates from the last published pass, which
+    /// owns the input being delivered now. Available while building deferred content.
+    /// Map a screen drag vector with `input_transform(id).inverse().vector(delta)`;
+    /// unlike points, vectors do not include camera/placement translation.
+    pub fn input_transform(&self, id: Id) -> Transform {
+        self.visuals.input(id)
+    }
+
     /// Current visual bounds of a widget's logical allocation. During a pass,
     /// call after the enclosing visual/reorder helper has placed its content.
     pub fn visual_rect(&self, id: Id, logical: Rect) -> Rect {
+        self.visual_transform(id).rect(logical)
+    }
+
+    /// Layout → displayed logical coordinates after completed placement. During a pass,
+    /// use after the enclosing container has finished placing; otherwise use after `run`.
+    pub fn visual_transform(&self, id: Id) -> Transform {
         let transforms = if self.in_pass {
             &self.visuals.current
         } else {
             &self.visuals.input
         };
-        transforms
-            .get(&id)
-            .copied()
-            .unwrap_or_default()
-            .rect(logical)
+        transforms.get(&id).copied().unwrap_or_default()
     }
 }

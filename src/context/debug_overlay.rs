@@ -35,6 +35,7 @@ fn action_name(action: HitAction) -> &'static str {
         HitAction::TextEdit => "text edit",
         HitAction::Move => "move",
         HitAction::Resize => "resize",
+        HitAction::NativeDrag => "native drag",
         HitAction::ScrollThumb { .. } => "scroll thumb",
         HitAction::ColumnResize { .. } => "column resize",
         HitAction::DragSource { .. } => "drag source",

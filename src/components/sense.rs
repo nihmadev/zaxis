@@ -22,6 +22,9 @@ impl Sense {
     /// Tab and presses move keyboard focus here: `has_focus`, `gained_focus`,
     /// `lost_focus`, `focus_visible`.
     pub const FOCUS: Self = Self(8);
+    /// A middle-button press and release inside produce `middle_clicked`, and the press is
+    /// not the start of an autoscroll. It claims no other input: combine it with `CLICK`.
+    pub const MIDDLE: Self = Self(16);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0 && other.0 != 0
@@ -37,6 +40,9 @@ impl Sense {
     }
     pub const fn focus(self) -> bool {
         self.contains(Self::FOCUS)
+    }
+    pub const fn middle(self) -> bool {
+        self.contains(Self::MIDDLE)
     }
     /// Whether a pointer press anywhere inside must be claimed by this region.
     pub(crate) const fn claims_pointer(self) -> bool {

@@ -1,17 +1,30 @@
-//! The one open popup, popup-class layers and dismissals reported to popup builders.
+//! The open branch of popups, popup-class layers and dismissals reported to popup builders.
+//! Branch operations are in `branch`; pointer and key rules that use them are in
+//! `context/{pointer,keyboard}.rs`.
+mod branch;
+
+pub(crate) use branch::{Opening, Registered};
+
 use super::{Context, Id};
 use crate::{AccessAction, AccessNode, Rect};
-use std::collections::HashSet;
+use std::collections::HashMap;
+
+/// How many popups can be open one inside another, root included. Opening a deeper one is
+/// refused with a diagnostic; nothing below it is dropped.
+pub const MAX_POPUP_DEPTH: usize = 6;
 
 #[derive(Default)]
 pub(crate) struct Popups {
-    /// The open popup, if any.
-    pub(crate) current: Option<PopupState>,
+    /// The open popups from the root to the leaf. Each level was opened from inside the
+    /// one before it.
+    pub(crate) branch: Vec<PopupState>,
     /// Popup-class layers of this pass (popups, modals, toasts), in build order.
     pub(crate) layers: Vec<Id>,
     /// Popups closed from outside their builder (an outside press, Escape, focus loss),
     /// until the builder hears of it.
-    dismissed: HashSet<Id>,
+    dismissed: HashMap<Id, Dismissal>,
+    /// Escape closed a level and is still held: its repeats and release stay with it.
+    pub(crate) escape_held: bool,
 }
 
 impl Popups {
@@ -19,15 +32,36 @@ impl Popups {
         self.layers.clear();
     }
 
-    /// A dismissal is forgotten once the popup's body is no longer painted.
-    pub(super) fn retire(&mut self, painted: impl Fn(Id) -> bool) {
-        self.dismissed
-            .retain(|id| painted(crate::components::popup::body_id(*id)));
+    /// A dismissal is forgotten once the popup's body is no longer painted. A popup that
+    /// closed with its parent also waits (for a bounded time) until the parent is shown
+    /// again, so a flag the application kept for it is reset when its builder runs.
+    pub(super) fn retire(&mut self, frame: u64, painted: impl Fn(Id) -> bool) {
+        let body = crate::components::popup::body_id;
+        self.dismissed.retain(|id, dismissal| {
+            painted(body(*id))
+                || dismissal.parent.is_some_and(|parent| {
+                    !painted(body(parent))
+                        && frame.saturating_sub(dismissal.frame) < DISMISSAL_FRAMES
+                })
+        });
     }
+}
+
+/// How long the dismissal of a popup that closed with its parent is kept while the parent
+/// stays closed, in passes.
+const DISMISSAL_FRAMES: u64 = 1024;
+
+/// A popup closed from outside: the popup it was opened from, and when.
+pub(crate) struct Dismissal {
+    pub parent: Option<Id>,
+    pub frame: u64,
 }
 
 pub struct PopupState {
     pub id: Id,
+    /// The popup this one was opened from; `None` for a root.
+    pub parent: Option<Id>,
+    /// The window (or modal) layer the root was built in; children inherit it.
     pub owner: Id,
     pub anchor: Rect,
     pub rect: Rect,
@@ -47,38 +81,10 @@ pub(crate) struct Wrapped {
 }
 
 impl Context {
-    /// Close the active popup now, removing hits and restoring its trigger focus.
-    pub fn close_popup(&mut self) {
-        self.dismiss_popup(true);
-    }
-    pub(crate) fn dismiss_popup(&mut self, restore_focus: bool) {
-        if let Some(popup) = self.popups.current.take() {
-            if let Some(target) = popup.key_target {
-                self.take_menu_keys(target);
-            }
-            self.popups.dismissed.insert(popup.id);
-            self.remove_popup_hits(popup.id);
-            if restore_focus {
-                self.set_focus(popup.return_focus);
-            }
-            self.interaction.keyboard_active = None;
-            self.stop_auto_scroll();
-            self.request_repaint();
-        }
-    }
-
     /// Whether popup `id` was closed from outside since its builder last asked; asking
     /// forgets it.
     pub(crate) fn take_popup_dismissal(&mut self, id: Id) -> bool {
-        self.popups.dismissed.remove(&id)
-    }
-
-    /// Whether popup `id` is the open one.
-    pub(crate) fn popup_open(&self, id: Id) -> bool {
-        self.popups
-            .current
-            .as_ref()
-            .is_some_and(|popup| popup.id == id)
+        self.popups.dismissed.remove(&id).is_some()
     }
 
     pub(crate) fn remove_popup_hits(&mut self, id: Id) {

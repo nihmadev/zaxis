@@ -112,6 +112,26 @@ pub(crate) fn finite_rect(what: &'static str, value: Rect) -> Option<Rect> {
     None
 }
 
+/// Keep explicitly positioned geometry within the library's practical coordinate range.
+#[track_caller]
+pub(crate) fn positioned_rect(what: &'static str, rect: Rect) -> Option<Rect> {
+    if rect.is_finite()
+        && rect.min.abs().max_element() <= 1.0e6
+        && rect.max.abs().max_element() <= 1.0e6
+        && rect.size().min_element() >= 0.0
+    {
+        Some(rect)
+    } else {
+        report(
+            what,
+            "a finite rectangle within +/-1000000",
+            format!("{rect:?}"),
+            "ignored",
+        );
+        None
+    }
+}
+
 /// Repeating or reversing motion cannot drive presence, reveal or highlight
 /// release; they are forced to a single forward transition.
 #[track_caller]

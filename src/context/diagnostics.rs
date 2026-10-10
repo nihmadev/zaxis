@@ -182,6 +182,7 @@ impl Context {
                     | HitAction::ContextMenu
                     | HitAction::Move
                     | HitAction::Resize
+                    | HitAction::NativeDrag
                     | HitAction::Semantic
             );
             if interactive && (hit.rect.is_empty() || !hit.rect.is_finite()) {

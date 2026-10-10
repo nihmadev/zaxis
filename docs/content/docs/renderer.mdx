@@ -5,7 +5,17 @@ description: Public methods, presentation modes, surface recovery, validation, a
 ---
 
 `Renderer` binds to one `Arc<winit::window::Window>`. It owns the GPU surface, instance,
-adapter, device, queue, buffers, textures, pipeline, and optional MSAA attachment.
+adapter, device, queue, buffers, textures and pipelines.
+
+Internally it is two parts. The part that belongs to the device (queue handle, layouts and
+samplers, the built-in pipelines per color format, sample count and depth format, the texture
+store with the glyph atlas, geometry buffers, viewport uniform, material blocks, backdrop
+textures, counters) does not know about windows; the part that belongs to the window is the
+surface, its configuration, the presentation mode and recovery. `EmbeddedRenderer` uses only the
+first part, on a device the host created, to draw into a render pass or texture it owns: see
+[Embedding in a wgpu host](./embedding.mdx). `Renderer::create_embedded(options)` makes one that
+shares this renderer's pipelines, atlas and image store, as `create_sibling` does for a second
+window.
 
 ## Methods
 
@@ -20,6 +30,8 @@ adapter, device, queue, buffers, textures, pipeline, and optional MSAA attachmen
 | `set_presentation_mode(mode)` | Reconfigure presentation while preserving mesh/texture caches |
 | `stats()` | Snapshot cumulative `RendererStats` |
 | `adapter_info()` | `wgpu::AdapterInfo` for diagnostics |
+| `create_sibling(window, mode)` | Renderer for another window on the same device; shares pipelines and the texture store |
+| `create_embedded(EmbedOptions)` | [`EmbeddedRenderer`](./embedding.mdx) on this device, sharing pipelines and the texture store |
 
 Initialization selects a low-power compatible adapter, requests downlevel GPU limits
 with the adapter's resolution limits, and creates the surface through safe `Arc`

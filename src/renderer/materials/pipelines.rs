@@ -1,6 +1,9 @@
 //! Pipelines of user materials, created on first use and kept in a bounded cache.
 
-use crate::{renderer::textures, MaterialId, MaterialSource, Vertex};
+use crate::{
+    renderer::{pipeline::Target, textures},
+    MaterialId, MaterialSource, Vertex,
+};
 use std::{collections::HashMap, sync::Arc};
 
 /// Pipelines kept between frames. The pipelines a frame draws with are never evicted, so a
@@ -10,8 +13,7 @@ pub const MAX_PIPELINES: usize = 64;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Key {
     id: MaterialId,
-    format: wgpu::TextureFormat,
-    samples: u32,
+    target: Target,
 }
 
 struct Entry {
@@ -140,10 +142,22 @@ impl MaterialPipelines {
         format: wgpu::TextureFormat,
         samples: u32,
     ) -> Option<wgpu::RenderPipeline> {
+        let target = Target {
+            samples,
+            ..Target::color(format)
+        };
+        self.pipeline_in(source, &target)
+    }
+
+    /// Like [`pipeline`](Self::pipeline) for a pass that may have a depth attachment.
+    pub fn pipeline_in(
+        &mut self,
+        source: &MaterialSource,
+        target: &Target,
+    ) -> Option<wgpu::RenderPipeline> {
         let key = Key {
             id: source.id,
-            format,
-            samples,
+            target: *target,
         };
         if let Some(entry) = self.entries.get_mut(&key) {
             if Arc::ptr_eq(&entry.wgsl, &source.wgsl) || entry.wgsl == source.wgsl {
@@ -151,7 +165,7 @@ impl MaterialPipelines {
                 return entry.pipeline.clone();
             }
         }
-        let pipeline = self.build(source, format, samples);
+        let pipeline = self.build(source, target);
         self.entries.insert(
             key,
             Entry {
@@ -195,19 +209,14 @@ impl MaterialPipelines {
         std::mem::take(&mut self.errors)
     }
 
-    fn build(
-        &mut self,
-        source: &MaterialSource,
-        format: wgpu::TextureFormat,
-        samples: u32,
-    ) -> Option<wgpu::RenderPipeline> {
+    fn build(&mut self, source: &MaterialSource, target: &Target) -> Option<wgpu::RenderPipeline> {
         self.builds += 1;
         // Sources are validated before registration, so a failure here is a device limit or
         // a driver; a native device reports it synchronously through the error scope. A
         // browser reports asynchronously and the pipeline fails on use instead.
         #[cfg(not(target_arch = "wasm32"))]
         let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let pipeline = create(&self.device, &self.pipeline_layout, source, format, samples);
+        let pipeline = create(&self.device, &self.pipeline_layout, source, target);
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(error) = pollster::block_on(scope.pop()) {
             self.failures += 1;
@@ -223,8 +232,7 @@ fn create(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     source: &MaterialSource,
-    format: wgpu::TextureFormat,
-    samples: u32,
+    target: &Target,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(&source.label),
@@ -250,7 +258,7 @@ fn create(
             entry_point: Some("fs_material"),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
-                format,
+                format: target.format,
                 // The shader returns premultiplied color, scaled once by coverage.
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
@@ -260,9 +268,9 @@ fn create(
             cull_mode: None,
             ..Default::default()
         },
-        depth_stencil: None,
+        depth_stencil: target.depth_stencil(),
         multisample: wgpu::MultisampleState {
-            count: samples,
+            count: target.samples,
             ..Default::default()
         },
         multiview_mask: None,

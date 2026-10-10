@@ -5,6 +5,8 @@ use crate::{
     Border, CornerRadius, Id, Padding, Rect, Vec2,
 };
 
+mod action;
+
 use super::appearance::Appearance;
 use super::{font_size, visible_label, HoverStyle, Response, Ui, Widget};
 
@@ -29,6 +31,7 @@ pub struct Button<F = fn(&mut crate::Painter<'_>, crate::ControlPaint)> {
     style: super::theme::ButtonStyle,
     painter: Option<super::theme::painter::PaintCallbackHook<F>>,
     icon: Option<crate::ImageSource>,
+    action: Option<Id>,
 }
 
 impl Button {
@@ -52,7 +55,15 @@ impl Button {
             style: Default::default(),
             painter: None,
             icon: None,
+            action: None,
         }
+    }
+
+    /// A button that runs an action: caption, icon, enabled and checked state come from the
+    /// registry, a tooltip names its shortcut, and a click raises the action's event.
+    /// Pass the value the action was declared with.
+    pub fn action(id: impl Hash) -> Self {
+        Self::new("").triggers(id)
     }
 }
 impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
@@ -90,6 +101,7 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
             hover_style: self.hover_style,
             style: self.style,
             icon: self.icon,
+            action: self.action,
             painter: Some(super::theme::painter::PaintCallbackHook {
                 mode,
                 callback: paint,
@@ -178,40 +190,12 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Button<F> {
             0.0
         }
     }
-
-    /// Size the button takes when nothing constrains it: text plus padding, never
-    /// below its minimum sizes. Matches what `ui` allocates before clamping.
-    pub(crate) fn natural_size(&self, ui: &mut Ui<'_>) -> Vec2 {
-        let style = ui.style().clone();
-        let mut component = style.button;
-        component.merge(self.variant.style(&style));
-        component.merge(self.style);
-        let size = font_size(component.font_size.unwrap_or(style.font_size));
-        let weight = component
-            .font_weight
-            .unwrap_or(style.typography.weights.control);
-        let text_size =
-            ui.context
-                .measure_text(visible_label(&self.text), size, weight, f32::INFINITY);
-        let content = text_size + Vec2::new(self.icon_lead(size), 0.0);
-        let padding = self
-            .padding
-            .or(component.padding)
-            .unwrap_or(style.button_padding);
-        let mut size = (content + padding.size())
-            .max(self.min_size)
-            .max(component.min_size.unwrap_or(Vec2::ZERO))
-            .max(Vec2::new(24.0, style.control_height));
-        if let Some(width) = self.width {
-            size.x = width;
-        }
-        size
-    }
 }
 
 impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
     fn ui(mut self, ui: &mut Ui<'_>) -> Response {
         self.enabled &= ui.is_enabled();
+        let action = self.apply_action(ui);
         let style = ui.style().clone();
         let mut component = style.button;
         component.merge(self.variant.style(&style));
@@ -256,10 +240,16 @@ impl<F: Fn(&mut crate::Painter<'_>, crate::ControlPaint)> Widget for Button<F> {
         });
         ui.a11y(id, rect, crate::AccessRole::Button, |node| {
             node.label(label).disabled(!self.enabled).clicks(id);
+            if let Some((_, view)) = &action {
+                super::actions::describe(node, view);
+            }
             if self.toggle {
                 node.toggled(self.selected);
             }
         });
+        if let Some((action, view)) = &action {
+            super::actions::finish_button(ui, *action, view, response, self.enabled);
+        }
         let preset = self
             .hover_style
             .or(ui.hover_style)

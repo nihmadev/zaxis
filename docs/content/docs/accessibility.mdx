@@ -114,8 +114,9 @@ container accepts `ScrollIntoView`.
 | `Button` | `Button` | Label | Toggled for a toggle button; disabled | Click |
 | `Checkbox` | `CheckBox` | Label | Toggled | Click |
 | `Switch` | `Switch` | Label | Toggled | Click |
-| `RadioGroup` | `RadioGroup` of `RadioButton` | Option label; option description | Toggled; position in set | Click |
-| `SegmentedControl` | `RadioGroup` of `RadioButton` | Segment text, or its tooltip for an icon-only segment | Toggled; position in set; orientation | Click |
+| `RadioGroup` | `RadioGroup` of `RadioButton` | Option label; option description | Toggled; position in set | Click, `Focus` (any option) |
+| `SegmentedControl` | `RadioGroup` of `RadioButton` | Segment text, or its tooltip for an icon-only segment | Toggled; position in set; orientation | Click, `Focus` (any segment) |
+| `FocusGroup` | the role you give it (`Group` by default; `Toolbar`, `TabList`, `Menu`, ...) | `.label(..)`; orientation of the axis | | none of its own; its members are described by their widgets |
 | `Slider` | `Slider` | Caption; value with suffix; range and step | Horizontal; disabled | `Increment`, `Decrement`, `SetValue` |
 | `NumberInput` | `SpinButton` around a `TextInput` | Name from a `Field` or `.accessible_label(..)`; value with prefix and suffix; range and step only when a range was set | Invalid; disabled | `Increment`, `Decrement`, `SetValue` (text or number) |
 | `DragValue` | `SpinButton` that holds focus itself | As `NumberInput` | Invalid; disabled | `Increment`, `Decrement`, `SetValue` |
@@ -150,7 +151,7 @@ container accepts `ScrollIntoView`.
 | `Window` | `Window` | Title | | |
 | `Root` | `Group` | No name | | |
 | `TitleBar` | `TitleBar` with `Button` children | Title; "Minimize", "Maximize" or "Restore", "Close" | | Buttons: Click |
-| `Popup` | `Group` layer | No name | | |
+| `Popup` | `Group` layer; a popup opened inside another is a layer above it, one per level | No name | | |
 | `Modal` | `Dialog` | `accessible_label(..)` or the first text of the header | Modal; everything behind it leaves the tree | |
 | `Dialog` | `Dialog` | Title; the description text is the description | Modal | |
 | `Confirm` | `AlertDialog` | Title, or the message when there is no title | Modal | |
@@ -315,8 +316,6 @@ but nobody has run a screen reader against them.
 * A virtualized row that was not built has no node. `ListBox`, `TreeView`, `Table` and
   `ComboBox` publish counts and positions of the whole set; reach a far row by
   scrolling its container.
-* In a roving-focus group (`RadioGroup`, `SegmentedControl`) only the current tab stop
-  accepts a `Focus` request.
 * Built-in names are English and cannot be localized: "Close", "Menu", "Resize",
   "Previous", "Next", "Page N", "Copy", "Minimize", "Maximize", "Restore", "No matches",
   and the color editor's "Hue", "Saturation", "Brightness", "Red", "Green", "Blue" and
@@ -331,3 +330,37 @@ but nobody has run a screen reader against them.
 * No password field.
 * `Card` has no name API; use `ui.accessible_group` for a named group.
 * No support in the browser or on mobile.
+
+## Focus groups and custom widgets
+
+`FocusGroup` is a container node: give it the role that says what the group is
+(`.role(AccessRole::Toolbar)`) and a name (`.label(..)`); the members, `Button`s and your own
+widgets described with `Ui::accessible`, are its children, in build order. Nothing about the role
+is fixed by the library. Every member that takes focus is focusable in the tree, so a `Focus`
+request moves keyboard focus onto any member, not only the current Tab stop, and the member
+becomes the stop. A `Click` request takes the standard activation, once. Keyboard navigation moves
+the tree's focused node with the keyboard focus (the group's own `Response` reports
+`has_focus`), and a group that is not built in a pass leaves no node and no reference to one:
+the focus falls back to the window. A widget's name, state and requests are still its own.
+Nodes are collected only while assistive technology is connected; the group costs nothing
+otherwise, and the keys and groups work without the `accesskit` feature.
+
+## Actions
+
+A `Button` or menu row bound to an action sets the node's keyboard shortcut (as `Kbd` writes it for the
+platform) and its description from the registry. The shortcut text is a display string; the
+shortcut itself is run by the keymap, not by assistive technology.
+
+## Dock panels
+
+`Dock::name` names the root Group. Its existing TabBar groups expose TabList/Tab
+roles, selected tabs, one roving keyboard stop and accessible activation/close
+controls. Visible panel content is a named selected Group containing the actual
+controls; keyboard focus stays on those controls. Geometry follows translated
+content during layout animation and order follows construction order, with
+floating Window semantics in their existing layers. The focus ring and exit
+paint replays have no semantic nodes. Dock navigation takes Ctrl+Alt+arrows and
+Ctrl+Shift+arrows before child editing/navigation unless an application action
+claims the chord. Dragging and splitting have no dedicated AT operation.
+Built-in context menu/action names are English; application titles remain supplied
+by `DockViewer`.

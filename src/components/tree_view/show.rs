@@ -230,8 +230,8 @@ impl TreeView<'_> {
             if ui
                 .context
                 .popups
-                .current
-                .as_ref()
+                .branch
+                .first()
                 .is_some_and(|p| p.return_focus == action_focus)
             {
                 ui.context.dismiss_popup(false);

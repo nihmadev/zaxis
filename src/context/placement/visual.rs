@@ -22,37 +22,52 @@ impl Context {
             self.animations.hide_since(p.animation_start);
         }
         let viewport = self.viewport();
-        self.transform_portal(&p, transform);
-        let wrap =
-            |paint: &mut Vec<Paint>, blur: &mut Option<f32>, material: &mut Option<MaterialUse>| {
-                *paint = vec![Paint::Visual {
-                    paint: std::mem::take(paint),
-                    transform,
-                    opacity,
-                }];
-                if let Some(radius) = blur {
-                    *radius *= transform.scale;
-                }
-                if let Some(material) = material {
-                    material.scale(transform.scale);
-                }
-            };
+        let portal = self.transform_portals(&p, transform);
+        let wrap = |paint: &mut Vec<Paint>,
+                    blur: &mut Option<f32>,
+                    material: &mut Option<MaterialUse>,
+                    transform: Transform| {
+            *paint = vec![Paint::Visual {
+                paint: std::mem::take(paint),
+                transform,
+                opacity,
+            }];
+            if let Some(sigma) = blur {
+                *sigma *= transform.scale;
+            }
+            if let Some(material) = material {
+                material.scale(transform.scale);
+            }
+        };
         let outer = p.outer_clip(clip, viewport);
         for paint in &mut p.paints {
-            wrap(&mut paint.paint, &mut paint.blur, &mut paint.material);
-            paint.clip = transform.rect(paint.clip).intersect(outer(paint.layer));
+            let mapping = portal.mapping(paint.layer, paint.id, transform);
+            wrap(
+                &mut paint.paint,
+                &mut paint.blur,
+                &mut paint.material,
+                mapping,
+            );
+            paint.clip = mapping.rect(paint.clip).intersect(outer(paint.layer));
         }
         for paint in &mut self.scrolling.pending[p.paints_range.clone()] {
-            if paint.layer != p.window {
+            if !portal.moves(paint.layer, p.window) {
                 continue;
             }
-            wrap(&mut paint.paint, &mut paint.blur, &mut paint.material);
-            paint.clip = transform.rect(paint.clip).intersect(clip);
+            let mapping = portal.mapping(paint.layer, paint.id, transform);
+            wrap(
+                &mut paint.paint,
+                &mut paint.blur,
+                &mut paint.material,
+                mapping,
+            );
+            paint.clip = mapping.rect(paint.clip).intersect(outer(paint.layer));
         }
         let mut map_hit = |hit: &mut HitRegion| {
-            self.visuals.compose(hit.id, transform);
-            hit.rect = transform.rect(hit.rect);
-            hit.clip = transform.rect(hit.clip).intersect(outer(hit.window));
+            let mapping = portal.mapping(hit.window, hit.id, transform);
+            self.visuals.compose(hit.id, mapping);
+            hit.rect = mapping.rect(hit.rect);
+            hit.clip = mapping.rect(hit.clip).intersect(outer(hit.window));
             block_hidden(hit, opacity, interactive);
         };
         for (hit, _) in &mut p.hits {
@@ -62,23 +77,27 @@ impl Context {
             map_hit(hit);
         }
         for scope in &mut self.scrolling.scopes[p.scopes_range.clone()] {
-            if scope.window != p.window {
+            if !portal.moves(scope.window, p.window) {
                 continue;
             }
-            scope.viewport = transform.rect(scope.viewport);
-            scope.region = transform.rect(scope.region);
-            scope.outer_clip = transform.rect(scope.outer_clip).intersect(clip);
-            scope.origin = transform.point(scope.origin);
-            scope.correction *= transform.scale;
-            scope.visual_scale *= transform.scale;
+            let mapping = portal.mapping(scope.window, scope.id, transform);
+            scope.viewport = mapping.rect(scope.viewport);
+            scope.region = mapping.rect(scope.region);
+            scope.outer_clip = mapping
+                .rect(scope.outer_clip)
+                .intersect(outer(scope.window));
+            scope.origin = mapping.point(scope.origin);
+            scope.correction *= mapping.scale;
+            scope.visual_scale *= mapping.scale;
             if !interactive {
                 if let Some(state) = self.scrolling.states.get_mut(&scope.id) {
                     state.enabled = false;
                 }
             }
         }
-        if let Some((_, rect)) = &mut p.ime {
-            *rect = transform.rect(*rect).intersect(clip);
+        if let Some((window, _, rect)) = &mut p.ime {
+            let mapping = portal.mapping(*window, *window, transform);
+            *rect = mapping.rect(*rect).intersect(outer(*window));
         }
         self.place(p, Vec2::ZERO, clip);
     }

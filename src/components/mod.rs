@@ -2,6 +2,7 @@
 //!
 //! Each component owns its builders, rendering, and convenience methods on [`Ui`].
 
+mod actions;
 pub mod appearance;
 pub mod badge;
 pub mod blur;
@@ -16,12 +17,14 @@ pub mod columns;
 pub mod combo_box;
 pub mod context_menu;
 pub(crate) mod disclosure;
+pub mod dock;
 pub mod drag_drop;
 pub mod drag_value;
 pub(crate) mod edit_buffer;
 mod edit_history;
 pub mod effects;
 pub mod field;
+pub mod focus_group;
 pub mod grid;
 pub mod hover;
 pub mod hyperlink;
@@ -37,6 +40,7 @@ pub(crate) mod motion;
 mod moving;
 pub mod number_input;
 mod numeric;
+pub mod pan_zoom;
 pub mod popup;
 pub mod progress;
 pub mod radio;
@@ -56,7 +60,7 @@ pub mod slider;
 pub mod split_pane;
 pub mod style;
 pub mod switch;
-mod tab_bar;
+pub mod tab_bar;
 pub mod table;
 pub mod text;
 pub(crate) mod text_block;
@@ -89,6 +93,11 @@ pub use context_menu::{
     ContextMenu, ContextMenuItem, ContextMenuOutput, ContextMenuStyle, ContextMenuWidget,
 };
 pub use disclosure::{CollapsingStyle, DisclosureStyle, TreeStyle};
+pub use dock::{
+    Dock, DockActions, DockChild, DockDropZone, DockError, DockEvent, DockFloat, DockIssue,
+    DockMotion, DockNode, DockOutput, DockPanelOutput, DockPreset, DockSide, DockState, DockStyle,
+    DockViewer, PanelId,
+};
 pub use drag_drop::{
     move_item, DragEffect, DragEnd, DragOutput, DragReason, DragSource, DragStyle, DropOutput,
     DropTarget, DropZones, Dropped, Insertion, PreviewKind, RowDrag, RowMove, TreeNodeDrag,
@@ -96,6 +105,7 @@ pub use drag_drop::{
 pub use drag_value::DragValue;
 pub use effects::Presence;
 pub use field::{Field, Validation};
+pub use focus_group::{FocusGroup, FocusGroupOutput};
 pub use grid::{Grid, GridOutput, GridRow, GridStyle, GridUi};
 pub use hover::{Hover, HoverFill, HoverStyle};
 pub use hyperlink::{
@@ -117,6 +127,7 @@ pub use modal::{
 };
 pub use number_input::{NumberInput, NumberStyle};
 pub use numeric::Numeric;
+pub use pan_zoom::{PanZoom, PanZoomOutput, PanZoomState, ZoomWheel};
 pub use popup::{Popup, PopupOutput};
 pub use progress::{Progress, ProgressState};
 pub use radio::{RadioGroup, RadioLayout, RadioOption, RadioSize};
@@ -141,6 +152,10 @@ pub use split_pane::{
 };
 pub use style::Style;
 pub use switch::Switch;
+pub use tab_bar::{
+    tab_after_close, TabActivation, TabBar, TabBarOutput, TabDrag, TabDropZone, TabDropZoneOutput,
+    TabItem, TabMove, TabRelease, TabVariant, TabWidth,
+};
 pub use table::{SortDirection, SortRequest, Table, TableBody, TableOutput, TableStyle};
 pub use text::Text;
 pub use text_block::LinkReport;

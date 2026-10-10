@@ -100,8 +100,8 @@ fn fs_material(input: VertexOutput) -> @location(0) vec4<f32> {
     m.size = frame.size;
     m.scale = viewport.scale;
     m.size_px = frame.size * viewport.scale;
-    m.position = input.position.xy;
-    m.origin = input.position.xy - input.uv * m.size_px;
+    m.position = input.position.xy - viewport.origin;
+    m.origin = m.position - input.uv * m.size_px;
     m.screen_uv = input.screen_uv;
     m.color = input.color;
     m.tint = input.color.rgb / max(input.color.a, 0.00001);

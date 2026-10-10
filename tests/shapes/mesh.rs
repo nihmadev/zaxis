@@ -2,6 +2,41 @@ use zaxis::shapes::{outline::arc_segments, *};
 use zaxis::Vec2;
 
 #[test]
+fn rotating_gradient_border_keeps_center_clear_and_rasterizes_at_fractional_dpi() {
+    let rect = Rect::from_min_size(Vec2::ZERO, Vec2::new(100.0, 60.0));
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        for angle in [0.0, std::f32::consts::FRAC_PI_2, f32::NAN] {
+            let mut mesh = Mesh::default();
+            mesh.shape(
+                &Shape::GradientBorder {
+                    rect,
+                    rounding: CornerRadius {
+                        top_left: 12.0,
+                        bottom_right: 6.0,
+                        ..CornerRadius::ZERO
+                    },
+                    width: 2.0,
+                    gradient: Gradient::new(Color::rgb(255, 0, 0), Color::rgb(0, 0, 255)),
+                    angle,
+                },
+                scale,
+            );
+            assert!(sample(&mesh, rect.center() + Vec2::splat(0.137))[3] < 1e-5);
+            assert!(sample(&mesh, Vec2::new(50.137, 0.837))[3] > 0.5);
+            assert!(mesh.vertices.iter().all(|v| v
+                .position
+                .iter()
+                .chain(&v.color)
+                .all(|n| n.is_finite())));
+            assert!(
+                sample(&mesh, Vec2::splat(0.137))[3] < 1e-5,
+                "rounded corner remains clear"
+            );
+        }
+    }
+}
+
+#[test]
 fn gradient_respects_asymmetric_corners_and_linear_colors_at_multiple_scales() {
     let rect = Rect::from_min_size(Vec2::ZERO, Vec2::new(100.0, 40.0));
     for scale in [1.0, 1.5, 2.0] {

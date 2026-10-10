@@ -8,7 +8,7 @@ mod uniforms;
 pub use pipelines::{MaterialPipelines, MAX_PIPELINES};
 pub use uniforms::MaterialUniforms;
 
-use super::{RenderError, Renderer};
+use super::{gpu::Gpu, pipeline::Target, RenderError, Renderer};
 use crate::{DrawData, MAX_UNIFORM_BYTES};
 
 /// How one command of a frame is drawn.
@@ -56,11 +56,13 @@ impl MaterialFrame {
     }
 }
 
-impl Renderer {
-    /// Check the materials of `data`, upload their uniform blocks and find the pipelines.
+impl Gpu {
+    /// Check the materials of `data`, upload their uniform blocks and find the pipelines for
+    /// passes into `target`.
     pub(super) fn prepare_materials(
         &mut self,
         data: &DrawData,
+        target: &Target,
     ) -> Result<MaterialFrame, RenderError> {
         if data.commands.iter().all(|c| c.material.is_none()) {
             return Ok(MaterialFrame::none());
@@ -82,7 +84,7 @@ impl Renderer {
                 .find(|source| source.id == draw.id)
                 .expect("validated material source");
             let offset = self.material_uniforms.offset(draw.uniforms.start);
-            let pipeline = pipelines.pipeline(source, self.attachment_format, 1);
+            let pipeline = pipelines.pipeline_in(source, target);
             draws.push(match (pipeline, offset) {
                 (Some(pipeline), Some(offset)) => Draw::Material { pipeline, offset },
                 _ => Draw::Skip,
@@ -103,17 +105,24 @@ impl Renderer {
     }
 
     /// Pipelines of materials held now, failed builds included.
-    pub fn material_pipeline_count(&self) -> usize {
+    pub(super) fn material_pipeline_count(&self) -> usize {
         self.materials
             .lock()
             .expect("material pipelines mutex")
             .len()
     }
+}
+
+impl Renderer {
+    /// Pipelines of materials held now, failed builds included.
+    pub fn material_pipeline_count(&self) -> usize {
+        self.gpu.material_pipeline_count()
+    }
 
     /// Why material pipelines failed to build since the last call. Empty on a healthy
     /// device: sources are validated before they reach the renderer.
     pub fn take_material_errors(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.material_errors)
+        std::mem::take(&mut self.gpu.material_errors)
     }
 }
 
