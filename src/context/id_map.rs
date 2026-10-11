@@ -17,7 +17,7 @@ impl Hasher for IdHasher {
     }
     fn write(&mut self, bytes: &[u8]) {
         for byte in bytes {
-            self.0 = (self.0 << 8 | self.0 >> 56) ^ u64::from(*byte);
+            self.0 = self.0.rotate_left(8) ^ u64::from(*byte);
         }
     }
     fn write_u64(&mut self, value: u64) {

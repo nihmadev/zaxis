@@ -146,9 +146,13 @@ fn hover_wrapper_custom_paint_disabled_priority_and_override_scope() {
         Color::rgb(180, 40, 20),
     ));
     let mut calls = 0;
+    // An explicit clock, a second per pass, so hover transitions settle between passes.
+    let t0 = zaxis::Instant::now();
+    let mut pass = 0u64;
     let mut draw = |context: &mut Context, enabled, preset| {
         let mut responses = Vec::new();
-        context.run(|context| {
+        pass += 1;
+        context.run_at(t0 + std::time::Duration::from_secs(pass), |context| {
             Window::new("Test").show(context, |ui| {
                 responses.push(
                     ui.add(
@@ -191,6 +195,7 @@ fn hover_wrapper_custom_paint_disabled_priority_and_override_scope() {
         .iter()
         .any(|v| v.color[2] > v.color[0] * 2.0 && v.color[3] > 0.0));
     move_to(&mut context, idle[1].rect.center());
+    draw(&mut context, true, gradient);
     draw(&mut context, true, gradient);
     let sibling = context.draw_data().vertices.clone();
     draw(&mut context, true, HoverStyle::NONE);

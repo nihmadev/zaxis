@@ -28,12 +28,12 @@ mod list_box;
 mod material;
 #[path = "support/modal.rs"]
 mod modal;
-#[path = "support/popup.rs"]
-mod popup;
 #[path = "support/number.rs"]
 mod number;
 #[path = "support/pan_zoom.rs"]
 mod pan_zoom;
+#[path = "support/popup.rs"]
+mod popup;
 #[path = "support/report.rs"]
 mod report;
 #[path = "support/scene.rs"]

@@ -49,7 +49,7 @@ impl Contents<'_> {
         let data = self.data;
         let command = &data.commands[index];
         let mut h = Hasher::new(1);
-        h.write(command.texture.0 as u64);
+        h.write(command.texture.0);
         h.write(self.revisions.get(&command.texture).copied().unwrap_or(0));
         let r = command.clip_rect;
         h.write_f32s(&[r.min.x, r.min.y, r.max.x, r.max.y]);

@@ -1,22 +1,9 @@
 # zaxis
 
-Typed themes resolve into the existing immediate mode `Style`:
-
-```rust
-context.set_theme(zaxis::Theme::light().density(zaxis::Density::Compact)
-    .accent(zaxis::Color::rgb(35, 85, 155)));
-```
-
-`ui.with_theme(&theme, |ui| ...)` and `ui.with_style(&overrides, |ui| ...)` style
-local subtrees and their popups. Explicit component overrides survive accent and
-density changes; legacy `set_style` installs its exact value. Run
-`cargo run --example themes`. See [Style and Theme](docs/content/docs/style.mdx)
-for states, painters and migration.
-
 An event-driven immediate mode GUI for desktop tools, written in Rust.
 Uses winit and wgpu, with retained interaction state and cached CPU/GPU geometry.
 
-**0.0.3 Genetic** is a development release. Public APIs may change between
+**0.0.5** is a development release. Public APIs may change between
 development releases. CI checks Windows, Linux, and macOS; native GPU and
 desktop behavior still needs platform-specific testing.
 
@@ -54,10 +41,10 @@ Requires Rust **1.90** or newer. Once published on crates.io:
 
 ```toml
 [dependencies]
-zaxis = "=0.0.3"
+zaxis = "=0.0.5"
 ```
 
-Before publication, use `zaxis = { git = "https://github.com/nihmadev/zaxis" }`.
+Until then, use `zaxis = { git = "https://github.com/nihmadev/zaxis", tag = "v0.0.5" }`.
 
 ```rust
 use zaxis::{App, Context, Frame, Window};
@@ -121,6 +108,11 @@ cargo run --example integration
 cargo run --release --example embed
 cargo run --example animations
 cargo run --example custom_animation
+cargo run --example themes
+cargo run --example dock
+cargo run --example nested_popups
+cargo run --example materials
+cargo run --example showcase
 ```
 
 The demo/settings/integration examples use immediate presentation; append
@@ -155,6 +147,21 @@ cd examples/web_landing && trunk serve
 See [Web](docs/content/docs/web.mdx) for building without Trunk, backends, the clipboard, keyboard
 handling and the limits.
 
+## Themes
+
+Typed themes resolve into the existing immediate mode `Style`:
+
+```rust
+context.set_theme(zaxis::Theme::light().density(zaxis::Density::Compact)
+    .accent(zaxis::Color::rgb(35, 85, 155)));
+```
+
+`ui.with_theme(&theme, |ui| ...)` and `ui.with_style(&overrides, |ui| ...)` style
+local subtrees and their popups. Explicit component overrides survive accent and
+density changes; legacy `set_style` installs its exact value. Run
+`cargo run --example themes`. See [Style and Theme](docs/content/docs/style.mdx)
+for states, painters and migration.
+
 ## Images
 
 Built-in images need no loader installation: `ui.image("assets/photo.jpg")`,
@@ -175,7 +182,7 @@ default download size or memory use. It also lets applications omit the font:
 
 ```toml
 [dependencies]
-zaxis = { version = "=0.0.3", default-features = false, features = ["image-gif", "image-tiff"] }
+zaxis = { version = "=0.0.5", default-features = false, features = ["image-gif", "image-tiff"] }
 ```
 
 This keeps the optional image codecs and uses system fonts for emoji. Emoji

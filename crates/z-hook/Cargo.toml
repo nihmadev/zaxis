@@ -24,7 +24,7 @@ x11 = ["dep:x11rb"]
 
 [dependencies]
 # No accessibility adapter (it needs a window) and no dialogs; the fonts stay bundled.
-zaxis = { version = "0.0.4", path = "../..", default-features = false, features = [
+zaxis = { version = "0.0.5", path = "../..", default-features = false, features = [
     "bundled-emoji", "bundled-weights", "bundled-monospace",
 ] }
 log = "0.4"

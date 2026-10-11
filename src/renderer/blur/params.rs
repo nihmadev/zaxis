@@ -42,7 +42,7 @@ pub fn fixed_variance(level: u32) -> f32 {
 
 /// The filter for a Gaussian of `sigma` physical pixels.
 pub fn filter(sigma: f32) -> Filter {
-    if !(sigma >= COPY_BELOW) {
+    if sigma.is_nan() || sigma < COPY_BELOW {
         return Filter {
             level: 0,
             sigma: 0.0,

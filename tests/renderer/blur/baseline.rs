@@ -17,32 +17,32 @@ fn legacy_blur(gpu: &super::gpu::Gpu) -> Box<BlurFn<'static>> {
 /// Print the measures of `blur` under `label`.
 pub fn report(label: &str, gpu: &super::gpu::Gpu, blur: &BlurFn) {
     for sigma in [1.0, 4.0, 8.0, 16.0, 32.0, 64.0] {
-        let (max, mean) = metrics::profile(&gpu, blur, sigma, 1.0);
-        let (dmax, dmean) = metrics::detail(&gpu, blur, sigma);
+        let (max, mean) = metrics::profile(gpu, blur, sigma, 1.0);
+        let (dmax, dmean) = metrics::detail(gpu, blur, sigma);
         println!("{label} profile sigma {sigma}: step max {max:.1} mean {mean:.3}; detail max {dmax:.1} mean {dmean:.3}");
     }
     for sigma in [2.0, 6.0, 12.0] {
-        let (ripple, err) = metrics::ripple(&gpu, blur, sigma, 17);
+        let (ripple, err) = metrics::ripple(gpu, blur, sigma, 17);
         println!("{label} ripple sigma {sigma}: frame-diff deviation {ripple:.1}, error {err:.1}");
     }
     for (from, to) in [(3.0, 5.0), (7.0, 9.0), (15.0, 17.0)] {
-        let jump = metrics::sweep(&gpu, blur, from, to, 0.1);
+        let jump = metrics::sweep(gpu, blur, from, to, 0.1);
         println!("{label} sweep {from}..{to}: jump {jump:.1}");
     }
     for sigma in [2.0, 3.0, 6.0, 10.0] {
-        let (got, want) = metrics::peak_spread(&gpu, blur, sigma, 17);
+        let (got, want) = metrics::peak_spread(gpu, blur, sigma, 17);
         println!("{label} line peak spread sigma {sigma}: {got:.3} (exact Gaussian {want:.3})");
     }
     for sigma in [4.0, 16.0, 48.0] {
         for (scale, gap) in [(1.0, 0.0), (1.0, 3.0), (1.5, 7.0), (1.25, 13.0)] {
-            let e = metrics::edge_error(&gpu, blur, sigma, scale, gap);
+            let e = metrics::edge_error(gpu, blur, sigma, scale, gap);
             println!("{label} detail error near panel edge, sigma {sigma} scale {scale} gap {gap}: {e:.1}");
         }
     }
     for sigma in [4.0, 16.0, 48.0] {
         for scale in [1.0, 1.5] {
-            let inner = metrics::rim(&gpu, blur, sigma, scale, true);
-            let edge = metrics::rim(&gpu, blur, sigma, scale, false);
+            let inner = metrics::rim(gpu, blur, sigma, scale, true);
+            let edge = metrics::rim(gpu, blur, sigma, scale, false);
             println!("{label} rim sigma {sigma} scale {scale}: interior panel {inner:.1}, full screen {edge:.1}");
         }
     }
@@ -229,7 +229,7 @@ fn debug_bias() {
             f.level,
             f.sigma,
             s / n,
-            (sq / n as f32).sqrt()
+            (sq / n).sqrt()
         );
     }
 }

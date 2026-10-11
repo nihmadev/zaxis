@@ -209,7 +209,7 @@ impl Probe {
                 }
             }
             KeysCase::Lifecycle => {
-                self.mounted = if step % 2 == 0 {
+                self.mounted = if step.is_multiple_of(2) {
                     self.count
                 } else {
                     self.count / 2

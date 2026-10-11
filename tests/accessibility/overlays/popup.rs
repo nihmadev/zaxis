@@ -124,7 +124,10 @@ fn nested_popups_are_layers_above_their_parents_and_keep_them() {
     key(&mut harness.context, KeyCode::Escape);
     harness.settle(|ctx| editor.build(ctx));
     assert!(harness.tree.find(Role::Button, "Apply").is_none());
-    assert!(harness.tree.find(Role::Button, "More").is_some(), "the parent stays");
+    assert!(
+        harness.tree.find(Role::Button, "More").is_some(),
+        "the parent stays"
+    );
     assert!(!editor.more && editor.open);
     assert_eq!(harness.pass(|ctx| editor.build(ctx)), None);
 }

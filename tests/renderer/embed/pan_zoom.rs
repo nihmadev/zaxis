@@ -58,8 +58,9 @@ fn magnified_standard_controls_use_display_resolution_glyphs_and_antialiased_edg
                 let Some(texture) = data.textures.iter().find(|t| t.id == *texture_id) else {
                     continue;
                 };
-                for indices in
-                    cached.mesh.indices[range.start as usize..range.end as usize].chunks_exact(6)
+                for indices in cached.mesh.indices[range.start as usize..range.end as usize]
+                    .as_chunks::<6>()
+                    .0
                 {
                     let quad = [
                         cached.mesh.vertices[indices[0] as usize],

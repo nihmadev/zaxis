@@ -118,7 +118,7 @@ impl EmbeddedRenderer {
     }
 
     /// Record the prepared frame into `pass`, which the host began with the color format,
-    /// sample count and depth/stencil format of this renderer's [`EmbedOptions`].
+    /// sample count and depth/stencil format of this renderer's [`EmbedOptions`](super::EmbedOptions).
     ///
     /// Draws only inside the region, leaves the attachments' contents outside it alone, and
     /// neither tests nor writes depth or stencil. Sets the viewport and scissor rectangle to

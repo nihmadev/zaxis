@@ -7,7 +7,7 @@
 //!
 //! 1. Register the description once with [`Context::register_material`](crate::Context::register_material)
 //!    or [`SharedResources::try_register_material`](crate::SharedResources::try_register_material).
-//!    The same source always gives the same [`MaterialId`]; registering again compiles
+//!    The same source always gives the same [`MaterialId`](crate::MaterialId); registering again compiles
 //!    nothing. Invalid WGSL is reported as a [`MaterialError`] with a line and column in
 //!    the author's source, and never panics.
 //! 2. Draw with [`Ui::material`](crate::Ui::material), passing [`Params`] by name. Changing

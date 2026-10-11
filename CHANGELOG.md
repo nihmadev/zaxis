@@ -2,7 +2,7 @@
 
 Releases use a numeric Cargo version and an adjective as their display name.
 Git tags use `v<version>`; releases so far are **0.0.1 Blinking** (`v0.0.1`) and **0.0.2 Helious** (`v0.0.2`);
-the next ones are **0.0.3 Genetic** (`v0.0.3`) and **0.0.4 Motion** (`v0.0.4`).
+then **0.0.3 Genetic** (`v0.0.3`) and **0.0.4 Motion** (`v0.0.4`); **0.0.5** (`v0.0.5`) has no display name.
 The entries below describe the prepared release; publication happens separately.
 
 ## 0.0.5

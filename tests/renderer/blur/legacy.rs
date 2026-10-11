@@ -299,7 +299,7 @@ impl Legacy {
                 &low.view,
                 &canvas_group,
                 &parameters[0],
-                &down,
+                down,
                 horizontal,
             );
             &low.group
@@ -312,7 +312,7 @@ impl Legacy {
             &scratch.view,
             source,
             &parameters[0],
-            &gaussian,
+            gaussian,
             horizontal,
         );
         pass(
@@ -321,7 +321,7 @@ impl Legacy {
             &blurred.view,
             &scratch.group,
             &parameters[1],
-            &gaussian,
+            gaussian,
             filter_region(region),
         );
         {
@@ -339,7 +339,7 @@ impl Legacy {
                 ..Default::default()
             });
             pass.set_scissor_rect(region[0], region[1], region[2], region[3]);
-            pass.set_pipeline(&composite);
+            pass.set_pipeline(composite);
             pass.set_bind_group(0, &gpu.viewport_group, &[]);
             pass.set_bind_group(1, &blurred.group, &[]);
             pass.set_bind_group(2, &backdrop.group, &[]);
