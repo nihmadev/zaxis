@@ -3,9 +3,10 @@
 #![forbid(unsafe_code)]
 
 use zaxis::{
-    icons, App, Badge, Button, ButtonVariant, Card, CollapsingHeader, ComboBox, ComboBoxOption,
-    Context, Frame, Loader, NumberInput, Progress, ProgressState, RadioGroup, Root, SegmentOption,
-    SegmentWidth, SegmentedControl, TextEdit, Theme, Toast, Ui,
+    icons, App, Badge, Button, ButtonVariant, Card, CollapsingHeader, Color, ColorPicker, ComboBox,
+    ComboBoxOption, Context, DragValue, Frame, Hyperlink, Loader, NumberInput, Progress,
+    ProgressState, RadioGroup, Root, SegmentOption, SegmentWidth, SegmentedControl, TextEdit,
+    Theme, Toast, Ui,
 };
 
 const W: f32 = 360.0;
@@ -33,6 +34,8 @@ struct Showcase {
     plan: Plan,
     view: View,
     tab: u8,
+    accent: Color,
+    offset: f64,
     name: String,
     notes: String,
     notifications: bool,
@@ -171,6 +174,34 @@ impl Showcase {
     }
 }
 
+impl Showcase {
+    fn extras(&mut self, ui: &mut Ui<'_>) {
+        Card::new("color").width(W).show(ui, |ui| {
+            ui.heading("Color & values");
+            ui.add(ColorPicker::new(&mut self.accent, "Accent").width(W - 40.0));
+            ui.muted("Drag horizontally or click to type");
+            ui.add(
+                DragValue::new(&mut self.offset)
+                    .range(-100.0..=100.0)
+                    .step(0.1)
+                    .precision(1)
+                    .suffix(" px")
+                    .width(120.0),
+            );
+        });
+        ui.add_space(8.0);
+        Card::new("links").width(W).show(ui, |ui| {
+            ui.heading("Links");
+            Hyperlink::new("Documentation")
+                .url("https://nihmadev.github.io/zaxis/")
+                .show(ui);
+            Hyperlink::new("Source on GitHub")
+                .url("https://github.com/nihmadev/zaxis")
+                .show(ui);
+        });
+    }
+}
+
 impl App for Showcase {
     fn update(&mut self, c: &mut Context, frame: &mut Frame<'_>) {
         c.set_theme(match self.scheme {
@@ -190,7 +221,11 @@ impl App for Showcase {
                 ui.add_space(8.0);
                 ui.vertical(|ui| self.selection(ui));
                 ui.add_space(8.0);
-                ui.vertical(|ui| self.feedback(ui));
+                ui.vertical(|ui| {
+                    self.feedback(ui);
+                    ui.add_space(8.0);
+                    self.extras(ui);
+                });
             });
         });
         if self.smoke {
@@ -224,6 +259,8 @@ fn main() -> Result<(), zaxis::RunError> {
             plan: Plan::Pro,
             view: View::Board,
             tab: 0,
+            accent: Color::rgb(105, 155, 205),
+            offset: 12.5,
             name: String::new(),
             notes: String::new(),
             notifications: true,
@@ -240,7 +277,7 @@ fn main() -> Result<(), zaxis::RunError> {
         zaxis::RunOptions {
             window_attributes: zaxis::winit::window::Window::default_attributes()
                 .with_title("zaxis — showcase")
-                .with_inner_size(zaxis::winit::dpi::LogicalSize::new(1180.0, 640.0)),
+                .with_inner_size(zaxis::winit::dpi::LogicalSize::new(1180.0, 780.0)),
             ..Default::default()
         },
     )
