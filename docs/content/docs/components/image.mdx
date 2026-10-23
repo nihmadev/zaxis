@@ -66,6 +66,52 @@ retains at most three variants. Strong raster minification uses background area
 downsampling in linear color with premultiplied accumulation. Nearest uses original
 pixels. Linear GPU filtering interpolates premultiplied samples to avoid dark alpha edges.
 
+## Live images
+
+An image that changes in place, such as the frames of an embedded browser or a video, is made
+from raw pixels and updated by region:
+
+```rust
+let frame = context.load_image(ImageSource::bgra_opaque([2560, 1440], pixels))?;
+ui.add(Image::new(frame).fit(ImageFit::Stretch));
+// later, once per rectangle the page repainted:
+context.update_image_region(frame, TextureRegion::new(0, 300, 2560, 64), &readback, row_stride)?;
+```
+
+`ImageSource::{rgba, bgra, rgba_opaque, bgra_opaque}` take tightly packed 8-bit sRGB pixels in
+that byte order. The opaque ones ignore the fourth byte. BGRA and opaque sources reach the
+GPU as given; decoded files stay RGBA. A raw source is opened at once, without a worker, so
+its first frame already shows it. `ImageSource::pixels(format, size, bytes)` is the general
+form and `.live()` makes a plain RGBA source behave like the others.
+
+`update_image_region(handle, region, pixels, stride)` replaces a rectangle (physical pixels of
+the image) with rows `stride` bytes apart; a readback with 256-byte aligned rows is passed
+as it is. `update_image_region_shared` keeps an `Arc` instead of copying the rows. The
+handle, the texture ID and the widgets do not change, and the renderer writes only the
+region: no texture or bind group is created. Updates made before a frame apply in order and
+the last wins; one revision is published per frame. A full `update_image` discards queued
+regions. Errors (`ImageError`) change nothing: an empty or out-of-bounds region, pixels shorter
+than `stride * (height - 1) + width * 4`, a stride shorter than the row, a foreign or released
+handle, an image decoded from a file, or a failed source.
+
+The frame is kept whole in a second buffer that the last frame's draw data never shares, so
+a region costs a copy of its rows, not of the frame (`ImageMetrics::live_full_copies` counts
+the exceptions: the first update of a buffer the host still holds, or a stale holder of the spare
+buffer). A region that is the whole frame and tightly packed (`update_image_region_shared`)
+adopts the host's buffer without a copy. Images updated in place are shown at their own resolution,
+never downsampled; the GPU filters them. Changing the layout of a handle is `update_image`
+and recreates its texture once.
+
+A material that samples an opaque image sees the stored fourth byte: keep it 255.
+
+## A texture of the host
+
+`ImageSource::external(image)` shows a texture the host registered with the renderer
+([Embedding](../embedding.mdx#host-textures-inside-the-interface)) without a copy. The image is
+ready at once with the texture's size; fit, uv, tint, opacity and rounding apply, the filter is
+the registration's. Nothing passes through the image cache, so `update_image_region` does not
+apply to it.
+
 ## Identity and lifetime
 
 Paths are normalized lexically against the Context's creation directory, without file

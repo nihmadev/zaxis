@@ -58,6 +58,9 @@ a new source identity and prevents cache reuse.
 | `source: u64` | Unique producer identity, stable across its frames |
 | `textures: Vec<TextureImage>` | Complete current payloads for referenced nonwhite textures |
 | `texture_options: HashMap<TextureId, TextureOptions>` | Optional per-texture filter and managed image lifetime; omitted entries keep the legacy contract |
+| `texture_formats: HashMap<TextureId, PixelFormat>` | Byte layout of a payload; omitted entries are straight-alpha RGBA, the legacy contract |
+| `external_textures: Vec<ExternalImage>` | Host-owned textures commands draw, without payloads: the renderer finds each by ID among those registered with it and checks the size ([Embedding](./embedding.mdx#host-textures-inside-the-interface)) |
+| `texture_updates: Vec<TextureUpdate>` | Hints: which regions of a payload changed since an earlier revision (see below) |
 | `texture_budget_bytes: u64` | Managed GPU texel residency budget; text/unmanaged payloads are excluded |
 | `texture_binding_budget: usize` | Managed bindings budget, including aliases sharing a texel allocation |
 | `materials: Vec<MaterialSource>` | The user materials commands use, once each, with their validated WGSL; empty without materials |
@@ -189,7 +192,7 @@ let image = TextureImage {
 | --- | --- |
 | `id: TextureId` | Identity referenced by commands; zero is reserved |
 | `size: [u32; 2]` | Nonzero physical width and height |
-| `pixels: Arc<Vec<u8>>` | Tightly packed row-major sRGB RGBA8, straight alpha |
+| `pixels: Arc<Vec<u8>>` | Tightly packed row-major 8-bit sRGB, four bytes per pixel, in the layout of `texture_formats` (straight-alpha RGBA by default) |
 | `revision: u64` | Increment whenever pixels change |
 
 Payload length must equal width × height × 4, without row padding. Use one current
@@ -197,14 +200,35 @@ payload per texture ID. `TextureId::WHITE` is `(0)` and is supplied by the built
 renderer; do not include a replacement payload for it.
 
 The built-in sampler filters linearly. Same-size changed images update the existing
-GPU texture; size changes recreate it. Uploads replace the full image rather than a
-dirty subregion. Glyph atlas IDs are scoped to their producer; do not merge unrelated
+GPU texture when nothing else shares its allocation; size or layout changes recreate it.
+Glyph atlas IDs are scoped to their producer; do not merge unrelated
 contexts' texture payloads without remapping IDs and commands.
+
+### Pixel formats and partial updates
+
+`PixelFormat` names the layout of the four bytes of a texel: `Rgba8Srgb` (default),
+`Bgra8Srgb`, and the opaque `Rgbx8Srgb` and `Bgrx8Srgb`, whose fourth byte is ignored. A
+backend uploads the bytes as they are: BGRA reaches a `Bgra8UnormSrgb` texture without
+swapping channels, and an opaque payload is drawn without alpha. The built-in renderer swaps
+the written rows on the CPU only where the device cannot sample BGRA (the GL backend, hence
+WebGL2).
+
+The payload stays complete and current. A producer that changed only some texels may add a
+`TextureUpdate { id, base_revision, to_revision, regions }` for it: a backend whose texture is
+at exactly `base_revision`, with the payload's size and layout, may write just `regions` (rows
+of the payload, `size[0] * 4` bytes apart) and keep its texture and bindings. Anything else
+(a lost device, an evicted or never-uploaded texture, a skipped frame, a replaced source, a
+texture whose allocation other IDs share) uploads the payload. Every texel that differs between
+the two revisions must lie in a region; the built-in renderer ignores an update whose
+`to_revision` is not the payload's, whose regions are empty, outside the payload or more than
+256. `TextureRegion::coalesce` is the rule both the producer and the built-in renderer use: regions
+that overlap or touch join into their bounding box, more than eight become one box, and a set
+covering the texture becomes the whole texture.
 
 ## Backend cache keys
 
 - Geometry: `(source, revision)`.
-- Textures: producer identity, texture ID, size, and image revision.
+- Textures: producer identity, texture ID, size, pixel format and image revision; a `TextureUpdate` names the revision it builds on.
 - Viewport uniform: logical viewport size, scale factor and the origin of the area it maps to
   (zero for a window, the region's corner when [embedded](./embedding.mdx) in a target the host owns).
 

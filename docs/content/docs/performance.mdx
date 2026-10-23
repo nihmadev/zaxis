@@ -77,6 +77,9 @@ elements; a window also has chrome, title, and grip elements.
 | `geometry_uploads` | Each new `(source, revision)` geometry preparation |
 | `geometry_upload_bytes` | Actual vertex/index bytes written to GPU buffers |
 | `texture_uploads` | Each uploaded image payload |
+| `texture_writes`, `texture_bind_group_creations` | Each image `write_texture`, each image bind group |
+| `texture_region_updates`, `texture_region_writes`, `texture_region_bytes` | Textures updated by regions, the writes they made and the texel bytes written |
+| `texture_update_fallbacks` | Updates that could not be used, so the payload was uploaded whole |
 
 The initial built-in white texture is not counted in `texture_uploads`. An empty new
 geometry revision still increments the geometry counter even if no buffer bytes are
@@ -281,6 +284,22 @@ when physical raster phases are unchanged. Cached mesh bounds omit hidden paint
 from frame geometry, with a physical-pixel margin when culling fractional text
 translations. Closures still run to measure content and process model changes;
 use fixed-height row virtualization to bound UI work as well.
+
+### Live images
+
+`--filter live` runs `Live` rows: a 1440p or 4K image changed by a band of 64 rows, a quarter or
+the whole frame per step, through `update_image(ImageSource::rgba(..))` (`full_rgba`) or
+`update_image_region` in RGBA, BGRA and opaque BGRA, as context-only rows (`ctx`), into a host pass
+or texture of an `EmbeddedRenderer`, in two windows sharing one image, and through a texture of the host's own written with its queue (`external_bgra_opaque`; the host's write is the timed `input`, the renderer writes nothing). Timed are the update
+call, the interface pass and `prepare` + `record`/`render_to` + submission; GPU execution is not
+measured (use `--gpu-wait` to include completion). The full row counts the passes that wait for
+the worker (the replaced source is shown a pass later) but not the waiting. Pixels, writes,
+bytes and the absence of texture and bind group creation are verified after the timed loop.
+
+```sh
+cargo bench --bench performance -- --quick --cpu-only --filter live
+cargo bench --bench performance -- --hard --gpu-only --gpu-wait --filter live_4k_rows64 --output target/live.json
+```
 
 ### Images and memory
 

@@ -1,4 +1,4 @@
-//! Retained state of container widgets: grids, cards, wrapped flows, tab pages, tab strips, carousels,
+//! Retained state of container widgets: grids, cards, measured flows, tab pages, tab strips, carousels,
 //! list boxes and collapsing headers. Each entry lives while its widget is built, except
 //! that a collapsing header hidden by a collapsed ancestor lives as long as the ancestor.
 
@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 pub(crate) struct Containers {
     pub(crate) grids: HashMap<Id, GridState>,
     pub(crate) cards: HashMap<Id, CardState>,
-    /// Measured rows of horizontal wrapping layouts.
+    /// Measured items of rows and columns (fill and spacer shares).
     pub(crate) flows: HashMap<Id, FlowState>,
     pub(crate) tab_pages: HashMap<Id, TabPagesState>,
     pub(crate) tab_bars: HashMap<Id, TabBarState>,

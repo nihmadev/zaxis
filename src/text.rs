@@ -167,7 +167,8 @@ impl TextSystem {
         FontKey::new(id, weight, font.monospace(), font.tabular)
     }
 
-    /// Optical alignment uses a stable cap/descender band, independent of line gap.
+    /// Optical alignment centers the cap-height band (baseline to top of capitals), which is
+    /// how a label reads as centered; descenders must not pull the text up. It is independent of line gap.
     /// The same baseline is retained as characters are typed or a placeholder changes.
     pub fn centered_line_offset(
         &mut self,
@@ -295,7 +296,7 @@ fn alignment_band(font: &FontVec, size: f32) -> (f32, f32) {
     let em_scale =
         size * font.height_unscaled() / font.units_per_em().unwrap_or(font.height_unscaled());
     let (mut top, mut bottom) = (0.0_f32, 0.0_f32);
-    for ch in ['H', 'g'] {
+    for ch in ['H'] {
         if let Some(outline) = font.outline_glyph(Glyph {
             id: font.glyph_id(ch),
             scale: em_scale.into(),

@@ -14,3 +14,4 @@ mod static_text;
 mod support;
 mod text_edit;
 mod updates;
+mod wrap;

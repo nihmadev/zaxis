@@ -1,7 +1,7 @@
 //! Catalog of scenarios in the shared performance harness.
 use super::{split, Case};
 
-pub const ALL: [Case; 183] = [
+pub const ALL: [Case; 194] = [
     Case::PanZoom(crate::pan_zoom::PanZoomCase::Idle),
     Case::PanZoom(crate::pan_zoom::PanZoomCase::Pan),
     Case::PanZoom(crate::pan_zoom::PanZoomCase::Zoom),
@@ -9,6 +9,17 @@ pub const ALL: [Case; 183] = [
     Case::PanZoom(crate::pan_zoom::PanZoomCase::Controls),
     Case::PanZoom(crate::pan_zoom::PanZoomCase::Update),
     Case::PanZoom(crate::pan_zoom::PanZoomCase::Lifecycle),
+    Case::Wrap(crate::wrap::WrapCase::Row),
+    Case::Wrap(crate::wrap::WrapCase::Cached),
+    Case::Wrap(crate::wrap::WrapCase::Narrow),
+    Case::Wrap(crate::wrap::WrapCase::Wide),
+    Case::Wrap(crate::wrap::WrapCase::Resize),
+    Case::Wrap(crate::wrap::WrapCase::Change),
+    Case::Wrap(crate::wrap::WrapCase::Mixed),
+    Case::Wrap(crate::wrap::WrapCase::Compound),
+    Case::Wrap(crate::wrap::WrapCase::Click),
+    Case::Wrap(crate::wrap::WrapCase::Reorder),
+    Case::Wrap(crate::wrap::WrapCase::Lifecycle),
     Case::Dock(crate::dock::DockCase::Idle),
     Case::Dock(crate::dock::DockCase::Drag),
     Case::Dock(crate::dock::DockCase::Split),

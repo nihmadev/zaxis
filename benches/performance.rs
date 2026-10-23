@@ -24,6 +24,8 @@ mod images;
 mod keys;
 #[path = "support/list_box.rs"]
 mod list_box;
+#[path = "support/live_image.rs"]
+mod live_image;
 #[path = "support/material.rs"]
 mod material;
 #[path = "support/modal.rs"]
@@ -42,6 +44,8 @@ mod scene;
 mod scroll;
 #[path = "support/text_area.rs"]
 mod text_area;
+#[path = "support/wrap.rs"]
+mod wrap;
 
 use report::{Counters, FailedCase, Geometry, Report, ResultRow, Samples};
 use scene::{Case, Scene};
@@ -73,7 +77,7 @@ fn main() -> BenchResult<()> {
         return Ok(());
     };
     let cases = options.cases();
-    if cases.is_empty() {
+    if cases.is_empty() && !live_image::selected(&options.filter) {
         return Err("filter matched no benchmark cases".into());
     }
     let mut report = Report {

@@ -2,6 +2,8 @@
 //! The low-level Context and Renderer remain available for custom hosts.
 
 #[doc(hidden)]
+pub mod app_id;
+#[doc(hidden)]
 pub mod browser;
 mod callbacks;
 #[doc(hidden)]
@@ -100,6 +102,9 @@ pub struct RunOptions {
     /// Serve an accessibility tree to assistive technology. Default: on. Nothing is built
     /// until a screen reader connects, so leaving it on costs nothing without one.
     pub accessibility: bool,
+    /// Wayland `app_id` and X11 `WM_CLASS` of every window that sets none of its own.
+    /// Default: the executable name. See [`RunOptions::with_app_id`].
+    pub app_id: Option<String>,
 }
 
 impl Default for RunOptions {
@@ -115,11 +120,21 @@ impl Default for RunOptions {
             exit_policy: ExitPolicy::default(),
             web: WebOptions::default(),
             accessibility: true,
+            app_id: None,
         }
     }
 }
 
 impl RunOptions {
+    /// Name the application to the desktop: the Wayland `app_id` and the X11 `WM_CLASS`,
+    /// which compositors and task bars use to match windows to a launcher and its icon.
+    /// Without it the executable name is used. A window can override it with
+    /// [`WindowOptions::with_app_id`]. Other platforms ignore it.
+    pub fn with_app_id(mut self, app_id: impl Into<String>) -> Self {
+        self.app_id = Some(app_id.into());
+        self
+    }
+
     /// Use `family` for all text instead of the bundled Inter, without building
     /// a custom host around [`Context::with_fonts`].
     pub fn with_font_family(mut self, family: crate::FontFamily) -> Self {

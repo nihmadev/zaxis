@@ -108,13 +108,24 @@ fn shader(device: &wgpu::Device) -> wgpu::ShaderModule {
     })
 }
 
-/// The three built-in pipelines of one [`Target`]: plain, linear-filtered image and scroll
-/// hint. They share one shader module.
+/// The built-in pipelines of one [`Target`]: plain, linear-filtered image and scroll hint,
+/// built with the set, and the two that ignore the alpha byte of `Rgbx8`/`Bgrx8` payloads,
+/// built the first time a frame draws such an image. They share one shader module.
 pub struct PipelineSet {
     pub target: Target,
     pub plain: wgpu::RenderPipeline,
     pub image: wgpu::RenderPipeline,
     pub scroll_hint: wgpu::RenderPipeline,
+    opaque: [std::sync::OnceLock<wgpu::RenderPipeline>; 2],
+    parts: Parts,
+}
+
+/// What building a pipeline later needs.
+struct Parts {
+    device: wgpu::Device,
+    shader: wgpu::ShaderModule,
+    viewport_layout: wgpu::BindGroupLayout,
+    texture_layout: wgpu::BindGroupLayout,
 }
 
 /// Which built-in pipeline of a [`PipelineSet`] draws a command.
@@ -123,21 +134,32 @@ pub enum Kind {
     Plain,
     Image,
     ScrollHint,
+    /// [`Plain`](Self::Plain) for a texture without alpha.
+    PlainOpaque,
+    /// [`Image`](Self::Image) for a texture without alpha.
+    ImageOpaque,
 }
 
 impl Kind {
-    /// Scroll hint, linear filtered managed image, or plain.
+    /// Scroll hint, linear filtered managed image, or plain; the variant that ignores alpha
+    /// when the texture's format has none.
     pub fn of(command: &crate::DrawCommand, data: &crate::DrawData) -> Self {
         if command.scroll_hint {
-            Self::ScrollHint
-        } else if data
+            return Self::ScrollHint;
+        }
+        let opaque = data
+            .texture_formats
+            .get(&command.texture)
+            .is_some_and(|f| f.is_opaque());
+        let image = data
             .texture_options
             .get(&command.texture)
-            .is_some_and(|o| o.managed && o.filter == crate::TextureFilter::Linear)
-        {
-            Self::Image
-        } else {
-            Self::Plain
+            .is_some_and(|o| o.managed && o.filter == crate::TextureFilter::Linear);
+        match (image, opaque) {
+            (true, false) => Self::Image,
+            (true, true) => Self::ImageOpaque,
+            (false, false) => Self::Plain,
+            (false, true) => Self::PlainOpaque,
         }
     }
 }
@@ -148,7 +170,23 @@ impl PipelineSet {
             Kind::Plain => &self.plain,
             Kind::Image => &self.image,
             Kind::ScrollHint => &self.scroll_hint,
+            Kind::PlainOpaque => self.opaque[0].get_or_init(|| self.build("fs_main_opaque")),
+            Kind::ImageOpaque => {
+                self.opaque[1].get_or_init(|| self.build("fs_image_linear_opaque"))
+            }
         }
+    }
+
+    fn build(&self, fragment: &str) -> wgpu::RenderPipeline {
+        let parts = &self.parts;
+        pipeline(
+            &parts.device,
+            &parts.shader,
+            &parts.viewport_layout,
+            &parts.texture_layout,
+            &self.target,
+            fragment,
+        )
     }
 
     /// The pipeline a command draws with when it is not a material.
@@ -181,6 +219,13 @@ impl PipelineSet {
             plain: make("fs_main"),
             image: make("fs_image_linear"),
             scroll_hint: make("fs_scroll_hint"),
+            opaque: Default::default(),
+            parts: Parts {
+                device: device.clone(),
+                shader: shader.clone(),
+                viewport_layout: viewport_layout.clone(),
+                texture_layout: texture_layout.clone(),
+            },
             target,
         }
     }

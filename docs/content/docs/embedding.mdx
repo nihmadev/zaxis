@@ -190,6 +190,48 @@ draw data must allocate `TextureId`s from one source: build their contexts from 
 pipelines of a window `Renderer`: the window and a panel drawn into the host's own target use one
 atlas.
 
+Partial updates of an image ([Live images](./components/image.mdx#live-images)) work the same in
+`record` and `render_to`: `prepare` writes only the changed regions of a texture that is at the
+previous revision. Siblings share the texture store, so whichever renderer meets a new revision
+first writes it and the others find it done; a renderer with a store of its own (made with `new`) uploads the
+whole image once.
+
+## Host textures inside the interface
+
+The reverse of `render_to`: a texture the host draws into itself (a video frame, a render target, a
+canvas) shown by an `Image` without a copy.
+
+```rust
+let texture = device.create_texture(&wgpu::TextureDescriptor { /* TEXTURE_BINDING | … */ ..desc });
+let video = embed.register_external_texture(&texture, ExternalTextureOptions::default())?;
+ui.add(Image::new(ImageSource::external(video.image())).size(vec2(640.0, 360.0)));
+// every frame the host writes into `texture` with its own queue or passes; nothing is re-registered
+```
+
+The texture must belong to the renderer's own `wgpu::Device` (another device is
+`ExternalTextureError::DifferentDevice`, not a wgpu panic; a browser cannot report that
+synchronously, so there it is the browser's validation), have `TEXTURE_BINDING`, one sample, one
+mip level and one layer, and be `Rgba8Unorm[Srgb]`, `Bgra8Unorm[Srgb]` (not on the GL backend) or
+`Rgba16Float`. The interface samples the texture as filterable floats with
+`ExternalTextureOptions::filter` (fixed for the registration) and reads the 8-bit channels as sRGB
+(`ExternalEncoding::Srgb`, the default) or linear; a format without the `Srgb` suffix is sampled
+through the view of the other encoding, which the texture must list in `view_formats`
+(`ExternalTextureError::View` otherwise). `ExternalAlpha::Opaque` ignores the fourth channel;
+`Straight` reads it as alpha. Premultiplied textures are not supported.
+
+zaxis inserts no barriers and never touches the queue for these textures: the host's writes must
+be submitted before the frame that samples the texture, as any two passes of one queue. Changing
+the contents needs nothing; the bind group is made once at registration. A new size or format is
+a new registration: `register_external_texture` again, show the new `ExternalImage` (for example
+with `Context::update_image`); a frame built for the old size is refused with an error that says
+so. Dropping the `ExternalTexture` or calling `unregister` removes the bind group and the
+renderer's reference to the texture and never destroys the host's texture; a frame that still
+refers to it is an error, not a blank square. A registration serves the renderer that made it and
+its siblings (they share the store) and any number of contexts; a renderer with a store of its
+own does not know it. External textures are not part of the image budget or the LRU:
+`RendererStats::external_textures` counts them, their memory is the host's. A lost device
+(`notify_device_lost`) refuses new registrations; make a new renderer and register again.
+
 `set_options` changes the target format, sample count or depth format (for example after the host
 recreated its swapchain). Buffers and the atlas stay, only what depends on the old target is
 dropped, and the frame prepared for it is forgotten: call `prepare` again.

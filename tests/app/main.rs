@@ -1,3 +1,4 @@
+mod app_id;
 mod browser;
 #[cfg(feature = "file-dialogs")]
 mod dialogs;

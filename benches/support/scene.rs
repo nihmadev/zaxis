@@ -80,6 +80,7 @@ pub struct Scene {
     actions: Option<crate::actions::Probe>,
     keys: Option<crate::keys::Probe>,
     pan_zoom: Option<crate::pan_zoom::Probe>,
+    wrap: Option<crate::wrap::Probe>,
     dock: Option<crate::dock::Probe>,
     split: Option<split::Probe>,
     disclosure: Option<crate::disclosure::Probe>,
@@ -205,6 +206,11 @@ impl Scene {
             keys,
             dnd: if let Case::Dnd(kind) = case {
                 Some(crate::dnd::Probe::new(kind, count))
+            } else {
+                None
+            },
+            wrap: if let Case::Wrap(kind) = case {
+                Some(crate::wrap::Probe::new(kind, count))
             } else {
                 None
             },

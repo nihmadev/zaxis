@@ -118,7 +118,7 @@ flag kept by the application is reset in time; keep such flags in step with the 
 never reported back.
 
 **Placement.** A child is fitted to the viewport against its own anchor after its parent
-moved, and may open upward. Popups inside `Grid`, `Table`, `ScrollArea` and `Ui::visual`, or
+moved, and may open upward. Popups inside `Grid`, `Table`, `ScrollArea`, `Ui::visual` and the items of a [Wrap](./wrap.mdx) (build the popup in the item of its trigger), or
 in a `Window` that is moved, follow their anchors as before, at every level, together with
 extra panels of cascading menus. The full-viewport blocker of each level stays put.
 

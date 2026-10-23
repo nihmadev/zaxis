@@ -28,7 +28,8 @@ impl SizeRule {
 }
 
 impl Ui<'_> {
-    /// Align row items vertically within the tallest item. Rows do not wrap.
+    /// Align row items vertically within the tallest item. Rows do not wrap; use
+    /// [`Wrap`](crate::Wrap) for items that continue on the next line.
     pub fn horizontal_aligned<R>(
         &mut self,
         align: Align,

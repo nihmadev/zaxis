@@ -86,9 +86,14 @@ impl<A: App> Runner<A> {
         #[cfg(feature = "accesskit")]
         let proxy = (self.options.accessibility && options.accessibility)
             .then(|| self.platform.proxy.clone());
+        let app_id = super::super::app_id::resolve(
+            options.app_id.as_deref(),
+            self.options.app_id.as_deref(),
+        );
         create(
             event_loop,
             options,
+            &app_id,
             owner,
             sibling,
             self.options.presentation_mode,
@@ -214,6 +219,7 @@ impl<A: App> Runner<A> {
 fn create(
     event_loop: &ActiveEventLoop,
     options: &WindowOptions,
+    app_id: &str,
     owner: Option<&Window>,
     sibling: Option<&Renderer>,
     default_mode: PresentationMode,
@@ -223,6 +229,7 @@ fn create(
     let attributes = options.attributes.clone();
     let decorations = cfg!(target_os = "macos") || attributes.decorations;
     let attributes = owned(attributes.with_decorations(decorations), owner);
+    let attributes = super::super::app_id::apply(attributes, app_id);
     #[cfg(feature = "accesskit")]
     let (window, adapter) =
         crate::accessibility::adapter::create_window(event_loop, attributes, proxy)

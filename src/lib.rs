@@ -96,6 +96,7 @@ pub use components::{
     UrlPolicy,
 };
 pub use components::{PanZoom, PanZoomOutput, PanZoomState, ZoomWheel};
+pub use components::{Wrap, WrapOutput};
 pub use context::popup::MAX_POPUP_DEPTH;
 pub use context::testing;
 pub use context::{
@@ -121,13 +122,15 @@ pub use material::{
     FRAME_BYTES, MAX_MATERIALS, MAX_PARAM_BYTES, MAX_UNIFORM_BYTES,
 };
 pub use protocol::{
-    DrawCommand, DrawData, GeometryUpdate, MaterialDraw, MaterialId, MaterialSource, TextureFilter,
-    TextureId, TextureImage, TextureOptions, Vertex,
+    DrawCommand, DrawData, ExternalAlpha, ExternalImage, GeometryUpdate, MaterialDraw, MaterialId,
+    MaterialSource, PixelFormat, TextureFilter, TextureId, TextureImage, TextureOptions,
+    TextureRegion, TextureUpdate, Vertex,
 };
 pub use renderer::{
     EmbedAlpha, EmbedColorSpace, EmbedError, EmbedLoad, EmbedOptions, EmbedViewport,
-    EmbeddedRenderer, PhysicalRect, PresentationMode, RecordReport, RenderError, RenderStatus,
-    Renderer, RendererStats,
+    EmbeddedRenderer, ExternalEncoding, ExternalTexture, ExternalTextureError,
+    ExternalTextureOptions, PhysicalRect, PresentationMode, RecordReport, RenderError,
+    RenderStatus, Renderer, RendererStats,
 };
 pub use shapes::{
     Border, Color, CornerRadius, Gradient, GradientDirection, Rect, RectShape, Shadow, Shape,

@@ -34,8 +34,9 @@ pub struct TextureImage {
     pub id: TextureId,
     /// Nonzero width and height in physical pixels.
     pub size: [u32; 2],
-    /// Row-major, tightly packed sRGB RGBA8 pixels with straight alpha.
-    /// The length must equal `size[0] * size[1] * 4`.
+    /// Row-major, tightly packed 8-bit sRGB pixels, four bytes each. The layout is
+    /// [`DrawData::texture_formats`](super::DrawData::texture_formats): straight-alpha RGBA
+    /// unless it says otherwise. The length must equal `size[0] * size[1] * 4`.
     pub pixels: Arc<Vec<u8>>,
     /// Increment whenever pixels change; unchanged revisions reuse GPU uploads.
     pub revision: u64,

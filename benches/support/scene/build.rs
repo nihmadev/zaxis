@@ -12,6 +12,10 @@ impl Scene {
             probe.build(&mut self.context);
             return;
         }
+        if let Some(probe) = &mut self.wrap {
+            probe.build(&mut self.context);
+            return;
+        }
         if let Some(probe) = &mut self.dock {
             probe.build(&mut self.context);
             return;

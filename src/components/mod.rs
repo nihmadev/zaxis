@@ -74,6 +74,7 @@ pub mod tree_view;
 pub mod ui;
 pub mod widget;
 pub mod window;
+pub mod wrap;
 
 pub use badge::Badge;
 pub use blur::Blur;
@@ -170,6 +171,7 @@ pub use tree_view::{
 pub use ui::Ui;
 pub use widget::Widget;
 pub use window::Window;
+pub use wrap::{Wrap, WrapOutput};
 
 fn visible_label(text: &str) -> &str {
     text.split_once("##").map_or(text, |(visible, _)| visible)

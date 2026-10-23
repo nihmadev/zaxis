@@ -1,6 +1,9 @@
 //! Frame data and producer identity allocation.
 
-use super::{DrawCommand, MaterialSource, TextureId, TextureImage, TextureOptions, Vertex};
+use super::{
+    DrawCommand, ExternalImage, MaterialSource, PixelFormat, TextureId, TextureImage,
+    TextureOptions, TextureUpdate, Vertex,
+};
 use crate::Vec2;
 use std::{
     ops::Range,
@@ -52,6 +55,17 @@ pub struct DrawData {
     /// Full current binding policies; omitted IDs preserve legacy behavior.
     /// Independent of geometry revision, including after skipped frames.
     pub texture_options: std::collections::HashMap<TextureId, TextureOptions>,
+    /// Byte layout of the payloads; omitted IDs are [`PixelFormat::Rgba8Srgb`]. Independent
+    /// of geometry revision, like `texture_options`.
+    pub texture_formats: std::collections::HashMap<TextureId, PixelFormat>,
+    /// Partial changes of payloads in `textures`, each from the revision it names to the
+    /// payload's. Hints only: the payloads stay complete and current, and a backend that
+    /// cannot use an update uploads the payload. See [`TextureUpdate`].
+    pub texture_updates: Vec<TextureUpdate>,
+    /// Host-owned textures the commands draw, which have no payload: the renderer finds each by
+    /// ID among those registered with it and checks the size. An ID that is not registered, or
+    /// registered with another size, is a render error.
+    pub external_textures: Vec<ExternalImage>,
     /// Maximum estimated residency of managed textures. Unmanaged text/white
     /// bindings are pinned. An active set exceeding this limit returns an error.
     pub texture_budget_bytes: u64,
@@ -94,6 +108,9 @@ impl Default for DrawData {
             source: next_source(),
             textures: Vec::new(),
             texture_options: Default::default(),
+            texture_formats: Default::default(),
+            texture_updates: Vec::new(),
+            external_textures: Vec::new(),
             texture_budget_bytes: 256 << 20,
             texture_binding_budget: 1024,
             geometry_update: None,

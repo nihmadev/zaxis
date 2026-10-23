@@ -1,11 +1,14 @@
 use super::{
-    decode::Document,
-    source::Source,
+    decode::{self, Document},
+    source::{Pixels, Source},
     worker::{Job, Work, Workers},
     DecodedImage, ImageDecoder, ImageError, ImageHandle, ImageSource, TextureIds,
 };
 use crate::time::Instant;
-use crate::{TextureFilter, TextureId, TextureImage, TextureOptions, Vec2};
+use crate::{
+    ExternalAlpha, ExternalImage, PixelFormat, TextureFilter, TextureId, TextureImage,
+    TextureOptions, TextureUpdate, Vec2,
+};
 use std::{
     collections::{HashMap, VecDeque},
     path::{Component, PathBuf},
@@ -13,6 +16,7 @@ use std::{
     time::Duration,
 };
 mod lifecycle;
+mod live;
 
 mod types;
 pub use types::*;
@@ -22,6 +26,8 @@ enum Key {
     Path(PathBuf),
     Static(usize, usize),
     Shared(usize, [u32; 2]),
+    Pixels(usize, [u32; 2], PixelFormat),
+    External(u64),
     Handle(u64),
     Version(Box<Key>, u64),
 }
@@ -45,9 +51,24 @@ struct Entry {
     requested_at: Instant,
     observed_ready: bool,
     intrinsic: Option<[u32; 2]>,
+    /// Shown at its own resolution, never downsampled: raw pixels in a layout other than
+    /// RGBA, or ones that have been updated in place.
+    native: bool,
+    live: Option<live::Live>,
 }
 impl Entry {
+    /// The layout of the pixels the entry uploads; decoded files are RGBA.
+    fn format(&self) -> PixelFormat {
+        self.source
+            .pixels()
+            .map_or(PixelFormat::Rgba8Srgb, |(format, ..)| format)
+    }
     fn state(&self) -> ImageState {
+        if let Source::External(x) = &self.source {
+            return ImageState::Ready {
+                size: Vec2::new(x.size[0] as f32, x.size[1] as f32),
+            };
+        }
         if let Some(e) = &self.error {
             return ImageState::Error(e.clone());
         }
@@ -56,10 +77,7 @@ impl Entry {
             .as_ref()
             .map(Document::size)
             .or(self.intrinsic)
-            .or(match self.source {
-                Source::Rgba(s, _) => Some(s),
-                _ => None,
-            })
+            .or(self.source.pixels().map(|(_, size, ..)| size))
             .map(|[w, h]| Vec2::new(w as f32, h as f32));
         if self.displayed.is_some() {
             ImageState::Ready {
@@ -70,10 +88,8 @@ impl Entry {
         }
     }
     fn bytes(&self) -> usize {
-        let input = match &self.source {
-            Source::Encoded(p) | Source::Rgba(_, p) => p.len(),
-            _ => 0,
-        };
+        let input = self.source.held_bytes();
+        let live = self.live.as_ref().map_or(0, live::Live::held_bytes);
         let doc = self.document.as_ref().map_or(0, Document::bytes);
         let base = match &self.document {
             Some(Document::Raster(r)) => Some(&r.pixels),
@@ -91,9 +107,8 @@ impl Entry {
                 extra += r.pixels.len();
             }
         }
-        let shared_input =
-            matches!((&self.source, base), (Source::Rgba(_,p), Some(b)) if Arc::ptr_eq(p,b));
-        input + doc + extra - if shared_input { input } else { 0 }
+        let shared_input = matches!((self.source.pixels(), base), (Some((_, _, p, _)), Some(b)) if Arc::ptr_eq(p, b));
+        input + doc + extra + live - if shared_input { input } else { 0 }
     }
 }
 
@@ -166,6 +181,8 @@ impl ImageCache {
             Source::Static(p) => Key::Static(p.as_ptr() as usize, p.len()),
             Source::Encoded(p) => Key::Shared(Arc::as_ptr(p) as usize, [0, 0]),
             Source::Rgba(s, p) => Key::Shared(Arc::as_ptr(p) as usize, *s),
+            Source::External(x) => Key::External(x.id.0),
+            Source::Pixels(p) => Key::Pixels(Arc::as_ptr(&p.data) as usize, p.size, p.format),
             Source::Handle(h) => Key::Handle(h.id),
         }
     }
@@ -209,10 +226,7 @@ impl ImageCache {
                 "image cache entry limit reached; release unused handles".into(),
             ));
         }
-        let bytes = match &source.0 {
-            Source::Encoded(p) | Source::Rgba(_, p) => p.len(),
-            _ => 0,
-        };
+        let bytes = source.0.held_bytes();
         self.evict_to_fit(bytes);
         if self.resident_bytes().saturating_add(bytes) > self.limits.cpu_cache_bytes {
             return Err(ImageError("image source exceeds CPU cache budget".into()));
@@ -221,32 +235,38 @@ impl ImageCache {
             Key::Path(p) => Source::Path(Arc::new(p.clone())),
             _ => source.0,
         };
+        let source_native = source.pixels().is_some_and(|(.., live)| live);
         let id = self.next_entry;
         self.next_entry += 1;
         let generation = self.generation();
-        self.entries.insert(
-            id,
-            Entry {
-                source,
-                generation,
-                ids: [self.ids.next(), self.ids.next()],
-                revisions: [0; 2],
-                document: None,
-                displayed: None,
-                variants: VecDeque::new(),
-                error: None,
-                pending: false,
-                pinned: false,
-                last_frame: self.frame,
-                wanted: [0; 2],
-                linear_wanted: [0; 2],
-                target: [0; 2],
-                changed_at: self.now,
-                requested_at: Instant::now(),
-                observed_ready: false,
-                intrinsic: None,
-            },
-        );
+        let ids = match &source {
+            Source::External(x) => [x.id; 2],
+            _ => [self.ids.next(), self.ids.next()],
+        };
+        let mut entry = Entry {
+            source,
+            generation,
+            ids,
+            revisions: [0; 2],
+            document: None,
+            displayed: None,
+            variants: VecDeque::new(),
+            error: None,
+            pending: false,
+            pinned: false,
+            last_frame: self.frame,
+            wanted: [0; 2],
+            linear_wanted: [0; 2],
+            target: [0; 2],
+            changed_at: self.now,
+            requested_at: Instant::now(),
+            observed_ready: false,
+            intrinsic: None,
+            native: source_native,
+            live: None,
+        };
+        entry.open_native(&self.limits, generation);
+        self.entries.insert(id, entry);
         self.keys.insert(key, id);
         self.metrics.cache_misses += 1;
         Ok(ImageHandle {
@@ -334,19 +354,49 @@ impl ImageCache {
     pub fn set_inline_decoding(&mut self, frame_budget: Option<Duration>) {
         self.workers.set_inline(frame_budget);
     }
-    pub fn payloads(
-        &mut self,
-        active: &std::collections::HashSet<TextureId>,
-    ) -> (Vec<TextureImage>, HashMap<TextureId, TextureOptions>) {
-        let mut images = Vec::new();
-        let mut options = HashMap::new();
+    /// The texture payloads of the images drawn this frame. Patches queued since the last
+    /// frame are applied first, so a frame shows every update made before it.
+    pub fn payloads(&mut self, active: &std::collections::HashSet<TextureId>) -> Payloads {
+        let waiting: Vec<_> = self
+            .with_patches()
+            .into_iter()
+            .filter(|id| {
+                self.entries
+                    .get(id)
+                    .is_some_and(|e| e.ids.iter().any(|i| active.contains(i)))
+            })
+            .collect();
+        self.flush_live(&waiting);
+        let mut out = Payloads::default();
         let mut ready = Vec::new();
         for e in self.entries.values_mut() {
+            if let Source::External(x) = &e.source {
+                // No payload: the renderer finds the texture by its ID.
+                if e.ids.iter().any(|i| active.contains(i)) {
+                    out.options.insert(
+                        x.id,
+                        TextureOptions {
+                            filter: x.filter,
+                            managed: false,
+                        },
+                    );
+                    if x.alpha == ExternalAlpha::Opaque {
+                        out.formats.insert(x.id, PixelFormat::Rgbx8Srgb);
+                    }
+                    out.externals.push(*x);
+                }
+                continue;
+            }
             let placeholder = DecodedImage {
                 size: [1, 1],
                 pixels: self.placeholder.clone(),
             };
             let displayed = e.displayed.as_ref().unwrap_or(&placeholder);
+            let format = if e.displayed.is_some() {
+                e.format()
+            } else {
+                PixelFormat::Rgba8Srgb
+            };
             for (i, &id) in e.ids.iter().enumerate() {
                 if !active.contains(&id) {
                     continue;
@@ -359,13 +409,13 @@ impl ImageCache {
                 } else {
                     displayed
                 };
-                images.push(TextureImage {
+                out.images.push(TextureImage {
                     id,
                     size: pixels.size,
                     pixels: Arc::clone(&pixels.pixels),
                     revision: e.revisions[i],
                 });
-                options.insert(
+                out.options.insert(
                     id,
                     TextureOptions {
                         filter: if i == 1 {
@@ -376,6 +426,21 @@ impl ImageCache {
                         managed: true,
                     },
                 );
+                if format != PixelFormat::Rgba8Srgb {
+                    out.formats.insert(id, format);
+                }
+                if let Some((base, regions)) = e
+                    .live
+                    .as_ref()
+                    .and_then(|live| live.update(i, e.revisions[i]))
+                {
+                    out.updates.push(TextureUpdate {
+                        id,
+                        base_revision: base,
+                        to_revision: e.revisions[i],
+                        regions: regions.to_vec(),
+                    });
+                }
                 if e.displayed.is_some() && !e.observed_ready {
                     ready.push(e.requested_at.elapsed());
                     e.observed_ready = true;
@@ -388,6 +453,16 @@ impl ImageCache {
                 duration,
             });
         }
-        (images, options)
+        out
     }
+}
+
+/// What the images drawn in a frame contribute to its draw data.
+#[derive(Default)]
+pub(crate) struct Payloads {
+    pub images: Vec<TextureImage>,
+    pub options: HashMap<TextureId, TextureOptions>,
+    pub formats: HashMap<TextureId, PixelFormat>,
+    pub updates: Vec<TextureUpdate>,
+    pub externals: Vec<ExternalImage>,
 }

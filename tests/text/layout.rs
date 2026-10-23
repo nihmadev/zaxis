@@ -194,7 +194,7 @@ fn caret_positions_follow_shaped_clusters_without_skipping_adjacent_letters() {
 }
 
 #[test]
-fn centered_field_baseline_matches_the_fonts_cap_and_descender_band() {
+fn centered_field_baseline_matches_the_fonts_cap_height_band() {
     let mut text = text();
     let font =
         FontVec::try_from_vec(include_bytes!("../../assets/Inter-Regular.ttf").to_vec()).unwrap();
@@ -209,17 +209,9 @@ fn centered_field_baseline_matches_the_fonts_cap_and_descender_band() {
             })
             .unwrap()
             .px_bounds();
-        let g = font
-            .outline_glyph(Glyph {
-                id: font.glyph_id('g'),
-                scale: em_scale.into(),
-                position: point(0.0, 0.0),
-            })
-            .unwrap()
-            .px_bounds();
         let offset = text.centered_line_offset("Привет", size, FontWeight::REGULAR);
         let top = offset + layout.baseline + h.min.y;
-        let bottom = offset + layout.baseline + g.max.y;
+        let bottom = offset + layout.baseline + h.max.y;
         assert!((top + bottom - layout.size.y).abs() < 0.001);
         let placeholder = text.centered_line_offset("Placeholder", size, FontWeight::REGULAR);
         assert!((offset - placeholder).abs() < 0.001);

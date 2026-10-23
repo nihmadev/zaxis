@@ -10,6 +10,7 @@ pub enum Case {
     ListBox(crate::list_box::ListCase),
     Carousel(crate::carousel::CarouselCase),
     PanZoom(crate::pan_zoom::PanZoomCase),
+    Wrap(crate::wrap::WrapCase),
     Images(crate::images::ImageCase),
     Material(crate::material::MaterialCase),
     Modal(crate::modal::ModalCase),
@@ -84,7 +85,7 @@ pub enum Case {
 }
 
 impl Case {
-    pub const ALL: [Self; 183] = catalog::ALL;
+    pub const ALL: [Self; 194] = catalog::ALL;
     pub fn name(self) -> &'static str {
         match self {
             Self::Access(case) => case.name(),
@@ -96,6 +97,7 @@ impl Case {
             Self::ListBox(case) => case.name(),
             Self::Carousel(case) => case.name(),
             Self::PanZoom(case) => case.name(),
+            Self::Wrap(case) => case.name(),
             Self::Images(case) => case.name(),
             Self::Material(case) => case.name(),
             Self::Modal(case) => case.name(),
@@ -181,6 +183,7 @@ impl Case {
     }
     pub fn interactive(self) -> bool {
         matches!(self, Self::PanZoom(c) if c.interactive())
+            || matches!(self, Self::Wrap(c) if c.interactive())
             || matches!(self, Self::Dock(c) if c.interactive())
             || matches!(self, Self::Access(c) if c.interactive())
             || matches!(self, Self::Dnd(c) if c.interactive())

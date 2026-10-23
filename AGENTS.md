@@ -63,6 +63,7 @@ zaxis is a Rust desktop immediate mode GUI with retained interaction state and c
 - Use library components and their standard styling. Do not manually draw substitutes or patch component bugs with local workarounds.
 - Preserve normal scrolling, moving/resizing, focus, and content accessibility when window size or DPI changes.
 - For visual changes, run the relevant example and inspect the result. A successful build or smoke test is not visual verification.
+- Take window screenshots with [z-capture](https://github.com/nihmadev/z-capture) (`z-capture --launch ./target/debug/examples/themes -o themes.png`, then `z-capture analyze rows|cols|diff`), which picks the window by pid/title, never by focus; examples set no app_id, so use `--launch` or `--title`.
 
 ## Validation
 

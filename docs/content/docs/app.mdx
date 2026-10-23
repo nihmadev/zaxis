@@ -119,7 +119,11 @@ fn close_requested(&mut self, request: &mut CloseRequested<'_>) {
   pending key is never duplicated. Both styles can be mixed.
 * **Options:** `WindowOptions` (title, size, position, min/max size, decorations, resizable,
   always on top, transparent, icon, visible, maximized, parent, presentation mode, rounded
-  corners, or `from_attributes`). A child closes with its `parent`.
+  corners, `app_id`, or `from_attributes`). A child closes with its `parent`.
+* **App id:** on Linux every window carries a Wayland `app_id` and X11 `WM_CLASS`, which
+  compositors and task bars use to match windows to a launcher and icon. The default is the
+  executable name; `RunOptions::with_app_id` sets it for all windows and
+  `WindowOptions::with_app_id` for one. Other platforms ignore it.
 * **Exit:** `ExitPolicy::MainWindow` (default) ends the app with the main window;
   `ExitPolicy::LastWindow` runs until the last window closes.
 * **Data across windows:** a window repaints on its own input; call

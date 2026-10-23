@@ -1,7 +1,7 @@
 use super::Paint;
 use crate::{
     Context, ImageDecoder, ImageError, ImageHandle, ImageLimits, ImageMetrics, ImageSource,
-    ImageState, ImageTiming, Rect, Vec2,
+    ImageState, ImageTiming, PixelFormat, Rect, TextureRegion, Vec2,
 };
 use std::{sync::Arc, time::Duration};
 
@@ -27,6 +27,66 @@ impl Context {
         source: impl Into<ImageSource>,
     ) -> Result<(), ImageError> {
         self.images.lock().reload(handle, Some(source.into()))?;
+        self.request_repaint();
+        Ok(())
+    }
+    /// Replace the pixels of `region` of an image made from raw pixels
+    /// ([`ImageSource::rgba`], [`bgra`](ImageSource::bgra), [`rgba_opaque`](ImageSource::rgba_opaque),
+    /// [`bgra_opaque`](ImageSource::bgra_opaque)), keeping its handle, texture and widgets. The
+    /// graphics card receives the bytes of the region, not the frame.
+    ///
+    /// `region` is in physical pixels of the image. `pixels` holds its rows in the layout of
+    /// the image, `stride` bytes apart (at least `region.width * 4`; a frame read back from
+    /// the GPU has its rows padded to 256 bytes). Only the bytes of the rows are read, and
+    /// they are copied before this returns; [`update_image_region_shared`](Self::update_image_region_shared)
+    /// takes a buffer that is kept instead.
+    ///
+    /// Several updates before a frame apply in order, the last one wins, and the frame draws
+    /// them all. [`update_image`](Self::update_image) with a new source discards them.
+    /// A region of an image that has not been drawn yet is accepted as well: the image
+    /// holds its pixels already. An empty or out-of-bounds region, short pixels, a stride
+    /// below the row length, a released or foreign handle, an image decoded from a file
+    /// or a failed one return an [`ImageError`] and change nothing.
+    ///
+    /// An image displayed smaller than half its size is normally downsampled; one that is
+    /// updated in place is shown at its own size and filtered by the GPU instead.
+    pub fn update_image_region(
+        &mut self,
+        handle: ImageHandle,
+        region: impl Into<TextureRegion>,
+        pixels: &[u8],
+        stride: usize,
+    ) -> Result<(), ImageError> {
+        let region = region.into();
+        self.images
+            .lock()
+            .check_region(handle, region, pixels.len(), 0, stride)?;
+        let row = region.width as usize * PixelFormat::BYTES_PER_PIXEL;
+        let mut tight = Vec::with_capacity(row * region.height as usize);
+        for y in 0..region.height as usize {
+            tight.extend_from_slice(&pixels[y * stride..][..row]);
+        }
+        self.images
+            .lock()
+            .update_region(handle, region, Arc::new(tight), 0, row)?;
+        self.request_repaint();
+        Ok(())
+    }
+    /// Like [`update_image_region`](Self::update_image_region) for a buffer that is shared
+    /// instead of copied: the rows of the region start at `offset` in `pixels`, `stride`
+    /// bytes apart. The buffer is held until the next frame applies it, so keep writing
+    /// readback data into a new one, or one nobody else touches.
+    pub fn update_image_region_shared(
+        &mut self,
+        handle: ImageHandle,
+        region: impl Into<TextureRegion>,
+        pixels: Arc<Vec<u8>>,
+        offset: usize,
+        stride: usize,
+    ) -> Result<(), ImageError> {
+        self.images
+            .lock()
+            .update_region(handle, region.into(), pixels, offset, stride)?;
         self.request_repaint();
         Ok(())
     }

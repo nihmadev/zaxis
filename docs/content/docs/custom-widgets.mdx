@@ -47,8 +47,8 @@ impl Widget for Pad<'_> {
   across frames and distinct inside `Ui::push_id` loops. Two regions with one id in a
   pass are reported as an `IdCollision` [diagnostic](./diagnostics.mdx).
 * **Geometry.** `rect` comes from `Ui::allocate_space` (or your own layout). Allocate
-  first, then interact: inside a Grid cell, Table row or `Ui::visual` group the region
-  moves with the content, exactly like a `Button`.
+  first, then interact: inside a Grid cell, Table row, [Wrap](./components/wrap.mdx) item
+  or `Ui::visual` group the region moves with the content, exactly like a `Button`.
 * **One path.** The region is registered through the same hit path as the built-in
   controls. It is clipped by windows, scroll areas and split panels, hidden when
   scrolled out of view, disabled by `Ui::add_enabled_ui` (a disabled region blocks the
@@ -172,6 +172,16 @@ glow, a frosted pane) use a [material](./materials.mdx) instead of painting many
 one cached mesh and one uniform block per draw. Its hit region is still the rectangle you give
 `Ui::interact`.
 
+## In a Wrap
+
+A widget written outside the crate is one item of a [Wrap](./components/wrap.mdx) with no extra
+work: it is built once against the full width of the wrap, and its paint, input region, keys,
+focus and accessibility node are placed with it on whichever line it lands. Allocate through
+`Ui::allocate_space`, then interact: the rectangles you see while building are the item's own
+layout coordinates (every item starts at the origin of the wrap); never offset them by hand.
+Several allocations in one `Widget::ui` make a row inside one item. Give list items that can be
+reordered a stable key with `Ui::item(key, ..)`.
+
 ## Accessibility
 
 A custom widget that describes nothing is not in the accessibility tree. Describe it
@@ -227,7 +237,7 @@ re-role or hide any widget with `.accessible_label(..)`, `.accessible_descriptio
 
 ## Checklist
 
-1. Use stable `id_source` values; scope loops with `Ui::push_id`.
+1. Use stable `id_source` values; scope loops with `Ui::push_id` (or `Ui::item` in a `Wrap`).
 2. Allocate before interacting; give the widget a nonzero rectangle.
 3. Read events from the returned `Response` and keys from `Ui::keys`; never from `InputState`
    transitions.

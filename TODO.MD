@@ -145,7 +145,7 @@ Legend: **Next** is being designed or built now. Everything else is an idea.
 ## Rendering and performance
 
 - [x] Render into an existing wgpu pass (embedding in game engines and other apps)
-- [ ] Public dirty-region texture upload API
+- [x] Public dirty-region texture upload API (`Context::update_image_region`, `TextureUpdate`)
 - [ ] Glyph atlas eviction and GPU buffer shrinking
 - [ ] Shader-based rounded clipping for arbitrary content
 - [x] Custom shaders and materials for widgets

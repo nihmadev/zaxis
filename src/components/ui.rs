@@ -15,7 +15,7 @@ mod region;
 mod scopes;
 mod theme;
 use flow::Flow;
-pub(crate) use flow::FlowState;
+pub(crate) use flow::{FlowState, WrapRule, MAX_WRAP_EXTENT};
 
 /// A vertical or horizontal layout inside a window. Constructed by [`super::Window::show`].
 pub struct Ui<'a> {
@@ -102,6 +102,7 @@ impl Ui<'_> {
             flow.space(self.layout.direction, amount);
         }
         self.layout.space(amount);
+        self.rewind_wrap();
     }
 
     /// Scope repeated widget labels, for example with a stable row ID in a loop.
@@ -133,6 +134,7 @@ impl Ui<'_> {
     pub fn allocate_space(&mut self, size: Vec2) -> Rect {
         self.finish_layout_item();
         let rect = self.layout.allocate(size);
+        self.rewind_wrap();
         if let Some(flow) = &mut self.flow {
             self.context.begin_placement(self.window);
             flow.pending = Some(rect);

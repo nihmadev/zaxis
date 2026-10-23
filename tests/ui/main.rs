@@ -58,3 +58,4 @@ mod theme;
 mod theme_regression;
 mod tooltip_internal;
 mod windows_internal;
+mod wrap;

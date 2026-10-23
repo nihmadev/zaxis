@@ -48,7 +48,8 @@ ui.label("Below the row");
 rightward, with spacing between them. The parent allocates the row's occupied size
 after the closure returns. The row has its own ID scope and inherits the parent's clip.
 
-Rows do not wrap. `Layout::{Vertical, Horizontal}` selects the allocation direction;
+Rows do not wrap; [Wrap](./components/wrap.mdx) is the container whose items continue on
+the next line. `Layout::{Vertical, Horizontal}` selects the allocation direction;
 alignment and sizing are separate scope helpers.
 
 ## Alignment
@@ -182,6 +183,25 @@ Wrap long content in [ScrollArea](./components/scroll-area.mdx). It measures the
 child layout, clips paint and interaction, and retains an offset by stable ID.
 `Ui::available_height()` returns remaining layout height; `Ui::clip_rect()` returns
 the visible intersection, including ancestor scroll viewports.
+
+## Wrapping rows
+
+[Wrap](./components/wrap.mdx) places the items of its closure left to right and starts a new
+line when the width runs out, with a horizontal and a vertical gap, alignment of the lines in
+the width and of the items in the height of their line. Each item is built once at the full
+width through the same deferred placement as every other scope, so paint, input, scroll areas,
+popups, IME and accessibility geometry move together. `Ui::item(key, build)` groups several
+controls into one indivisible item.
+
+```rust
+use zaxis::Wrap;
+
+Wrap::new("tags").gap(6.0).show(ui, |ui| {
+    for tag in &tags {
+        ui.push_id(tag, |ui| ui.button(tag));
+    }
+});
+```
 
 ## Shared columns
 

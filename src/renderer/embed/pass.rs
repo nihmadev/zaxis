@@ -99,12 +99,15 @@ impl EmbeddedRenderer {
                 }
                 degraded.materials.push(index);
             }
+            let kind = Kind::of(command, data);
+            // Pipelines for opaque images are built on first use: here, not while recording.
+            let _ = self.pass_pipelines.get(kind);
             items.push(Item {
                 command: index,
                 indices: command.indices.clone(),
                 scissor,
                 texture: command.texture,
-                kind: Kind::of(command, data),
+                kind,
             });
         }
         drop(store);

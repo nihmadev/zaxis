@@ -18,6 +18,10 @@ impl Scene {
             probe.input(&mut self.context, step);
             return;
         }
+        if let Some(probe) = &mut self.wrap {
+            probe.input(&mut self.context, step);
+            return;
+        }
         if let Some(probe) = &mut self.dock {
             probe.input(&mut self.context, step);
             return;

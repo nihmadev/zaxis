@@ -2,6 +2,11 @@
 use super::*;
 use crate::{context::placement::Placement, Align};
 
+mod pack;
+mod wrap;
+pub(crate) use pack::MAX_EXTENT as MAX_WRAP_EXTENT;
+pub(crate) use wrap::Rule as WrapRule;
+
 #[derive(Clone, Copy, PartialEq)]
 struct Measure {
     size: Vec2,
@@ -25,6 +30,9 @@ pub(crate) struct Flow {
     items: Vec<Item>,
     previous: Vec<Measure>,
     pub(super) pending: Option<Rect>,
+    /// Set by `Wrap`: items are measured at the full width and packed into lines when
+    /// the scope closes; the cursor never advances.
+    wrap: Option<WrapRule>,
 }
 
 impl Flow {
@@ -106,7 +114,19 @@ impl Ui<'_> {
             items: Vec::new(),
             previous,
             pending: None,
+            wrap: None,
         });
+    }
+
+    fn wrapping(&self) -> bool {
+        self.flow.as_ref().is_some_and(|flow| flow.wrap.is_some())
+    }
+
+    /// Items of a wrapping scope all start at its origin; their lines are chosen on close.
+    pub(super) fn rewind_wrap(&mut self) {
+        if self.wrapping() {
+            self.layout.cursor = self.layout.bounds.min;
+        }
     }
 
     pub(super) fn finish_layout_item(&mut self) {
@@ -213,6 +233,9 @@ impl Ui<'_> {
         if self.flow.is_none() && !flexible {
             return build(self);
         }
+        // Fill has no remaining space to share in a wrapping scope: the item gets the full
+        // width of the line and, being that wide, its own line.
+        let flexible = flexible && !self.wrapping();
         let origin = self.layout.cursor;
         let direction = self.layout.direction;
         let mut available = (self.layout.bounds.max - origin).max(Vec2::ZERO);
@@ -276,6 +299,7 @@ impl Ui<'_> {
         self.context.visuals.clips.pop();
         let placement = self.context.end_placement();
         self.layout.allocate(size);
+        self.rewind_wrap();
         self.flow.as_mut().unwrap().items.push(Item {
             measure: Measure {
                 size,
@@ -291,6 +315,10 @@ impl Ui<'_> {
     /// Divide remaining main-axis space equally between spacers and fill scopes.
     pub fn spacer(&mut self) {
         self.finish_layout_item();
+        if self.wrapping() {
+            self.report_wrap_spacer();
+            return;
+        }
         let origin = self.layout.cursor;
         self.layout.allocate(Vec2::ZERO);
         self.flow

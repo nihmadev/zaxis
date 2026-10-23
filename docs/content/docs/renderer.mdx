@@ -107,6 +107,21 @@ Zero-sized surfaces return `Dormant` without rendering. Hosts must delay retries
 and wake dormant windows only on relevant events. The runner implements this;
 custom hosts use [Custom host](./integration.mdx#renderer-outcomes).
 
+## Texture uploads
+
+A payload whose revision, size or layout changed is uploaded whole: a new texture and bind group,
+or, for a single-owner texture of the same size and layout, `write_texture` over the existing one.
+A [`TextureUpdate`](./protocol.mdx#pixel-formats-and-partial-updates) naming exactly the revision
+the texture is at writes only its regions with `queue.write_texture` (an offset into the payload
+and `bytes_per_row` of the whole row; `write_texture` needs no 256-byte alignment), keeping the
+texture and the bind group. `RendererStats` separates the two: `texture_uploads` and
+`texture_upload_bytes` count whole uploads; `texture_region_updates`, `texture_region_writes` and
+`texture_region_bytes` count partial ones; `texture_writes` counts every `write_texture` of an
+image, `texture_bind_group_creations` every bind group and `texture_update_fallbacks` the
+updates that could not be used. Residency and the LRU budget count the full texture. BGRA payloads
+create `Bgra8UnormSrgb` textures; opaque ones are drawn by `fs_main_opaque` and
+`fs_image_linear_opaque`, built the first time a frame needs them.
+
 ## Validation
 
 Before use, viewport size and scale must be finite and positive. Texture payloads

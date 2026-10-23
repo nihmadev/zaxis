@@ -77,10 +77,10 @@ pub fn load(
     decoders: &[Arc<dyn ImageDecoder>],
     timings: &mut Vec<ImageTiming>,
 ) -> Result<Document, ImageError> {
-    if let Source::Rgba(size, pixels) = source {
-        validate_rgba(*size, pixels, limits)?;
+    if let Some((_, size, pixels, _)) = source.pixels() {
+        validate_rgba(size, pixels, limits)?;
         return Ok(Document::Raster(DecodedImage {
-            size: *size,
+            size,
             pixels: Arc::clone(pixels),
         }));
     }
@@ -259,7 +259,7 @@ pub fn validate_rgba(
     let count = limits.check_size(size)?;
     if count != pixels.len() {
         return Err(ImageError(
-            "RGBA byte count does not match dimensions".into(),
+            "pixel byte count does not match dimensions".into(),
         ));
     }
     Ok(())

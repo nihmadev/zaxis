@@ -6,6 +6,10 @@ impl Scene {
             probe.verify(&self.context);
             return;
         }
+        if let Some(probe) = &self.wrap {
+            probe.verify(&self.context);
+            return;
+        }
         if let Some(probe) = &self.dock {
             probe.verify(&self.context);
             return;

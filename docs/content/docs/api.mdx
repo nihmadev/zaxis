@@ -19,6 +19,7 @@ description: Exported types and method groups with direct links to their contrac
 | `Dock`, `DockState`, `DockNode`, `DockChild`, `DockFloat`, `PanelId`, `DockViewer`, `DockOutput`, `DockPanelOutput`, `DockEvent`, `DockSide`, `DockDropZone`, `DockStyle`, `DockPreset`, `DockMotion`, `DockActions`, `DockError`, `DockIssue` | [IDE panel workspace](./components/dock.mdx) |
 | `Window` | [Panel builders and geometry](./components/window.mdx) |
 | `Grid`, `GridUi`, `GridRow`, `GridStyle`, `GridOutput`, `Column`, `ColumnWidth`, `Align` | [Shared column layout](./components/grid.mdx) |
+| `Wrap`, `WrapOutput` | [Items that wrap onto the next line](./components/wrap.mdx) |
 | `Table`, `TableBody`, `TableStyle`, `TableOutput`, `SortRequest`, `SortDirection` | [Data table composition](./components/table.mdx) |
 | `ScrollArea`, `ScrollAreaOutput`, `ScrollStyle` | [Scroll viewports and virtualization](./components/scroll-area.mdx) |
 | `PanZoom`, `PanZoomState`, `PanZoomOutput`, `ZoomWheel` | [Application camera and local content](./components/pan-zoom.mdx) |
@@ -40,9 +41,10 @@ description: Exported types and method groups with direct links to their contrac
 | `Animated`, `AnimationStatus`, `AnimationSample`, `AnimationOptions`, `MotionStyle` | [Animation state, scheduling and style](./animation.mdx) |
 | `Layout`, `Padding` | [Layout and insets](./layout.mdx) |
 | `Rect`, `RectShape`, `Shape`, `Border`, `CornerRadius`, `Color` | [Drawing](./drawing.mdx), [Color](./style.mdx#tokens-and-actual-consumers) |
-| `DrawData`, `GeometryUpdate`, `DrawCommand`, `Vertex`, `TextureId`, `TextureImage` | [Drawing protocol](./protocol.mdx) |
+| `DrawData`, `GeometryUpdate`, `DrawCommand`, `Vertex`, `TextureId`, `TextureImage`, `TextureOptions`, `PixelFormat`, `TextureRegion`, `TextureUpdate`, `ExternalImage`, `ExternalAlpha` | [Drawing protocol](./protocol.mdx) |
 | `Material`, `MaterialId`, `MaterialPaint`, `MaterialError`, `MaterialErrorKind`, `ParamKind`, `ParamLayout`, `ParamValue`, `Params`, `MaterialDraw`, `MaterialSource`, `MAX_MATERIALS`, `MAX_UNIFORM_BYTES`, `MAX_PARAM_BYTES`, `FRAME_BYTES` | [Materials](./materials.mdx) |
 | `Renderer`, `RenderError`, `RenderStatus`, `PresentationMode` | [Renderer](./renderer.mdx) |
+| `ExternalTexture`, `ExternalTextureOptions`, `ExternalEncoding`, `ExternalTextureError` | [Host textures inside the interface](./embedding.mdx#host-textures-inside-the-interface) |
 | `EmbeddedRenderer`, `EmbedOptions`, `EmbedAlpha`, `EmbedColorSpace`, `EmbedViewport`, `EmbedLoad`, `PhysicalRect`, `RecordReport`, `EmbedError` | [Embedding in a wgpu host](./embedding.mdx) |
 | `CacheStats`, `RendererStats` | [Performance counters](./performance.mdx#counters) |
 | `Vec2`, `vec2` | glam two-dimensional vectors |
@@ -131,6 +133,8 @@ Created by `Window::show`; construction fields are private.
 | `color_picker(&mut Color, text)` | `Response`; expandable internal color editor |
 | `separator()` | `Response`; add horizontal `Separator` |
 | `horizontal(build)` | Closure result; nest a horizontal row |
+| `wrap(source, build)` | `WrapOutput<R>`; [`Wrap`](./components/wrap.mdx) with the default gap and alignment |
+| `item(source, build)` | Closure result; one indivisible layout item (a row of controls) under the id scope `source` |
 | `grid(source, columns, build)` | `GridOutput<R>`; shared columns with stable row keys |
 | `vertical(build)` | Closure result; nest a vertical column, including inside a row |
 | `push_id(impl Hash, build)` | Closure result; scope child IDs |

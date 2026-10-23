@@ -109,4 +109,11 @@ pub struct ImageMetrics {
     pub backpressure: u64,
     pub pending_jobs: usize,
     pub cpu_resident_bytes: usize,
+    /// Regions accepted by `update_image_region`, and the bytes of pixels they carry.
+    pub region_updates: u64,
+    pub region_bytes: u64,
+    /// Frames of live images brought up to date, and those that had to copy the whole
+    /// frame because no buffer was free to write into.
+    pub live_flushes: u64,
+    pub live_full_copies: u64,
 }

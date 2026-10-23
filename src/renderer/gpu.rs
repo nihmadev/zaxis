@@ -23,6 +23,9 @@ pub(super) struct Gpu {
     pub queue: wgpu::Queue,
     /// Whether the adapter renders to and filters `Rgba16Float`, for the backdrop pyramid.
     pub half_float: bool,
+    /// Whether `Bgra8UnormSrgb` can be sampled; WebGL2 cannot, so BGRA payloads are swapped to
+    /// RGBA when written.
+    pub bgra_native: bool,
     /// Shared by the family: built-in pipelines per target, backdrop pipelines per format.
     pub pipelines: Arc<Mutex<PipelineCache>>,
     pub blur_pipelines: Arc<Mutex<BlurCache>>,
@@ -65,6 +68,7 @@ impl Gpu {
         let nearest_sampler = textures::nearest_sampler(&device);
         let materials = MaterialPipelines::new(&device, &queue, &viewport_layout, &texture_layout);
         let material_uniforms = MaterialUniforms::new(&device, &materials.params_layout);
+        let bgra_native = native_bgra(&device);
         let white = create_texture(
             &device,
             &queue,
@@ -85,6 +89,7 @@ impl Gpu {
             device,
             queue,
             half_float,
+            bgra_native,
             blur_pipelines: Arc::default(),
             materials: Arc::new(Mutex::new(materials)),
             store: Arc::new(Mutex::new(TextureStore::new(white))),
@@ -126,6 +131,7 @@ impl Gpu {
             device: self.device.clone(),
             queue: self.queue.clone(),
             half_float: self.half_float,
+            bgra_native: self.bgra_native,
             pipelines: Arc::clone(&self.pipelines),
             blur_pipelines: Arc::clone(&self.blur_pipelines),
             materials: Arc::clone(&self.materials),
@@ -180,6 +186,12 @@ impl Gpu {
             canvas
         }
     }
+}
+
+/// Whether the device samples `Bgra8UnormSrgb`: all but the GL backend, which in a browser
+/// (WebGL2) has no BGRA textures and elsewhere only through an optional extension.
+fn native_bgra(device: &wgpu::Device) -> bool {
+    device.adapter_info().backend != wgpu::Backend::Gl
 }
 
 /// Whether `adapter` renders to and filters `Rgba16Float` as the backdrop pyramid needs.

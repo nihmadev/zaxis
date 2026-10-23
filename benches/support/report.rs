@@ -132,6 +132,14 @@ pub struct Counters {
     pub texture_upload_bytes: u64,
     pub texture_evictions: u64,
     pub draw_calls: u64,
+    pub texture_writes: u64,
+    pub texture_bind_group_creations: u64,
+    pub texture_region_updates: u64,
+    pub texture_region_writes: u64,
+    pub texture_region_bytes: u64,
+    pub texture_update_fallbacks: u64,
+    pub image_region_updates: u64,
+    pub image_live_full_copies: u64,
 }
 
 impl Counters {
@@ -145,6 +153,8 @@ impl Counters {
         self.cpu_evictions += after.evictions - before.evictions;
         self.stale_completions += after.stale_completions - before.stale_completions;
         self.cpu_image_resident_bytes = after.cpu_resident_bytes;
+        self.image_region_updates = after.region_updates - before.region_updates;
+        self.image_live_full_copies = after.live_full_copies - before.live_full_copies;
     }
     pub fn add_cpu(&mut self, before: CacheStats, after: CacheStats) {
         let delta = Self::cpu(before, after);
@@ -181,6 +191,14 @@ impl Counters {
         self.presents = after.presented_frames - before.presented_frames;
         self.geometry_uploads = after.geometry_uploads - before.geometry_uploads;
         self.texture_uploads = after.texture_uploads - before.texture_uploads;
+        self.texture_writes = after.texture_writes - before.texture_writes;
+        self.texture_bind_group_creations =
+            after.texture_bind_group_creations - before.texture_bind_group_creations;
+        self.texture_region_updates = after.texture_region_updates - before.texture_region_updates;
+        self.texture_region_writes = after.texture_region_writes - before.texture_region_writes;
+        self.texture_region_bytes = after.texture_region_bytes - before.texture_region_bytes;
+        self.texture_update_fallbacks =
+            after.texture_update_fallbacks - before.texture_update_fallbacks;
         self.geometry_upload_bytes = after.geometry_upload_bytes - before.geometry_upload_bytes;
     }
 }

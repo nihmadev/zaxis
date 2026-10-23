@@ -2,6 +2,7 @@
 //! and a device the host created. See [`EmbeddedRenderer`].
 
 mod error;
+mod external;
 mod options;
 mod pass;
 mod target;
@@ -185,6 +186,13 @@ impl EmbeddedRenderer {
     /// Drop every managed image texture, including those other renderers of the device use.
     pub fn clear_image_textures(&mut self) {
         self.gpu.clear_image_textures();
+    }
+
+    /// Convert BGRA payloads to RGBA on upload even though the device could sample them, as
+    /// a device without BGRA textures (WebGL2) needs. For tests of that path.
+    #[doc(hidden)]
+    pub fn set_bgra_conversion(&mut self, convert: bool) {
+        self.gpu.bgra_native = !convert;
     }
 
     /// Pipelines of materials held now, failed builds included.

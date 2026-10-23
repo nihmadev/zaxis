@@ -3,7 +3,8 @@
 //! This module has no dependency on wgpu or winit. Backends consume logical
 //! vertices, global u32 indices, ordered commands, and complete texture images.
 //! Geometry is cached by `(source, revision)`; textures by producer, ID, size,
-//! and image revision. Convert logical clip rectangles using `scale_factor`.
+//! pixel format and image revision. A texture that changed in a few places may also
+//! come with a [`TextureUpdate`] naming them, so a backend can skip the full upload. Convert logical clip rectangles using `scale_factor`.
 //!
 //! Create data without a UI context, or read it through [`crate::Context::draw_data`]:
 //!
@@ -42,13 +43,19 @@
 
 mod draw_command;
 mod draw_data;
+mod external;
+mod format;
 mod material;
 mod texture;
+mod update;
 mod vertex;
 
 pub use draw_command::{DrawCommand, MAX_BACKDROP_SIGMA};
 pub(crate) use draw_data::next_source;
 pub use draw_data::{DrawData, GeometryUpdate};
+pub use external::{ExternalAlpha, ExternalImage};
+pub use format::PixelFormat;
 pub use material::{MaterialDraw, MaterialId, MaterialSource};
 pub use texture::{TextureFilter, TextureId, TextureImage, TextureOptions};
+pub use update::{TextureRegion, TextureUpdate};
 pub use vertex::Vertex;

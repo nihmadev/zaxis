@@ -52,11 +52,12 @@ pub fn snap(value: f32, scale: f32) -> f32 {
 }
 
 /// Rounds to physical pixels so the parts add up to the rounded whole (largest remainder),
-/// without drift at any scale factor. `total` forces the sum; `None` rounds each part alone.
+/// without drift at any scale factor. `total` forces the sum; `None` rounds each part alone,
+/// up: a part is never narrower than the content it was measured for.
 pub(crate) fn snap_widths(widths: &[f32], total: Option<f32>, scale: f32) -> Vec<f32> {
     let px: Vec<f32> = widths.iter().map(|w| (w * scale).max(0.0)).collect();
     if total.is_none() {
-        return px.iter().map(|v| v.round() / scale).collect();
+        return px.iter().map(|v| (v - 1.0e-3).ceil() / scale).collect();
     }
     let mut out: Vec<f32> = px.iter().map(|v| v.floor()).collect();
     let target = (total.unwrap_or(0.0) * scale).floor();

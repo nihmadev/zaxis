@@ -40,6 +40,7 @@ pub struct WindowOptions {
     pub(crate) parent: Option<WindowKey>,
     pub(crate) presentation_mode: Option<PresentationMode>,
     pub(crate) accessibility: bool,
+    pub(crate) app_id: Option<String>,
 }
 
 impl WindowOptions {
@@ -59,6 +60,7 @@ impl WindowOptions {
             parent: None,
             presentation_mode: None,
             accessibility: true,
+            app_id: None,
         }
     }
 
@@ -163,6 +165,18 @@ impl WindowOptions {
     pub fn with_accessibility(mut self, accessibility: bool) -> Self {
         self.accessibility = accessibility;
         self
+    }
+
+    /// The Wayland `app_id` and X11 `WM_CLASS` of this window, instead of the
+    /// [`RunOptions::with_app_id`](crate::RunOptions::with_app_id) value or the executable
+    /// name. Other platforms ignore it.
+    pub fn with_app_id(mut self, app_id: impl Into<String>) -> Self {
+        self.app_id = Some(app_id.into());
+        self
+    }
+
+    pub fn app_id(&self) -> Option<&str> {
+        self.app_id.as_deref()
     }
 
     pub fn parent(&self) -> Option<&WindowKey> {

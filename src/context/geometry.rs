@@ -63,10 +63,13 @@ impl Context {
         let draw_data = &mut self.geometry.draw_data;
         draw_data.textures = self.text.textures();
         let active = draw_data.commands.iter().map(|c| c.texture).collect();
-        let (images, options) = self.images.lock().payloads(&active);
-        self.shows_images = !images.is_empty();
-        draw_data.textures.extend(images);
-        draw_data.texture_options = options;
+        let payloads = self.images.lock().payloads(&active);
+        self.shows_images = !payloads.images.is_empty();
+        draw_data.textures.extend(payloads.images);
+        draw_data.texture_options = payloads.options;
+        draw_data.texture_formats = payloads.formats;
+        draw_data.texture_updates = payloads.updates;
+        draw_data.external_textures = payloads.externals;
         draw_data.texture_budget_bytes = self.images.lock().limits.gpu_cache_bytes;
         draw_data.texture_binding_budget = self.images.lock().limits.max_gpu_bindings;
     }

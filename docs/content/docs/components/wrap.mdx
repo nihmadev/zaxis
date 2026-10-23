@@ -1,0 +1,157 @@
+---
+title: Wrap
+icon: WrapText
+description: Items in reading order that continue on the next line, built once at the full width.
+---
+
+`Wrap` lays arbitrary content out left to right and starts a new line when the width runs
+out: filters, tags, groups of actions and small cards. It is a container with `show`, not a
+`Widget`. The closure receives an ordinary `Ui`, so every existing component, your own
+`Widget`, `Grid`, `ScrollArea`, a `Popup` trigger or another `Wrap` can be an item.
+
+```rust
+use zaxis::{Button, TextEdit, Wrap};
+
+let out = Wrap::new("filters").gap(6.0).show(ui, |ui| {
+    for filter in &mut filters {
+        // One `add` is one item.
+        ui.push_id(filter.name, |ui| {
+            if ui.add(Button::new(filter.name).selected(filter.on)).clicked() {
+                filter.on = !filter.on;
+            }
+        });
+    }
+    // Several controls that must stay together are one item.
+    ui.item("search", |ui| {
+        ui.add(TextEdit::new(&mut query).id_source("query").width(120.0));
+        if ui.button("Search").clicked() {
+            run(&query);
+        }
+    });
+});
+```
+
+## Items
+
+Every `ui.add(..)`, `ui.horizontal(..)`, `ui.vertical(..)`, `ui.with_width(..)`, `Grid`,
+`ScrollArea`, `Ui::visual` group and `Ui::item(..)` is **one item**. Its content is never split
+across lines, and the items keep their order of declaration.
+
+`ui.item(source, build)` is the explicit way to group several controls, or an external
+component that allocates several times, into one item. It lays them out in a row and scopes
+their ids by `source`. Use `ui.vertical(..)` for a column of controls as one item.
+
+There is no item trait: nothing has to be rewritten to be wrapped.
+
+## Measuring and breaking lines
+
+Each item is built **once** against the full width of the wrap, not against what the
+previous line left over, so a `Button`, a `TextEdit` or text that wraps itself never collapses
+to a random remainder. When the closure ends the items are packed and placed:
+
+* an item joins the current line when the line, the gap and the item still fit in the width;
+  landing exactly on the edge fits (an overflow of less than a thousandth of a pixel is
+  rounding, not a break), and no empty line is ever created;
+* a line is as tall as its tallest item; the gap between lines is added **between** lines
+  only, so a wrap of one line is exactly as tall as its content, and an empty wrap has zero
+  height;
+* an item without any extent takes no room and no gap;
+* `ui.add_space(w)` adds `w` between two items of one line and vanishes at the start or end of
+  a line.
+
+Constrain what should not take the whole width: a text field has its own default width, and
+`Text::wrap(true)` inside `ui.with_max_width(110.0, ..)` wraps at 110 and has a finite measured
+height.
+
+## Builder
+
+| Method | Effect |
+| --- | --- |
+| `Wrap::new(source)` | Id scope of the items; keep it stable |
+| `width(w)` | Wrap at `w` instead of the available width |
+| `gap(g)` / `spacing(Vec2)` | Gap between items (`x`) and between lines (`y`); default: the spacing of the `Ui` |
+| `align_lines(Align)` | Each line at the start, center or end of the width |
+| `align_items(Align)` | Each item at the top, middle or bottom of its line |
+
+`Align` is the one used by rows and columns. Stretching the last line, baseline alignment and
+distributing the space between items are not provided. Negative or non-finite widths and
+gaps are replaced by the nearest valid value and reported as `InvalidValue` diagnostics.
+
+## Too wide, `fill` and `spacer`
+
+* **An item wider than the wrap** gets a line of its own at the leading edge whatever the
+  alignment, is neither shrunk nor clipped by the wrap, and widens the area the wrap reports,
+  so an enclosing `ScrollArea` can reach it. Limit it with `ui.with_max_width(..)`, which
+  clips. Extents are limited to a million logical pixels, and a non-finite one counts as zero.
+* **`ui.fill(..)` directly in a wrap** has no remaining space to share and becomes an item as
+  wide as the wrap, which puts it on a line of its own. **`ui.spacer()`** directly in a wrap is
+  ignored and reported as `InvalidUsage`. Inside an item both work as usual:
+  `ui.item("row", |ui| { ui.label("Name"); ui.spacer(); ui.button("x"); })` inside
+  `ui.with_width(200.0, ..)` pushes the button to the right edge.
+
+## Callbacks run once
+
+The closure, and every item's closure, run exactly once per pass, including the ones that
+change your model. Nothing is measured by a preliminary run: the items are recorded while they
+are built and the same recording is moved to its line. Paint, input regions, clips, scroll
+areas, the IME area, tooltip and popup anchors and accessibility geometry are placed together,
+by the placement every other container uses. A changed width, text, font or style gives the
+final layout on the pass that sees it; the wrap keeps no history of measurements, asks for no
+follow-up pass and an idle wrap redraws nothing.
+
+A `Popup` is a portal: **build it inside the item of its trigger** (`ui.item(..)`), and its
+anchor follows the item to its new line while the panel stays free of the line's clip.
+
+```rust
+ui.item("more", |ui| {
+    let more = ui.button("More");
+    if more.clicked() { open = !open; }
+    Popup::new("more-menu", more.rect).show(ui, &mut open, |ui| { ui.button("Clear"); });
+});
+```
+
+## Output
+
+```rust
+pub struct WrapOutput<R> {
+    pub inner: R,        // the closure's value
+    pub rect: Rect,      // width (wider for a too-wide item) x height of all lines
+    pub lines: Vec<Rect>,
+    pub items: Vec<Rect>, // declaration order; `add_space` is not an item
+}
+```
+
+The rectangles are in the coordinates of the `Ui` the wrap was shown in, like the cells of
+`GridOutput`: build coordinates, which an enclosing window, scroll area, `Ui::visual` or
+`PanZoom` places afterwards. A `Response` built inside an item has the coordinates of the item's
+own layout (all items start at the origin of the wrap); read where it is shown with
+`Context::visual_rect(id, rect)` after the pass, or `Ui::displayed_rect` once the container has
+placed it.
+
+To reveal an item in an enclosing `ScrollArea`, call `ui.scroll_to_rect(out.items[i])` after the
+wrap has been shown, or `ui.scroll_to_rect(response.rect)` inside the item itself; a target
+recorded inside an item moves with it.
+
+## Ids, focus and lifecycle
+
+* Ids of an item come from the order of the calls in its scope, never from the line: the
+  same item has the same id at every width. Give items of a list that is reordered, filtered or
+  edited a stable key with `ui.item(key, ..)` or `ui.push_id(key, ..)`; their text, selection
+  and focus then follow the key.
+* The wrap adds no Tab stop and no accessibility node. Tab visits the items' controls in the
+  order they were declared; a `FocusGroup` can be placed in an item as usual. A change in the
+  number of lines does not reset text, selection, capture or focus. A removed item loses its
+  state like any other.
+* The wrap retains **nothing** between passes.
+
+## Cost
+
+Every item is built every pass: a wrap is not virtualized and costs `O(items)` like a plain
+row; packing is one linear scan. For thousands of rows use `ListBox` or `ScrollArea::show_rows`;
+a two-dimensional virtualized grid is not provided.
+
+## Example
+
+`cargo run --release --example wrap` shows a filter bar of toggles, removable tags, a field
+with its action, a menu and cards of different heights that line up on the chosen edge.
+`-- --smoke-test` drives it headlessly through `Context::on_input`.

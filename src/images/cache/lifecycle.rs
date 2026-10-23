@@ -65,7 +65,9 @@ impl ImageCache {
         let mut candidates: Vec<_> = self
             .entries
             .iter()
-            .filter(|(_, e)| e.wanted != [0; 2] && e.error.is_none())
+            .filter(|(_, e)| {
+                e.wanted != [0; 2] && e.error.is_none() && !matches!(e.source, Source::External(_))
+            })
             .map(|(&id, _)| id)
             .collect();
         candidates.sort_unstable();
@@ -81,7 +83,7 @@ impl ImageCache {
                 // A single largest visible variant is shared across linear instances.
                 let ratio =
                     (target[0] as f32 / r.size[0] as f32).max(target[1] as f32 / r.size[1] as f32);
-                target = if ratio >= 0.5 {
+                target = if ratio >= 0.5 || e.native {
                     r.size
                 } else {
                     [
@@ -99,8 +101,8 @@ impl ImageCache {
             }
             let validation = if e.document.is_some() {
                 Some(target)
-            } else if let Source::Rgba(size, _) = &e.source {
-                Some(*size)
+            } else if let Some((_, size, ..)) = e.source.pixels() {
+                Some(size)
             } else {
                 None
             };
@@ -151,7 +153,7 @@ impl ImageCache {
                 id,
                 generation: e.generation,
                 size: target,
-                linear: e.linear_wanted != [0; 2],
+                linear: e.linear_wanted != [0; 2] && !e.native,
                 raster_size: if e.linear_wanted == [0; 2] {
                     target
                 } else {
@@ -200,10 +202,7 @@ impl ImageCache {
                 .get(&h.id)
                 .ok_or_else(|| ImageError("released image handle".into()))?
                 .bytes();
-            let input = match &s.0 {
-                Source::Encoded(p) | Source::Rgba(_, p) => p.len(),
-                _ => 0,
-            };
+            let input = s.0.held_bytes();
             self.evict_to_fit(input.saturating_sub(old));
             if self
                 .resident_bytes()
@@ -227,16 +226,25 @@ impl ImageCache {
             if matches!(source.0, Source::Handle(_)) {
                 return Err(ImageError("replacement must contain source data".into()));
             }
-            let input = match &source.0 {
-                Source::Encoded(p) | Source::Rgba(_, p) => p.len(),
-                _ => 0,
-            };
-            if input > self.limits.cpu_cache_bytes {
+            if source.0.held_bytes() > self.limits.cpu_cache_bytes {
                 return Err(ImageError("replacement source exceeds CPU budget".into()));
             }
+            // Updates queued for the source it replaces never apply to the new one.
+            e.live = None;
+            if let Source::External(x) = &source.0 {
+                e.ids = [x.id; 2];
+            }
             e.source = source.0;
-            if let Source::Rgba(size, _) = &e.source {
-                e.intrinsic = Some(*size);
+            e.native = e.source.pixels().is_some_and(|(.., live)| live);
+            if let Some((_, size, ..)) = e.source.pixels() {
+                e.intrinsic = Some(size);
+            }
+        } else {
+            // Re-reading keeps what the updates made of the image, and lets go of the spare
+            // frame and the base the renderer would have built on.
+            live::flush(e, &mut self.metrics);
+            if let Some(live) = &mut e.live {
+                live.reset();
             }
         }
         e.generation = generation;
@@ -250,6 +258,7 @@ impl ImageCache {
         e.target = [0; 2];
         e.observed_ready = false;
         e.requested_at = Instant::now();
+        e.open_native(&self.limits, generation);
         Ok(())
     }
     pub fn invalidate(&mut self, source: ImageSource) -> Result<(), ImageError> {
@@ -278,6 +287,14 @@ impl ImageCache {
         self.metrics.evictions += self.entries.len() as u64;
     }
     pub(super) fn evict_to_fit(&mut self, additional: usize) {
+        if self.resident_bytes().saturating_add(additional) > self.limits.cpu_cache_bytes {
+            // A spare frame is only a convenience: the next update copies a frame instead.
+            for e in self.entries.values_mut() {
+                if let Some(live) = &mut e.live {
+                    live.release_spare();
+                }
+            }
+        }
         while self.resident_bytes().saturating_add(additional) > self.limits.cpu_cache_bytes
             || self.entries.len() >= self.limits.max_entries
         {

@@ -8,6 +8,7 @@ mod diagnostics;
 mod draw;
 mod embed;
 mod error;
+mod external;
 mod frame;
 mod geometry;
 mod gpu;
@@ -33,6 +34,9 @@ pub use embed::{
     EmbeddedRenderer, PhysicalRect, RecordReport,
 };
 pub use error::RenderError;
+pub use external::{
+    ExternalEncoding, ExternalTexture, ExternalTextureError, ExternalTextureOptions,
+};
 
 /// Choose between synchronized presentation and the lowest available latency.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -73,7 +77,23 @@ pub struct RendererStats {
     pub texture_reuploads: u64,
     pub texture_upload_bytes: u64,
     pub texture_evictions: u64,
+    /// `queue.write_texture` calls for image textures, whole or partial.
+    pub texture_writes: u64,
+    /// Bind groups made for image textures. A partial update makes none.
+    pub texture_bind_group_creations: u64,
+    /// Textures brought up to date by writing only the regions that changed.
+    pub texture_region_updates: u64,
+    /// `write_texture` calls those updates made, and the texel bytes they wrote
+    /// (`texture_upload_bytes` counts whole uploads only).
+    pub texture_region_writes: u64,
+    pub texture_region_bytes: u64,
+    /// Textures uploaded whole although the frame carried an update for them: the base
+    /// revision, size or layout did not match, or the allocation was shared.
+    pub texture_update_fallbacks: u64,
     pub draw_calls: u64,
+    /// Host textures registered with the renderer family now. Their memory is the host's:
+    /// it is not part of the image residency estimate or the budgets.
+    pub external_textures: u64,
     /// Estimate from dimensions and RGBA8 format, not measured VRAM.
     pub image_resident_bytes_estimate: u64,
     /// Draws with a user material, summed over presented frames.

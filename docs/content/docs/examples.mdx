@@ -14,6 +14,8 @@ Run these commands from the repository root.
 | Nested popups: editor with combo box, key box and child panel, in a dialog and at an edge | `cargo run --release --example nested_popups` (`-- --smoke-test`) | [nested_popups.rs](https://github.com/nihmadev/zaxis/blob/main/examples/nested_popups.rs) |
 | Searchable dropdown and popup layers | `cargo run --example combo_box` | [combo_box.rs](https://github.com/nihmadev/zaxis/blob/main/examples/combo_box.rs) |
 | Actions, keymap and shortcut rebinding | `cargo run --release --example actions` (`-- --smoke-test`) | [actions.rs](https://github.com/nihmadev/zaxis/blob/main/examples/actions.rs) |
+| Items that wrap onto the next line: filter bar, tags, a field with its action, a menu, cards of different heights | `cargo run --release --example wrap` (`-- --smoke-test`) | [wrap.rs](https://github.com/nihmadev/zaxis/blob/main/examples/wrap.rs) |
+| A live image: a page stand-in updates only the rectangles that changed, in BGRA | `cargo run --release --example live_image` (`-- --smoke-test`) | [live_image.rs](https://github.com/nihmadev/zaxis/blob/main/examples/live_image.rs) |
 | Settings application | `cargo run --example settings` | [settings.rs](https://github.com/nihmadev/zaxis/blob/main/examples/settings.rs) |
 | Custom winit host | `cargo run --example integration` | [integration.rs](https://github.com/nihmadev/zaxis/blob/main/examples/integration.rs) |
 | zaxis inside a host's own wgpu device, 3D scene, MSAA and depth | `cargo run --release --example embed` (`-- --pass` to record into the scene's pass) | [embed.rs](https://github.com/nihmadev/zaxis/blob/main/examples/embed.rs) |
@@ -49,6 +51,16 @@ controls, and the text field and slider keep their own keys.
 `Context::on_input` without a window and checks the resulting values. `validation` is a sign-up form built from
 `Field`, `Validation` and the field-like controls; errors appear after a field is left
 or after submit. Both toggle the [debug overlay](./diagnostics.mdx#debug-overlay) with F3.
+
+## Wrap
+
+`wrap` is an ordinary consumer of the public API: toggle buttons that filter a list of tasks, tags
+that can be removed and added, a field with its action as one item, a menu whose panel follows
+its trigger to the next line, and a group of cards of different heights aligned at the top, middle
+or bottom of their line, inside a nested scroll area. Resize the window to see the lines break.
+`cargo run --release --example wrap -- --smoke-test` drives the same view headlessly through
+`Context::on_input` and checks the model and the line geometry; it exits with an error when
+either breaks.
 
 ## Demo
 
@@ -126,3 +138,12 @@ geometry updates, surface reconfiguration, and presentation mode changes. A desk
 display and working GPU are required.
 
 For profiling commands and counters, use [Performance](./performance.mdx).
+
+## Live image
+
+`live_image` keeps one BGRA image the size of a page and calls `Context::update_image_region` with
+the rectangle each step changed (a moving box and a ticker). Unchecking Animate stops the
+repaint requests. `--smoke-test` runs the same updates through a window-less `EmbeddedRenderer`
+on a device of its own and compares the pixels with the page every ten steps, then checks that
+one texture and one bind group served all frames and that far fewer bytes than whole frames were
+written. It prints `SKIPPED` without a GPU adapter.

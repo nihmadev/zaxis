@@ -5,6 +5,57 @@ Git tags use `v<version>`; releases so far are **0.0.1 Blinking** (`v0.0.1`) and
 then **0.0.3 Genetic** (`v0.0.3`) and **0.0.4 Motion** (`v0.0.4`); **0.0.5** (`v0.0.5`) has no display name.
 The entries below describe the prepared release; publication happens separately.
 
+## Unreleased
+
+### Added
+
+- `RunOptions::with_app_id` and `WindowOptions::with_app_id`: the Wayland `app_id` and X11
+  `WM_CLASS` of windows, which were unset before. Without a call the executable name is used,
+  so compositors such as niri report a stable `app_id` for every example.
+- `Wrap` and `WrapOutput`: items in reading order that continue on the next line when the width
+  runs out, with a horizontal and a vertical gap, alignment of the lines in the width and of
+  the items in the height of their line (`Align`), and the rectangles of the lines and items.
+  The closure receives an ordinary `Ui`; every `ui.add(..)`, `horizontal`, `vertical`, `Grid`,
+  `ScrollArea` or `Ui::visual` group is one item, so any `Widget`, `TextEdit`, `Popup` trigger or
+  container written outside the crate wraps without a new trait. Each item is built once at the
+  full width, then packed and placed through the same deferred placement as every other scope:
+  paint, input regions, clips, scroll areas, IME, tooltip and popup anchors and accessibility
+  geometry move together, the wrap keeps no state, adds no Tab stop or accessibility node, and an
+  idle wrap redraws nothing. An item wider than the wrap gets its own line and widens the
+  reported area; `fill` directly in a wrap is a full-width item and `spacer` is reported and
+  ignored; sizes and gaps are sanitized. `Ui::wrap` shows one with the defaults, and `Ui::item`
+  groups several controls into one indivisible item under a stable id scope. Includes the `wrap`
+  example (`--smoke-test`), UI, accessibility and GPU readback tests, eleven scenarios in the
+  performance harness and the `Wrap` page of the documentation.
+
+- Live images. `Context::update_image_region` (and `update_image_region_shared`) replace a
+  rectangle of an image made from raw pixels with rows of any stride, keeping its handle, texture
+  ID, bind group and widgets; the renderer writes only the region with `queue.write_texture`.
+  `ImageSource::{bgra, rgba_opaque, bgra_opaque, pixels, live}` and `PixelFormat` add BGRA and
+  opaque layouts uploaded as they are (`Bgra8UnormSrgb`; opaque pixels drawn without alpha).
+  Protocol: `DrawData::texture_formats`, `DrawData::texture_updates`, `TextureUpdate`,
+  `TextureRegion`; payloads stay complete and every renderer that cannot build on the previous
+  revision uploads them. Counters: `RendererStats::{texture_writes, texture_bind_group_creations,
+  texture_region_updates, texture_region_writes, texture_region_bytes, texture_update_fallbacks}`
+  and `ImageMetrics::{region_updates, region_bytes, live_flushes, live_full_copies}`. Includes
+  GPU readback tests for window-less renderers and `Live` rows in the performance harness.
+
+- Host textures inside the interface. `Renderer::register_external_texture` and
+  `EmbeddedRenderer::register_external_texture` take a `wgpu::Texture` of the renderer's own device
+  (`Rgba8Unorm[Srgb]`, `Bgra8Unorm[Srgb]`, `Rgba16Float`) and return an `ExternalTexture` whose
+  `ExternalImage` is shown by `ImageSource::external`: no copy, no upload, no new bind group when
+  the host writes into it. Wrong device, usage, shape, format or view format are
+  `ExternalTextureError`s, not wgpu panics; dropping or unregistering releases the binding, never
+  the host's texture; a frame that refers to a missing or resized registration is a render error.
+  Protocol: `DrawData::external_textures`, `ExternalImage`, `ExternalAlpha`;
+  `RendererStats::external_textures`. The `live_image` example (`--smoke-test`) and `Live` rows of
+  the performance harness cover both paths.
+
+### Changed
+
+- The measured-flow scope behind `Ui::horizontal` and `Ui::vertical` gained a wrapping mode used
+  by `Wrap`; rows, columns, `fill`, `spacer` and the size scopes behave as before.
+
 ## 0.0.5
 
 ### Added

@@ -408,3 +408,53 @@ fn outlined_variant_selects_by_mouse_and_keyboard_without_a_thumb() {
     draw_with(&mut c, &mut mode, options(), outlined, 5001);
     assert_eq!(mode, Mode::A);
 }
+
+/// Texts the control painted: a truncated label ends with an ellipsis.
+fn painted_labels(c: &Context) -> Vec<String> {
+    c.probe()
+        .cache
+        .values()
+        .flat_map(|e| e.paint.iter())
+        .filter_map(|p| match p {
+            zaxis::testing::Paint::Text { text, .. } => Some(text.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn labels_are_not_truncated_when_the_control_has_ample_width() {
+    let sets = [["Top", "Middle", "Bottom"], ["Left", "Center", "Right"]];
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        for width in [SegmentWidth::Equal, SegmentWidth::Content] {
+            for set in sets {
+                let mut c = Context::new();
+                c.set_viewport(
+                    PhysicalSize::new((800.0 * scale) as u32, (600.0 * scale) as u32),
+                    scale,
+                );
+                let mut mode = Mode::A;
+                for at in [0, 16, 32] {
+                    let options: Vec<_> = set
+                        .iter()
+                        .zip([Mode::A, Mode::B, Mode::C])
+                        .map(|(label, mode)| SegmentOption::new(mode, *label))
+                        .collect();
+                    let start = c.frame_time();
+                    c.run_at(start + Duration::from_millis(at), |c| {
+                        Window::new("Wide").show(c, |ui| {
+                            ui.add(SegmentedControl::new(&mut mode, options).width(width));
+                        });
+                    });
+                }
+                let shown = painted_labels(&c);
+                for label in set {
+                    assert!(
+                        shown.iter().any(|s| s == label),
+                        "{label} truncated at {scale} ({width:?}): {shown:?}"
+                    );
+                }
+            }
+        }
+    }
+}

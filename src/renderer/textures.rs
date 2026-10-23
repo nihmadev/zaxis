@@ -1,21 +1,53 @@
-//! Versioned uploads, shared allocations, independent samplers, managed LRU.
-use super::{diagnostics::RendererStage, gpu::Gpu, RenderError, Renderer};
-use crate::{DrawData, TextureFilter, TextureId};
+//! Versioned uploads, partial updates, shared allocations, independent samplers, managed LRU.
+use super::{diagnostics::RendererStage, gpu::Gpu, Renderer};
+use crate::{PixelFormat, TextureFilter, TextureId};
 use std::{
     collections::HashMap,
     sync::{Arc, Weak},
 };
 
+mod evict;
+mod prepare;
+mod update;
+mod upload;
+
+/// How the bytes of a payload are stored on this device: the host's layout, and whether the
+/// device cannot sample it, so that the written rows are swapped to RGBA on the way in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Texels {
+    pub format: PixelFormat,
+    pub convert: bool,
+}
+
+impl Texels {
+    pub const RGBA: Self = Self {
+        format: PixelFormat::Rgba8Srgb,
+        convert: false,
+    };
+
+    /// The texture format the bytes are uploaded to without any change.
+    pub fn gpu_format(self) -> wgpu::TextureFormat {
+        if self.format.is_bgr() && !self.convert {
+            wgpu::TextureFormat::Bgra8UnormSrgb
+        } else {
+            wgpu::TextureFormat::Rgba8UnormSrgb
+        }
+    }
+}
+
 pub struct GpuTexture {
     pub(super) texture: wgpu::Texture,
     pub bind_group: wgpu::BindGroup,
     pub(super) size: [u32; 2],
+    pub(super) texels: Texels,
     pub(super) revision: u64,
     pub(super) filter: TextureFilter,
     pub(super) managed: bool,
     pub(super) last_used: u64,
     pub(super) allocation: u64,
     pub(super) pixels: Weak<Vec<u8>>,
+    /// Registered by the host; never evicted, replaced or written by the renderer.
+    pub(super) external: bool,
 }
 /// GPU textures shared by a renderer and its siblings.
 pub(super) struct TextureStore {
@@ -29,6 +61,8 @@ pub(super) struct TextureStore {
     pub(super) clock: u64,
     /// Last allocation number handed to a created texture; unique across siblings.
     pub(super) allocations: u64,
+    /// Last number of an external registration.
+    pub(super) next_external: u64,
 }
 
 impl TextureStore {
@@ -39,6 +73,7 @@ impl TextureStore {
             shared: false,
             clock: 0,
             allocations: 0,
+            next_external: 0,
         }
     }
 }
@@ -79,270 +114,44 @@ pub fn nearest_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         ..Default::default()
     })
 }
+
 impl Gpu {
-    pub(super) fn prepare_textures(
-        &mut self,
-        store: &mut TextureStore,
-        data: &DrawData,
-    ) -> Result<(), RenderError> {
-        if !store.shared && store.source != Some(data.source) {
-            store.textures.retain(|id, _| *id == TextureId::WHITE);
-        }
-        store.source = Some(data.source);
-        let active: std::collections::HashSet<_> =
-            data.commands.iter().map(|c| c.texture).collect();
-        let limit = self.device.limits().max_texture_dimension_2d;
-        let mut payloads = std::collections::HashSet::new();
-        let mut allocations = std::collections::HashSet::new();
-        let mut active_bytes = 0u64;
-        for image in &data.textures {
-            if image.id == TextureId::WHITE
-                || !payloads.insert(image.id)
-                || image.size.contains(&0)
-                || image.size.iter().any(|s| *s > limit)
-                || image.pixels.len() as u64
-                    != u64::from(image.size[0]) * u64::from(image.size[1]) * 4
-            {
-                return Err(RenderError::Texture(format!(
-                    "invalid texture {:?}, dimensions {:?}, device limit {limit}",
-                    image.id, image.size
-                )));
-            }
-            if active.contains(&image.id)
-                && data
-                    .texture_options
-                    .get(&image.id)
-                    .is_some_and(|o| o.managed)
-                && allocations.insert((Arc::as_ptr(&image.pixels), image.size, image.revision))
-            {
-                active_bytes += image.pixels.len() as u64;
-            }
-        }
-        if active
-            .iter()
-            .any(|id| *id != TextureId::WHITE && !payloads.contains(id))
-        {
-            return Err(RenderError::InvalidDrawData(
-                "complete texture payload required for every referenced ID",
-            ));
-        }
-        if active_bytes > data.texture_budget_bytes {
-            return Err(RenderError::Texture(format!(
-                "visible image set needs {active_bytes} bytes, GPU budget is {}",
-                data.texture_budget_bytes
-            )));
-        }
-        if active
-            .iter()
-            .filter(|id| data.texture_options.get(id).is_some_and(|o| o.managed))
-            .count()
-            > data.texture_binding_budget
-        {
-            return Err(RenderError::Texture(
-                "visible image bindings exceed binding budget".into(),
-            ));
-        }
-        self.evict_images(
-            store,
-            data.texture_budget_bytes.saturating_sub(active_bytes),
-            &active,
-        );
-        for image in &data.textures {
-            let options = data
-                .texture_options
-                .get(&image.id)
-                .copied()
-                .unwrap_or_default();
-            if options.managed && !active.contains(&image.id) {
-                continue;
-            }
-            let lookup = self.diagnostics.start();
-            let cached = store
-                .textures
-                .get(&image.id)
-                .is_some_and(|t| t.size == image.size && t.revision == image.revision);
-            self.diagnostics.end(RendererStage::TextureLookup, lookup);
-            let sampler = if options.filter == TextureFilter::Nearest {
-                &self.nearest_sampler
-            } else {
-                &self.sampler
-            };
-            if cached {
-                let t = store.textures.get_mut(&image.id).unwrap();
-                if t.filter != options.filter {
-                    t.bind_group = binding(
-                        &self.device,
-                        &self.texture_layout,
-                        sampler,
-                        &t.texture,
-                        &mut self.diagnostics,
-                    );
-                    t.filter = options.filter;
-                }
-                t.managed = options.managed;
-                t.last_used = store.clock;
-                continue;
-            }
-            let shared = store
-                .textures
-                .iter()
-                .find(|(id, t)| {
-                    **id != image.id
-                        && t.size == image.size
-                        && t.revision == image.revision
-                        && t.pixels
-                            .upgrade()
-                            .is_some_and(|p| Arc::ptr_eq(&p, &image.pixels))
-                })
-                .map(|(_, t)| (t.texture.clone(), t.allocation));
-            let mut gpu = if let Some((texture, allocation)) = shared {
-                GpuTexture {
-                    bind_group: binding(
-                        &self.device,
-                        &self.texture_layout,
-                        sampler,
-                        &texture,
-                        &mut self.diagnostics,
-                    ),
-                    texture,
-                    size: image.size,
-                    revision: image.revision,
-                    filter: options.filter,
-                    managed: options.managed,
-                    last_used: store.clock,
-                    allocation,
-                    pixels: Arc::downgrade(&image.pixels),
-                }
-            } else {
-                let reusable = store
-                    .textures
-                    .get(&image.id)
-                    .filter(|t| t.size == image.size)
-                    .is_some_and(|t| {
-                        store
-                            .textures
-                            .values()
-                            .filter(|o| o.allocation == t.allocation)
-                            .count()
-                            == 1
-                    });
-                let gpu = if reusable {
-                    let mut t = store.textures.remove(&image.id).unwrap();
-                    let start = self.diagnostics.start();
-                    write_texture(&self.queue, &t.texture, image.size, &image.pixels);
-                    self.diagnostics.end(RendererStage::WriteTextureCpu, start);
-                    if t.filter != options.filter {
-                        t.bind_group = binding(
-                            &self.device,
-                            &self.texture_layout,
-                            sampler,
-                            &t.texture,
-                            &mut self.diagnostics,
-                        );
-                    }
-                    t.revision = image.revision;
-                    self.stats.texture_reuploads += 1;
-                    t
-                } else {
-                    self.stats.texture_creations += 1;
-                    store.allocations += 1;
-                    let mut t = create_texture_profiled(
-                        &self.device,
-                        &self.queue,
-                        &self.texture_layout,
-                        sampler,
-                        image.size,
-                        &image.pixels,
-                        image.revision,
-                        &mut self.diagnostics,
-                    );
-                    t.allocation = store.allocations;
-                    t
-                };
-                self.stats.texture_uploads += 1;
-                self.stats.texture_upload_bytes += image.pixels.len() as u64;
-                gpu
-            };
-            gpu.pixels = Arc::downgrade(&image.pixels);
-            gpu.filter = options.filter;
-            gpu.managed = options.managed;
-            gpu.last_used = store.clock;
-            store.textures.insert(image.id, gpu);
-        }
-        while store.textures.values().filter(|t| t.managed).count() > data.texture_binding_budget {
-            let id = store
-                .textures
-                .iter()
-                .filter(|(id, t)| t.managed && !active.contains(id))
-                .min_by_key(|(id, t)| (t.last_used, id.0))
-                .map(|(&id, _)| id);
-            let Some(id) = id else {
-                break;
-            };
-            store.textures.remove(&id);
-            self.stats.texture_evictions += 1;
-        }
-        self.stats.image_resident_bytes_estimate = image_bytes(store);
-        Ok(())
-    }
-    fn evict_images(
-        &mut self,
-        store: &mut TextureStore,
-        budget: u64,
-        active: &std::collections::HashSet<TextureId>,
-    ) {
-        loop {
-            let is_idle = |t: &GpuTexture| {
-                t.managed
-                    && !store
-                        .textures
-                        .iter()
-                        .any(|(id, o)| active.contains(id) && o.allocation == t.allocation)
-            };
-            let mut seen = std::collections::HashSet::new();
-            let idle_bytes: u64 = store
-                .textures
-                .values()
-                .filter(|t| is_idle(t) && seen.insert(t.allocation))
-                .map(|t| u64::from(t.size[0]) * u64::from(t.size[1]) * 4)
-                .sum();
-            if idle_bytes <= budget {
-                break;
-            }
-            let allocation = store
-                .textures
-                .iter()
-                .filter(|(_, t)| is_idle(t))
-                .min_by_key(|(id, t)| (t.last_used, id.0))
-                .map(|(_, t)| t.allocation);
-            let Some(allocation) = allocation else {
-                break;
-            };
-            store
-                .textures
-                .retain(|_, t| !t.managed || t.allocation != allocation);
-            self.stats.texture_evictions += 1;
+    /// The sampler of a binding with `filter`.
+    pub(super) fn sampler_for(&self, filter: TextureFilter) -> &wgpu::Sampler {
+        if filter == TextureFilter::Nearest {
+            &self.nearest_sampler
+        } else {
+            &self.sampler
         }
     }
-}
-impl Gpu {
-    /// Drop every managed image texture, including those used by sibling renderers.
-    pub(super) fn clear_image_textures(&mut self) {
-        let mut allocations = std::collections::HashSet::new();
-        self.store
-            .lock()
-            .expect("texture store mutex")
-            .textures
-            .retain(|_, t| {
-                if t.managed {
-                    allocations.insert(t.allocation);
-                    false
-                } else {
-                    true
-                }
-            });
-        self.stats.texture_evictions += allocations.len() as u64;
-        self.stats.image_resident_bytes_estimate = 0;
+
+    /// A new bind group of `texture` with the sampler of `filter`.
+    pub(super) fn bind(
+        &mut self,
+        texture: &wgpu::Texture,
+        filter: TextureFilter,
+    ) -> wgpu::BindGroup {
+        self.stats.texture_bind_group_creations += 1;
+        let sampler = if filter == TextureFilter::Nearest {
+            &self.nearest_sampler
+        } else {
+            &self.sampler
+        };
+        binding(
+            &self.device,
+            &self.texture_layout,
+            sampler,
+            texture,
+            &mut self.diagnostics,
+        )
+    }
+
+    /// How a payload of `format` is stored on this device.
+    pub(super) fn texels(&self, format: PixelFormat) -> Texels {
+        Texels {
+            format,
+            convert: format.is_bgr() && !self.bgra_native,
+        }
     }
 }
 
@@ -354,15 +163,12 @@ impl Renderer {
     pub fn max_texture_dimension_2d(&self) -> u32 {
         self.gpu.device.limits().max_texture_dimension_2d
     }
-}
-fn image_bytes(store: &TextureStore) -> u64 {
-    let mut seen = std::collections::HashSet::new();
-    store
-        .textures
-        .values()
-        .filter(|t| t.managed && seen.insert(t.allocation))
-        .map(|t| u64::from(t.size[0]) * u64::from(t.size[1]) * 4)
-        .sum()
+    /// Convert BGRA payloads to RGBA on upload even though the device could sample them, as
+    /// a device without BGRA textures (WebGL2) needs. For tests of that path.
+    #[doc(hidden)]
+    pub fn set_bgra_conversion(&mut self, convert: bool) {
+        self.gpu.bgra_native = !convert;
+    }
 }
 pub(super) fn binding(
     device: &wgpu::Device,
@@ -401,7 +207,7 @@ pub fn create_texture(
     pixels: &[u8],
     revision: u64,
 ) -> GpuTexture {
-    create_texture_profiled(
+    upload::create_texture_profiled(
         device,
         queue,
         layout,
@@ -409,9 +215,11 @@ pub fn create_texture(
         size,
         pixels,
         revision,
+        Texels::RGBA,
         &mut Default::default(),
     )
 }
-mod upload;
-use upload::create_texture_profiled;
-pub(super) use upload::write_texture;
+/// Whether two payload allocations are the same buffer.
+fn same_buffer(a: &Weak<Vec<u8>>, b: &Arc<Vec<u8>>) -> bool {
+    a.upgrade().is_some_and(|p| Arc::ptr_eq(&p, b))
+}

@@ -3,6 +3,8 @@ use std::{
     sync::{mpsc, Arc, Condvar, Mutex},
     time::Duration,
 };
+mod live;
+
 use zaxis::images::{decode, resize, source, *};
 use zaxis::Instant;
 use zaxis::{vec2, Context, Image, ImageFit, TextureFilter, Window};
